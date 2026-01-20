@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>AutoTradeX.UI</RootNamespace>
+    <AssemblyName>AutoTradeX</AssemblyName>
+    <Description>AutoTrade-X - Cross-Exchange Arbitrage Trading Bot Dashboard</Description>
+    <Company>Xman Studio</Company>
+    <Product>AutoTrade-X PRO EDITION</Product>
+    <Copyright>Copyright © 2024 Xman Studio - Licensed for Educational Use Only</Copyright>
+    <Version>0.1.0-beta</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- Application Logo Resource -->
+  <ItemGroup>
+    <Resource Include="Assets\logo.png" />
+    <Resource Include="Assets\logo2.png" />
+    <Resource Include="Assets\Exchanges\binance.png" />
+    <Resource Include="Assets\Exchanges\kucoin.png" />
+    <Resource Include="Assets\Exchanges\okx.png" />
+    <Resource Include="Assets\Exchanges\bybit.png" />
+    <Resource Include="Assets\Exchanges\gateio.png" />
+    <Resource Include="Assets\Exchanges\bitkub.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoTradeX.Core\AutoTradeX.Core.csproj" />
+    <ProjectReference Include="..\AutoTradeX.Infrastructure\AutoTradeX.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Copy Assets to output -->
+  <ItemGroup>
+    <Content Include="Assets\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

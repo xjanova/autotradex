@@ -1,0 +1,1647 @@
+<Window x:Class="AutoTradeX.UI.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:AutoTradeX.UI.Views"
+        xmlns:controls="clr-namespace:AutoTradeX.UI.Controls"
+        Title="AutoTrade-X Pro" Height="890" Width="1400"
+        MinWidth="400" MinHeight="700"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="CanResize"
+        Background="Transparent"
+        Icon="/Assets/logo.png"
+        SizeChanged="Window_SizeChanged"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
+
+    <Window.Resources>
+        <!-- Animated Gradient for Background -->
+        <Storyboard x:Key="GradientAnimation" RepeatBehavior="Forever">
+            <ColorAnimation Storyboard.TargetName="GradientStop1"
+                           Storyboard.TargetProperty="Color"
+                           From="#0A0A1A" To="#1A0A2E" Duration="0:0:8" AutoReverse="True"/>
+            <ColorAnimation Storyboard.TargetName="GradientStop2"
+                           Storyboard.TargetProperty="Color"
+                           From="#0D1B2A" To="#1B0A3A" Duration="0:0:6" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="FloatingOrb1"
+                            Storyboard.TargetProperty="(Canvas.Top)"
+                            From="100" To="600" Duration="0:0:15" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="FloatingOrb1"
+                            Storyboard.TargetProperty="(Canvas.Left)"
+                            From="100" To="1100" Duration="0:0:20" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="FloatingOrb2"
+                            Storyboard.TargetProperty="(Canvas.Top)"
+                            From="500" To="50" Duration="0:0:18" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="FloatingOrb2"
+                            Storyboard.TargetProperty="(Canvas.Left)"
+                            From="900" To="200" Duration="0:0:12" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="FloatingOrb3"
+                            Storyboard.TargetProperty="(Canvas.Top)"
+                            From="300" To="700" Duration="0:0:22" AutoReverse="True"/>
+        </Storyboard>
+
+        <!-- Glass Card Style -->
+        <Style x:Key="GlassCard" TargetType="Border">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#20FFFFFF" Offset="0"/>
+                        <GradientStop Color="#10FFFFFF" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush" Value="#30FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.3" Color="#000000"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Premium Button -->
+        <Style x:Key="PremiumButton" TargetType="Button">
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" CornerRadius="10" Padding="20,12">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#7C3AED" Offset="0"/>
+                                    <GradientStop Color="#2563EB" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background">
+                                    <Setter.Value>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#8B5CF6" Offset="0"/>
+                                            <GradientStop Color="#3B82F6" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Start Button -->
+        <Style x:Key="StartButton" TargetType="Button">
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" CornerRadius="12" Padding="30,14">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#10B981" Offset="0"/>
+                                    <GradientStop Color="#059669" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="15" ShadowDepth="0" Opacity="0.5" Color="#10B981"/>
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Stop Button -->
+        <Style x:Key="StopButton" TargetType="Button">
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" CornerRadius="12" Padding="30,14">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#EF4444" Offset="0"/>
+                                    <GradientStop Color="#DC2626" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background">
+                                    <Setter.Value>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#F87171" Offset="0"/>
+                                            <GradientStop Color="#EF4444" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Trading Pulse Animation -->
+        <Storyboard x:Key="TradingPulseAnimation" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="TradingPulse1"
+                            Storyboard.TargetProperty="Opacity"
+                            From="0.8" To="0.2" Duration="0:0:1" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="TradingPulse2"
+                            Storyboard.TargetProperty="Opacity"
+                            From="0.3" To="0.8" Duration="0:0:0.8" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="TradingArrow"
+                            Storyboard.TargetProperty="(Canvas.Left)"
+                            From="0" To="100" Duration="0:0:1.5" AutoReverse="True"/>
+            <ColorAnimation Storyboard.TargetName="TradingGlow"
+                           Storyboard.TargetProperty="Color"
+                           From="#00D4FF" To="#7C3AED" Duration="0:0:2" AutoReverse="True"/>
+        </Storyboard>
+
+        <!-- Data Flow Animation -->
+        <Storyboard x:Key="DataFlowAnimation" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="DataFlowDot1"
+                            Storyboard.TargetProperty="(Canvas.Left)"
+                            From="0" To="120" Duration="0:0:2"/>
+            <DoubleAnimation Storyboard.TargetName="DataFlowDot2"
+                            Storyboard.TargetProperty="(Canvas.Left)"
+                            From="0" To="120" Duration="0:0:2" BeginTime="0:0:0.5"/>
+            <DoubleAnimation Storyboard.TargetName="DataFlowDot3"
+                            Storyboard.TargetProperty="(Canvas.Left)"
+                            From="0" To="120" Duration="0:0:2" BeginTime="0:0:1"/>
+        </Storyboard>
+
+        <!-- Status Indicator Pulse -->
+        <Storyboard x:Key="StatusPulseAnimation" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="StatusGlow"
+                            Storyboard.TargetProperty="Opacity"
+                            From="1" To="0.3" Duration="0:0:0.8" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="StatusGlowOuter"
+                            Storyboard.TargetProperty="Width"
+                            From="14" To="24" Duration="0:0:1" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="StatusGlowOuter"
+                            Storyboard.TargetProperty="Height"
+                            From="14" To="24" Duration="0:0:1" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="StatusGlowOuter"
+                            Storyboard.TargetProperty="Opacity"
+                            From="0.5" To="0" Duration="0:0:1" AutoReverse="True"/>
+        </Storyboard>
+
+        <!-- Exchange Logo Style -->
+        <Style x:Key="ExchangeLogo" TargetType="Border">
+            <Setter Property="Width" Value="48"/>
+            <Setter Property="Height" Value="48"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="5"/>
+        </Style>
+
+        <!-- Tab Style -->
+        <Style x:Key="NavTab" TargetType="Border">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="15,10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <!-- Premium ScrollViewer Style -->
+        <Style x:Key="ModernScrollViewerStyle" TargetType="ScrollViewer">
+            <Setter Property="CanContentScroll" Value="False"/>
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="Focusable" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollViewer">
+                        <Grid Background="{TemplateBinding Background}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"
+                                                    Grid.Column="0"
+                                                    CanContentScroll="False"
+                                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                    Content="{TemplateBinding Content}"
+                                                    Margin="{TemplateBinding Padding}"/>
+
+                            <!-- Premium Vertical ScrollBar -->
+                            <ScrollBar x:Name="PART_VerticalScrollBar"
+                                       Grid.Column="1"
+                                       Orientation="Vertical"
+                                       Width="8"
+                                       Margin="4,8,6,8"
+                                       Minimum="0"
+                                       Maximum="{TemplateBinding ScrollableHeight}"
+                                       Value="{TemplateBinding VerticalOffset}"
+                                       ViewportSize="{TemplateBinding ViewportHeight}"
+                                       Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}">
+                                <ScrollBar.Template>
+                                    <ControlTemplate TargetType="ScrollBar">
+                                        <Grid x:Name="Root" Width="8">
+                                            <!-- Track Background -->
+                                            <Border Background="#08FFFFFF" CornerRadius="4" Width="6" HorizontalAlignment="Center"/>
+                                            <Track x:Name="PART_Track" IsDirectionReversed="True" Width="8">
+                                                <Track.DecreaseRepeatButton>
+                                                    <RepeatButton Command="ScrollBar.PageUpCommand" Style="{x:Null}">
+                                                        <RepeatButton.Template>
+                                                            <ControlTemplate TargetType="RepeatButton">
+                                                                <Border Background="Transparent"/>
+                                                            </ControlTemplate>
+                                                        </RepeatButton.Template>
+                                                    </RepeatButton>
+                                                </Track.DecreaseRepeatButton>
+                                                <Track.IncreaseRepeatButton>
+                                                    <RepeatButton Command="ScrollBar.PageDownCommand" Style="{x:Null}">
+                                                        <RepeatButton.Template>
+                                                            <ControlTemplate TargetType="RepeatButton">
+                                                                <Border Background="Transparent"/>
+                                                            </ControlTemplate>
+                                                        </RepeatButton.Template>
+                                                    </RepeatButton>
+                                                </Track.IncreaseRepeatButton>
+                                                <Track.Thumb>
+                                                    <Thumb x:Name="Thumb" Cursor="Hand" Width="6">
+                                                        <Thumb.Template>
+                                                            <ControlTemplate TargetType="Thumb">
+                                                                <Border x:Name="thumb" CornerRadius="3" MinHeight="40">
+                                                                    <Border.Background>
+                                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                                            <GradientStop Color="#7C3AED" Offset="0"/>
+                                                                            <GradientStop Color="#5B21B6" Offset="0.5"/>
+                                                                            <GradientStop Color="#7C3AED" Offset="1"/>
+                                                                        </LinearGradientBrush>
+                                                                    </Border.Background>
+                                                                    <Border.Effect>
+                                                                        <DropShadowEffect BlurRadius="6" ShadowDepth="0" Opacity="0.5" Color="#7C3AED"/>
+                                                                    </Border.Effect>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="thumb" Property="Background">
+                                                                            <Setter.Value>
+                                                                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                                                    <GradientStop Color="#8B5CF6" Offset="0"/>
+                                                                                    <GradientStop Color="#7C3AED" Offset="0.5"/>
+                                                                                    <GradientStop Color="#8B5CF6" Offset="1"/>
+                                                                                </LinearGradientBrush>
+                                                                            </Setter.Value>
+                                                                        </Setter>
+                                                                        <Setter TargetName="thumb" Property="Effect">
+                                                                            <Setter.Value>
+                                                                                <DropShadowEffect BlurRadius="10" ShadowDepth="0" Opacity="0.7" Color="#8B5CF6"/>
+                                                                            </Setter.Value>
+                                                                        </Setter>
+                                                                    </Trigger>
+                                                                    <Trigger Property="IsDragging" Value="True">
+                                                                        <Setter TargetName="thumb" Property="Background">
+                                                                            <Setter.Value>
+                                                                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                                                    <GradientStop Color="#A78BFA" Offset="0"/>
+                                                                                    <GradientStop Color="#8B5CF6" Offset="0.5"/>
+                                                                                    <GradientStop Color="#A78BFA" Offset="1"/>
+                                                                                </LinearGradientBrush>
+                                                                            </Setter.Value>
+                                                                        </Setter>
+                                                                        <Setter TargetName="thumb" Property="Effect">
+                                                                            <Setter.Value>
+                                                                                <DropShadowEffect BlurRadius="15" ShadowDepth="0" Opacity="0.9" Color="#A78BFA"/>
+                                                                            </Setter.Value>
+                                                                        </Setter>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Thumb.Template>
+                                                    </Thumb>
+                                                </Track.Thumb>
+                                            </Track>
+                                        </Grid>
+                                    </ControlTemplate>
+                                </ScrollBar.Template>
+                            </ScrollBar>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark ComboBox Style -->
+        <Style x:Key="DarkComboBox" TargetType="ComboBox">
+            <Setter Property="Background" Value="#1A1A2E"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#30FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="border" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="30"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter Grid.Column="0"
+                                                     Content="{TemplateBinding SelectionBoxItem}"
+                                                     ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                     VerticalAlignment="Center"
+                                                     Margin="10,0,0,0"/>
+                                    <Path Grid.Column="1"
+                                          Data="M0,0 L4,4 L8,0"
+                                          Stroke="#80FFFFFF"
+                                          StrokeThickness="1.5"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                                    <ToggleButton Grid.ColumnSpan="2"
+                                                 IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                                 Background="Transparent"
+                                                 BorderThickness="0"
+                                                 Focusable="False"
+                                                 ClickMode="Press"/>
+                                </Grid>
+                            </Border>
+                            <Popup x:Name="PART_Popup"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Placement="Bottom"
+                                   AllowsTransparency="True"
+                                   PopupAnimation="Slide">
+                                <Border Background="#1A1A2E"
+                                        BorderBrush="#40FFFFFF"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Margin="0,4,0,0">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="20" ShadowDepth="5" Opacity="0.5" Color="#000000"/>
+                                    </Border.Effect>
+                                    <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="#7C3AED"/>
+                                <Setter TargetName="border" Property="Background" Value="#252540"/>
+                            </Trigger>
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="#00D4FF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark ComboBoxItem Style -->
+        <Style x:Key="DarkComboBoxItem" TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#2A2A45"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#353555"/>
+                                <Setter Property="Foreground" Value="#00D4FF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Window.Triggers>
+        <EventTrigger RoutedEvent="Window.Loaded">
+            <BeginStoryboard Storyboard="{StaticResource GradientAnimation}"/>
+        </EventTrigger>
+    </Window.Triggers>
+
+    <!-- Main Container -->
+    <Border BorderThickness="0">
+        <Border.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop x:Name="GradientStop1" Color="#0A0A1A" Offset="0"/>
+                <GradientStop x:Name="GradientStop2" Color="#0D1B2A" Offset="1"/>
+            </LinearGradientBrush>
+        </Border.Background>
+
+        <Grid>
+            <!-- Animated Background Orbs -->
+            <Canvas IsHitTestVisible="False">
+                <Ellipse x:Name="FloatingOrb1" Width="300" Height="300" Canvas.Left="100" Canvas.Top="100">
+                    <Ellipse.Fill>
+                        <RadialGradientBrush>
+                            <GradientStop Color="#207C3AED" Offset="0"/>
+                            <GradientStop Color="#00000000" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Ellipse.Fill>
+                </Ellipse>
+                <Ellipse x:Name="FloatingOrb2" Width="400" Height="400" Canvas.Left="900" Canvas.Top="500">
+                    <Ellipse.Fill>
+                        <RadialGradientBrush>
+                            <GradientStop Color="#2000D4FF" Offset="0"/>
+                            <GradientStop Color="#00000000" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Ellipse.Fill>
+                </Ellipse>
+                <Ellipse x:Name="FloatingOrb3" Width="250" Height="250" Canvas.Left="500" Canvas.Top="300">
+                    <Ellipse.Fill>
+                        <RadialGradientBrush>
+                            <GradientStop Color="#15F59E0B" Offset="0"/>
+                            <GradientStop Color="#00000000" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Ellipse.Fill>
+                </Ellipse>
+            </Canvas>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="60"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="40"/>
+                </Grid.RowDefinitions>
+
+                <!-- Title Bar -->
+                <Border Grid.Row="0" Background="#15FFFFFF">
+                    <Grid Margin="20,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Logo with Image -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Width="44" Height="44" CornerRadius="12" Margin="0,0,12,0">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#1A1A2E" Offset="0"/>
+                                        <GradientStop Color="#0D0D1A" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="15" ShadowDepth="0" Opacity="0.5" Color="#7C3AED"/>
+                                </Border.Effect>
+                                <Image Source="/Assets/logo2.png" Width="36" Height="36"
+                                       RenderOptions.BitmapScalingMode="HighQuality"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="AutoTrade-X" FontSize="20" FontWeight="Bold" Foreground="White"/>
+                                    <TextBlock Text="v0.1.0-beta" FontSize="10" Foreground="#50FFFFFF" VerticalAlignment="Bottom" Margin="6,0,0,3"/>
+                                </StackPanel>
+                                <TextBlock Text="by Xman Studio • PRO EDITION" FontSize="9" Foreground="#F59E0B" Margin="0,-1,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Navigation -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Border x:Name="DashboardTab" Style="{StaticResource NavTab}" Background="#20FFFFFF" Margin="5,0"
+                                    MouseLeftButtonDown="DashboardTab_Click">
+                                <TextBlock Text="Dashboard" FontWeight="SemiBold" Foreground="White"/>
+                            </Border>
+                            <Border x:Name="TradingTab" Style="{StaticResource NavTab}" Margin="5,0"
+                                    MouseLeftButtonDown="TradingTab_Click">
+                                <TextBlock Text="Trading" FontWeight="Medium" Foreground="#80FFFFFF"/>
+                            </Border>
+                            <Border x:Name="ScannerTab" Style="{StaticResource NavTab}" Margin="5,0"
+                                    MouseLeftButtonDown="ScannerTab_Click">
+                                <TextBlock Text="Scanner" FontWeight="Medium" Foreground="#80FFFFFF"/>
+                            </Border>
+                            <Border x:Name="HistoryTab" Style="{StaticResource NavTab}" Margin="5,0"
+                                    MouseLeftButtonDown="HistoryTab_Click">
+                                <TextBlock Text="History" FontWeight="Medium" Foreground="#80FFFFFF"/>
+                            </Border>
+                            <Border x:Name="SettingsTab" Style="{StaticResource NavTab}" Margin="5,0"
+                                    MouseLeftButtonDown="SettingsTab_Click">
+                                <TextBlock Text="Settings" FontWeight="Medium" Foreground="#80FFFFFF"/>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- Mode Indicator -->
+                        <Border Grid.Column="2" CornerRadius="20" Padding="15,6" Margin="0,0,20,0" VerticalAlignment="Center">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#F59E0B" Offset="0"/>
+                                    <GradientStop Color="#D97706" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="DEMO MODE" FontSize="11" FontWeight="Bold" Foreground="White"/>
+                                <TextBlock Text=" • $10,000" FontSize="11" FontWeight="SemiBold" Foreground="#FFFFFF"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Window Controls -->
+                        <StackPanel Grid.Column="3" Orientation="Horizontal">
+                            <Button Content="─" Width="40" Height="36" FontSize="14"
+                                    Background="Transparent" Foreground="#80FFFFFF" BorderThickness="0"
+                                    Click="MinimizeButton_Click" Cursor="Hand"/>
+                            <Button Content="□" Width="40" Height="36" FontSize="14"
+                                    Background="Transparent" Foreground="#80FFFFFF" BorderThickness="0"
+                                    Click="MaximizeButton_Click" Cursor="Hand"/>
+                            <Button Content="✕" Width="40" Height="36" FontSize="12"
+                                    Background="Transparent" Foreground="#80FFFFFF" BorderThickness="0"
+                                    Click="CloseButton_Click" Cursor="Hand"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Main Content -->
+                <Grid Grid.Row="1" Margin="20,10,20,10">
+                    <!-- Dashboard Content -->
+                    <ScrollViewer x:Name="DashboardScrollViewer" Style="{StaticResource ModernScrollViewerStyle}">
+                    <Grid x:Name="DashboardContent">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="LeftColumn" Width="280" MinWidth="200"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition x:Name="RightColumn" Width="320" MinWidth="280"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left Panel - Logo, Trading Pairs & Bot Schedule -->
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <!-- Logo Section with Hyperdrive Animation -->
+                        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" MaxHeight="180" Margin="0,0,0,10">
+                            <Grid Width="280" Height="160" ClipToBounds="True">
+                                <!-- Hyperdrive Star Field Background with Edge Fade -->
+                                <Grid>
+                                    <Grid.OpacityMask>
+                                        <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.7" RadiusY="0.7">
+                                            <GradientStop Color="#FFFFFFFF" Offset="0"/>
+                                            <GradientStop Color="#FFFFFFFF" Offset="0.5"/>
+                                            <GradientStop Color="#00FFFFFF" Offset="1"/>
+                                        </RadialGradientBrush>
+                                    </Grid.OpacityMask>
+                                    <Canvas x:Name="HyperdriveCanvas" Width="280" Height="160">
+                                        <!-- Center vanishing point glow -->
+                                        <Ellipse Width="60" Height="60" Canvas.Left="110" Canvas.Top="50">
+                                            <Ellipse.Fill>
+                                                <RadialGradientBrush>
+                                                    <GradientStop Color="#407C3AED" Offset="0"/>
+                                                    <GradientStop Color="#2000D4FF" Offset="0.5"/>
+                                                    <GradientStop Color="#00000000" Offset="1"/>
+                                                </RadialGradientBrush>
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+
+                                        <!-- Hyperdrive streaks - Layer 1 (Fast) -->
+                                        <Line x:Name="HyperLine1" X1="140" Y1="80" X2="0" Y2="0" Stroke="#6000D4FF" StrokeThickness="1.5" Opacity="0">
+                                            <Line.Effect>
+                                                <BlurEffect Radius="2"/>
+                                            </Line.Effect>
+                                        </Line>
+                                        <Line x:Name="HyperLine2" X1="140" Y1="80" X2="280" Y2="0" Stroke="#607C3AED" StrokeThickness="1.5" Opacity="0">
+                                            <Line.Effect>
+                                                <BlurEffect Radius="2"/>
+                                            </Line.Effect>
+                                        </Line>
+                                        <Line x:Name="HyperLine3" X1="140" Y1="80" X2="0" Y2="160" Stroke="#6000D4FF" StrokeThickness="1.5" Opacity="0">
+                                            <Line.Effect>
+                                                <BlurEffect Radius="2"/>
+                                            </Line.Effect>
+                                        </Line>
+                                        <Line x:Name="HyperLine4" X1="140" Y1="80" X2="280" Y2="160" Stroke="#607C3AED" StrokeThickness="1.5" Opacity="0">
+                                            <Line.Effect>
+                                                <BlurEffect Radius="2"/>
+                                            </Line.Effect>
+                                        </Line>
+
+                                        <!-- Hyperdrive streaks - Layer 2 (Medium) -->
+                                        <Line x:Name="HyperLine5" X1="140" Y1="80" X2="50" Y2="0" Stroke="#5010B981" StrokeThickness="1" Opacity="0"/>
+                                        <Line x:Name="HyperLine6" X1="140" Y1="80" X2="230" Y2="0" Stroke="#50FFFFFF" StrokeThickness="1" Opacity="0"/>
+                                        <Line x:Name="HyperLine7" X1="140" Y1="80" X2="0" Y2="100" Stroke="#507C3AED" StrokeThickness="1" Opacity="0"/>
+                                        <Line x:Name="HyperLine8" X1="140" Y1="80" X2="280" Y2="100" Stroke="#5000D4FF" StrokeThickness="1" Opacity="0"/>
+                                        <Line x:Name="HyperLine9" X1="140" Y1="80" X2="100" Y2="160" Stroke="#50FFFFFF" StrokeThickness="1" Opacity="0"/>
+                                        <Line x:Name="HyperLine10" X1="140" Y1="80" X2="180" Y2="160" Stroke="#5010B981" StrokeThickness="1" Opacity="0"/>
+
+                                        <!-- Hyperdrive streaks - Layer 3 (Slow/Dim) -->
+                                        <Line x:Name="HyperLine11" X1="140" Y1="80" X2="20" Y2="40" Stroke="#3000D4FF" StrokeThickness="0.8" Opacity="0"/>
+                                        <Line x:Name="HyperLine12" X1="140" Y1="80" X2="260" Y2="40" Stroke="#307C3AED" StrokeThickness="0.8" Opacity="0"/>
+                                        <Line x:Name="HyperLine13" X1="140" Y1="80" X2="70" Y2="0" Stroke="#30FFFFFF" StrokeThickness="0.8" Opacity="0"/>
+                                        <Line x:Name="HyperLine14" X1="140" Y1="80" X2="210" Y2="0" Stroke="#3010B981" StrokeThickness="0.8" Opacity="0"/>
+                                        <Line x:Name="HyperLine15" X1="140" Y1="80" X2="30" Y2="130" Stroke="#307C3AED" StrokeThickness="0.8" Opacity="0"/>
+                                        <Line x:Name="HyperLine16" X1="140" Y1="80" X2="250" Y2="130" Stroke="#3000D4FF" StrokeThickness="0.8" Opacity="0"/>
+
+                                        <!-- Additional star particles -->
+                                        <Ellipse x:Name="StarParticle1" Width="3" Height="3" Fill="#8000D4FF" Canvas.Left="140" Canvas.Top="80" Opacity="0"/>
+                                        <Ellipse x:Name="StarParticle2" Width="2" Height="2" Fill="#807C3AED" Canvas.Left="140" Canvas.Top="80" Opacity="0"/>
+                                        <Ellipse x:Name="StarParticle3" Width="2" Height="2" Fill="#80FFFFFF" Canvas.Left="140" Canvas.Top="80" Opacity="0"/>
+                                        <Ellipse x:Name="StarParticle4" Width="3" Height="3" Fill="#8010B981" Canvas.Left="140" Canvas.Top="80" Opacity="0"/>
+                                        <Ellipse x:Name="StarParticle5" Width="2" Height="2" Fill="#8000D4FF" Canvas.Left="140" Canvas.Top="80" Opacity="0"/>
+                                        <Ellipse x:Name="StarParticle6" Width="2" Height="2" Fill="#807C3AED" Canvas.Left="140" Canvas.Top="80" Opacity="0"/>
+                                    </Canvas>
+                                </Grid>
+
+                                <!-- Logo Background Glow -->
+                                <Border>
+                                    <Border.Background>
+                                        <RadialGradientBrush GradientOrigin="0.5,0.3" Center="0.5,0.4" RadiusX="0.8" RadiusY="0.7">
+                                            <GradientStop Color="#307C3AED" Offset="0"/>
+                                            <GradientStop Color="#1500D4FF" Offset="0.5"/>
+                                            <GradientStop Color="#00000000" Offset="1"/>
+                                        </RadialGradientBrush>
+                                    </Border.Background>
+                                </Border>
+                                <!-- Logo Image - Full Size (no fade) -->
+                                <Image Source="/Assets/logo2.png"
+                                       Stretch="Uniform"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Margin="15"
+                                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                                <!-- Fade to background at bottom -->
+                                <Border VerticalAlignment="Bottom" Height="40">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Color="#00000000" Offset="0"/>
+                                            <GradientStop Color="#FF0D0D1A" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                </Border>
+                            </Grid>
+                        </Viewbox>
+
+                        <!-- Quick Stats Card -->
+                        <Border Style="{StaticResource GlassCard}" Margin="0,0,0,15" Padding="12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="6" FontSize="28" FontWeight="Bold" Foreground="#00D4FF" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Exchanges" FontSize="10" Foreground="#60FFFFFF" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                                <Rectangle Grid.Column="1" Width="1" Margin="10,5" Fill="#20FFFFFF"/>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                                    <TextBlock Text="3" FontSize="28" FontWeight="Bold" Foreground="#7C3AED" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Pairs" FontSize="10" Foreground="#60FFFFFF" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Trading Pairs -->
+                        <Border Style="{StaticResource GlassCard}" Margin="0,0,0,15">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,12">
+                                    <TextBlock Text="TRADING PAIRS" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF"/>
+                                    <TextBlock Text="+ Add" HorizontalAlignment="Right" FontSize="11"
+                                              Foreground="#7C3AED" Cursor="Hand" FontWeight="SemiBold"/>
+                                </Grid>
+
+                                <!-- Pair Item - BTC -->
+                                <Border Background="#15FFFFFF" CornerRadius="10" Padding="12" Margin="0,0,0,8">
+                                    <Grid>
+                                        <StackPanel Orientation="Horizontal">
+                                            <controls:CoinIcon Symbol="BTC" Size="32" Margin="0,0,10,0"/>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="BTC/USDT" FontWeight="SemiBold" Foreground="White"/>
+                                                <TextBlock Text="Bitcoin" FontSize="11" Foreground="#60FFFFFF"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <TextBlock Text="Active" FontSize="10" Foreground="#10B981" HorizontalAlignment="Right"/>
+                                            <Ellipse Width="8" Height="8" Fill="#10B981" HorizontalAlignment="Right" Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Pair Item - ETH -->
+                                <Border Background="#15FFFFFF" CornerRadius="10" Padding="12" Margin="0,0,0,8">
+                                    <Grid>
+                                        <StackPanel Orientation="Horizontal">
+                                            <controls:CoinIcon Symbol="ETH" Size="32" Margin="0,0,10,0"/>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="ETH/USDT" FontWeight="SemiBold" Foreground="White"/>
+                                                <TextBlock Text="Ethereum" FontSize="11" Foreground="#60FFFFFF"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <TextBlock Text="Watching" FontSize="10" Foreground="#F59E0B" HorizontalAlignment="Right"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Pair Item - SOL -->
+                                <Border Background="#15FFFFFF" CornerRadius="10" Padding="12">
+                                    <Grid>
+                                        <StackPanel Orientation="Horizontal">
+                                            <controls:CoinIcon Symbol="SOL" Size="32" Margin="0,0,10,0"/>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="SOL/USDT" FontWeight="SemiBold" Foreground="White"/>
+                                                <TextBlock Text="Solana" FontSize="11" Foreground="#60FFFFFF"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <TextBlock Text="Watching" FontSize="10" Foreground="#F59E0B" HorizontalAlignment="Right"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Bot Schedule -->
+                        <Border Style="{StaticResource GlassCard}">
+                            <StackPanel>
+                                <TextBlock Text="BOT SCHEDULE" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,12"/>
+
+                                <RadioButton Content="24/7 Non-Stop" Foreground="White" IsChecked="True" Margin="0,0,0,8"/>
+                                <RadioButton Content="Custom Time (09:00 - 23:00)" Foreground="White" Margin="0,0,0,8"/>
+                                <RadioButton Content="Smart Auto (AI Decides)" Foreground="#7C3AED" FontWeight="SemiBold"/>
+
+                                <TextBlock Text="Next scheduled: Always running" FontSize="10" Foreground="#50FFFFFF" Margin="0,12,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Center Panel - Main Dashboard -->
+                    <Grid Grid.Column="1" Margin="10,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Stats Row -->
+                        <Grid Grid.Row="0" Margin="0,0,0,15">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Real P&amp;L (from Balance Pool) -->
+                            <Border Grid.Column="0" Style="{StaticResource GlassCard}" Margin="0,0,4,0" Padding="12">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="REAL P&amp;L" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF"/>
+                                        <Border Background="#207C3AED" CornerRadius="4" Padding="4,1" Margin="6,0,0,0">
+                                            <TextBlock Text="POOL" FontSize="8" FontWeight="Bold" Foreground="#7C3AED"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock x:Name="RealPnLDisplay" Text="+$0.00" FontSize="22" FontWeight="Bold" Foreground="#10B981" Margin="0,3,0,0"/>
+                                    <TextBlock x:Name="TotalBalanceDisplay" Text="Total: $0.00" FontSize="10" Foreground="#60FFFFFF"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Today's Trade P&amp;L -->
+                            <Border Grid.Column="1" Style="{StaticResource GlassCard}" Margin="4,0" Padding="12">
+                                <StackPanel>
+                                    <TextBlock Text="TODAY P&amp;L" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="TodayPnLDisplay" Text="$0.00" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,3,0,0"/>
+                                    <TextBlock x:Name="TradeCountDisplay" Text="0 trades" FontSize="10" Foreground="#60FFFFFF"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Win Rate -->
+                            <Border Grid.Column="2" Style="{StaticResource GlassCard}" Margin="4,0" Padding="12">
+                                <StackPanel>
+                                    <TextBlock Text="WIN RATE" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="WinRateDisplay" Text="-" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,3,0,0"/>
+                                    <TextBlock x:Name="WinLossDisplay" Text="0W / 0L" FontSize="10" Foreground="#60FFFFFF"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Drawdown -->
+                            <Border Grid.Column="3" Style="{StaticResource GlassCard}" Margin="4,0" Padding="12">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="DRAWDOWN" FontSize="10" Foreground="#60FFFFFF"/>
+                                        <Ellipse x:Name="EmergencyDot" Width="6" Height="6" Fill="#10B981" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="DrawdownDisplay" Text="-0.00%" FontSize="22" FontWeight="Bold" Foreground="#10B981" Margin="0,3,0,0"/>
+                                    <TextBlock x:Name="EmergencyStatusDisplay" Text="Normal" FontSize="10" Foreground="#10B981"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Execution Speed -->
+                            <Border Grid.Column="4" Style="{StaticResource GlassCard}" Margin="4,0,0,0" Padding="12">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="SPEED" FontSize="10" Foreground="#60FFFFFF"/>
+                                        <TextBlock Text=" (ms)" FontSize="8" Foreground="#40FFFFFF" VerticalAlignment="Bottom"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="ExecutionSpeedDisplay" Text="-" FontSize="22" FontWeight="Bold" Foreground="#00D4FF" Margin="0,3,0,0"/>
+                                    <TextBlock Text="Sub-second target" FontSize="10" Foreground="#60FFFFFF"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Control Panel -->
+                        <Border Grid.Row="1" Style="{StaticResource GlassCard}" Margin="0,0,0,15" Padding="20">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <!-- Animated Status Indicator -->
+                                        <Grid Width="24" Height="24" Margin="0,0,10,0">
+                                            <Ellipse x:Name="StatusGlowOuter" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Ellipse.Fill>
+                                                    <SolidColorBrush x:Name="StatusGlowOuterBrush" Color="#10B981"/>
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+                                            <Ellipse x:Name="StatusGlow" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Ellipse.Fill>
+                                                    <SolidColorBrush x:Name="StatusGlowBrush" Color="#10B981"/>
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+                                        </Grid>
+                                        <TextBlock x:Name="BotStatusText" Text="Bot is Idle" FontSize="18" FontWeight="SemiBold" Foreground="White"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="LastCheckTime" Text="Ready to start scanning"
+                                              FontSize="12" Foreground="#60FFFFFF" Margin="34,5,0,0"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <Button x:Name="StartButton" Content="▶ Start" Style="{StaticResource StartButton}" Margin="0,0,10,0" Click="StartBot_Click"/>
+                                    <Button x:Name="PauseButton" Content="⏸ Pause" Style="{StaticResource PremiumButton}" Margin="0,0,10,0" Click="PauseBot_Click" Visibility="Collapsed"/>
+                                    <Button x:Name="StopButton" Content="◼ Stop" Style="{StaticResource StopButton}" Click="StopBot_Click" Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Price Comparison with Enhanced Animation -->
+                        <Border Grid.Row="2" Style="{StaticResource GlassCard}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <Grid Margin="0,0,0,15">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="LIVE ARBITRAGE MONITOR" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF"/>
+                                        <Border x:Name="LiveIndicator" Background="#2010B981" CornerRadius="8" Padding="8,3" Margin="10,0,0,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse x:Name="LiveDot" Width="6" Height="6" Fill="#10B981" Margin="0,0,5,0"/>
+                                                <TextBlock x:Name="LiveText" Text="LIVE" FontSize="9" FontWeight="Bold" Foreground="#10B981"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <TextBlock x:Name="ScanCountText" Text="Scans: 0" FontSize="10" Foreground="#50FFFFFF" Margin="0,0,10,0"/>
+                                        <TextBlock x:Name="LastScanTime" Text="--:--:--" FontSize="10" Foreground="#50FFFFFF"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Grid.Row="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Exchange A - Binance with Price Animation -->
+                                    <Border Grid.Column="0" x:Name="ExchangeABorder" CornerRadius="12" Padding="20">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#15F3BA2F" Offset="0"/>
+                                                <GradientStop Color="#08F3BA2F" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                                                <controls:ExchangeIcon ExchangeName="Binance" Size="40" Margin="0,0,10,0"/>
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Text="BINANCE" FontSize="12" FontWeight="Bold" Foreground="#F3BA2F"/>
+                                                    <TextBlock Text="Spot Market" FontSize="10" Foreground="#60FFFFFF"/>
+                                                </StackPanel>
+                                                <!-- Connection Status -->
+                                                <Border x:Name="ExchangeAStatus" Background="#2010B981" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="OK" FontSize="8" FontWeight="Bold" Foreground="#10B981"/>
+                                                </Border>
+                                            </StackPanel>
+
+                                            <!-- Price with Flash Animation -->
+                                            <Grid>
+                                                <Border x:Name="BinancePriceFlash" Background="Transparent" CornerRadius="8" Opacity="0"/>
+                                                <TextBlock x:Name="BinancePrice" Text="$0.00" FontSize="28" FontWeight="Bold" Foreground="White"/>
+                                            </Grid>
+                                            <TextBlock x:Name="BinancePairLabel" Text="BTC/USDT" FontSize="12" Foreground="#60FFFFFF" Margin="0,5,0,0"/>
+
+                                            <!-- Bid/Ask Display -->
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="BID" FontSize="9" Foreground="#50FFFFFF"/>
+                                                    <TextBlock x:Name="BinanceBid" Text="$0.00" FontSize="11" Foreground="#10B981" FontWeight="SemiBold"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="ASK" FontSize="9" Foreground="#50FFFFFF"/>
+                                                    <TextBlock x:Name="BinanceAsk" Text="$0.00" FontSize="11" Foreground="#EF4444" FontWeight="SemiBold"/>
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <!-- Balance Display -->
+                                            <Border Background="#10FFFFFF" CornerRadius="8" Padding="10,8" Margin="0,12,0,0">
+                                                <Grid>
+                                                    <StackPanel>
+                                                        <TextBlock Text="BALANCE" FontSize="9" Foreground="#50FFFFFF"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                                            <TextBlock x:Name="ExchangeABalance" Text="0.00" FontSize="13" Foreground="White" FontWeight="SemiBold"/>
+                                                            <TextBlock Text=" USDT" FontSize="11" Foreground="#60FFFFFF" VerticalAlignment="Bottom"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Enhanced Spread Indicator with Multiple Animations -->
+                                    <Grid Grid.Column="1" VerticalAlignment="Center">
+                                        <StackPanel>
+                                            <!-- Animated Connection Lines -->
+                                            <Canvas x:Name="ConnectionLines" Height="30" Width="180" ClipToBounds="True">
+                                                <!-- Left to Center Data Flow -->
+                                                <Ellipse x:Name="DataFlowDot1" Width="10" Height="10" Canvas.Left="-10" Canvas.Top="10">
+                                                    <Ellipse.Fill>
+                                                        <RadialGradientBrush>
+                                                            <GradientStop Color="#F3BA2F" Offset="0"/>
+                                                            <GradientStop Color="#00F3BA2F" Offset="1"/>
+                                                        </RadialGradientBrush>
+                                                    </Ellipse.Fill>
+                                                </Ellipse>
+                                                <Ellipse x:Name="DataFlowDot2" Width="10" Height="10" Canvas.Left="-10" Canvas.Top="10">
+                                                    <Ellipse.Fill>
+                                                        <RadialGradientBrush>
+                                                            <GradientStop Color="#00D4FF" Offset="0"/>
+                                                            <GradientStop Color="#0000D4FF" Offset="1"/>
+                                                        </RadialGradientBrush>
+                                                    </Ellipse.Fill>
+                                                </Ellipse>
+                                                <!-- Center to Right Data Flow -->
+                                                <Ellipse x:Name="DataFlowDot3" Width="10" Height="10" Canvas.Left="90" Canvas.Top="10">
+                                                    <Ellipse.Fill>
+                                                        <RadialGradientBrush>
+                                                            <GradientStop Color="#23AF91" Offset="0"/>
+                                                            <GradientStop Color="#0023AF91" Offset="1"/>
+                                                        </RadialGradientBrush>
+                                                    </Ellipse.Fill>
+                                                </Ellipse>
+                                                <Ellipse x:Name="DataFlowDot4" Width="10" Height="10" Canvas.Left="90" Canvas.Top="10">
+                                                    <Ellipse.Fill>
+                                                        <RadialGradientBrush>
+                                                            <GradientStop Color="#7C3AED" Offset="0"/>
+                                                            <GradientStop Color="#007C3AED" Offset="1"/>
+                                                        </RadialGradientBrush>
+                                                    </Ellipse.Fill>
+                                                </Ellipse>
+                                            </Canvas>
+
+                                            <!-- Main Spread Display with Pulse Animation -->
+                                            <Grid Height="140">
+                                                <!-- Outer Pulse Rings -->
+                                                <Ellipse x:Name="TradingPulse1" Width="130" Height="130" Opacity="0" HorizontalAlignment="Center" VerticalAlignment="Center" StrokeThickness="2">
+                                                    <Ellipse.Stroke>
+                                                        <SolidColorBrush Color="#00D4FF"/>
+                                                    </Ellipse.Stroke>
+                                                </Ellipse>
+                                                <Ellipse x:Name="TradingPulse2" Width="150" Height="150" Opacity="0" HorizontalAlignment="Center" VerticalAlignment="Center" StrokeThickness="1">
+                                                    <Ellipse.Stroke>
+                                                        <SolidColorBrush Color="#7C3AED"/>
+                                                    </Ellipse.Stroke>
+                                                </Ellipse>
+                                                <Ellipse x:Name="TradingPulse3" Width="170" Height="170" Opacity="0" HorizontalAlignment="Center" VerticalAlignment="Center" StrokeThickness="1">
+                                                    <Ellipse.Stroke>
+                                                        <SolidColorBrush Color="#10B981"/>
+                                                    </Ellipse.Stroke>
+                                                </Ellipse>
+
+                                                <!-- Spread Value Box -->
+                                                <Border x:Name="SpreadBorder" Width="120" Height="100" CornerRadius="20" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                    <Border.Background>
+                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                            <GradientStop x:Name="TradingGlow" Color="#7C3AED" Offset="0"/>
+                                                            <GradientStop Color="#2563EB" Offset="1"/>
+                                                        </LinearGradientBrush>
+                                                    </Border.Background>
+                                                    <Border.Effect>
+                                                        <DropShadowEffect x:Name="SpreadGlowEffect" BlurRadius="30" ShadowDepth="0" Opacity="0.6" Color="#7C3AED"/>
+                                                    </Border.Effect>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="SPREAD" FontSize="9" Foreground="#AAFFFFFF" HorizontalAlignment="Center" FontWeight="Bold"/>
+                                                        <TextBlock x:Name="SpreadPercent" Text="0.00%" FontSize="26" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                        <TextBlock x:Name="SpreadAmount" Text="$0.00" FontSize="13" Foreground="#DDFFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </Grid>
+
+                                            <!-- Trading Direction Arrow -->
+                                            <Canvas x:Name="TradingArrowCanvas" Height="25" Width="180" ClipToBounds="True" Visibility="Collapsed">
+                                                <Path x:Name="TradingArrow" Canvas.Left="70" Canvas.Top="5" Fill="#10B981"
+                                                      Data="M0,7 L15,0 L15,4 L30,4 L30,10 L15,10 L15,14 Z">
+                                                    <Path.RenderTransform>
+                                                        <ScaleTransform x:Name="ArrowScale" ScaleX="1" ScaleY="1"/>
+                                                    </Path.RenderTransform>
+                                                </Path>
+                                            </Canvas>
+
+                                            <!-- Status Indicator -->
+                                            <Border x:Name="TradingStatusBorder" CornerRadius="10" Padding="15,8" Margin="0,5,0,0" HorizontalAlignment="Center">
+                                                <Border.Background>
+                                                    <SolidColorBrush x:Name="TradingStatusBg" Color="#20808080"/>
+                                                </Border.Background>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="#808080" Margin="0,0,8,0"/>
+                                                    <TextBlock x:Name="TradingStatusLabel" Text="IDLE" FontSize="11" FontWeight="Bold" Foreground="#808080"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Exchange B - KuCoin with Price Animation -->
+                                    <Border Grid.Column="2" x:Name="ExchangeBBorder" CornerRadius="12" Padding="20">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#1523AF91" Offset="0"/>
+                                                <GradientStop Color="#0823AF91" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                                                <controls:ExchangeIcon ExchangeName="KuCoin" Size="40" Margin="0,0,10,0"/>
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Text="KUCOIN" FontSize="12" FontWeight="Bold" Foreground="#23AF91"/>
+                                                    <TextBlock Text="Spot Market" FontSize="10" Foreground="#60FFFFFF"/>
+                                                </StackPanel>
+                                                <!-- Connection Status -->
+                                                <Border x:Name="ExchangeBStatus" Background="#2010B981" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="OK" FontSize="8" FontWeight="Bold" Foreground="#10B981"/>
+                                                </Border>
+                                            </StackPanel>
+
+                                            <!-- Price with Flash Animation -->
+                                            <Grid>
+                                                <Border x:Name="KuCoinPriceFlash" Background="Transparent" CornerRadius="8" Opacity="0"/>
+                                                <TextBlock x:Name="KuCoinPrice" Text="$0.00" FontSize="28" FontWeight="Bold" Foreground="White"/>
+                                            </Grid>
+                                            <TextBlock x:Name="KuCoinPairLabel" Text="BTC/USDT" FontSize="12" Foreground="#60FFFFFF" Margin="0,5,0,0"/>
+
+                                            <!-- Bid/Ask Display -->
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="BID" FontSize="9" Foreground="#50FFFFFF"/>
+                                                    <TextBlock x:Name="KuCoinBid" Text="$0.00" FontSize="11" Foreground="#10B981" FontWeight="SemiBold"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="ASK" FontSize="9" Foreground="#50FFFFFF"/>
+                                                    <TextBlock x:Name="KuCoinAsk" Text="$0.00" FontSize="11" Foreground="#EF4444" FontWeight="SemiBold"/>
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <!-- Balance Display -->
+                                            <Border Background="#10FFFFFF" CornerRadius="8" Padding="10,8" Margin="0,12,0,0">
+                                                <Grid>
+                                                    <StackPanel>
+                                                        <TextBlock Text="BALANCE" FontSize="9" Foreground="#50FFFFFF"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                                            <TextBlock x:Name="ExchangeBBalance" Text="0.00" FontSize="13" Foreground="White" FontWeight="SemiBold"/>
+                                                            <TextBlock Text=" USDT" FontSize="11" Foreground="#60FFFFFF" VerticalAlignment="Bottom"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <!-- Spread History Mini Chart -->
+                                <Border Grid.Row="2" Background="#10FFFFFF" CornerRadius="10" Padding="15,10" Margin="0,15,0,0">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="SPREAD HISTORY" FontSize="9" FontWeight="Bold" Foreground="#50FFFFFF"/>
+                                            <TextBlock x:Name="SpreadHistoryMin" Text="Min: 0.00%" FontSize="10" Foreground="#60FFFFFF" Margin="0,3,0,0"/>
+                                        </StackPanel>
+
+                                        <!-- Mini Spread Chart (Canvas-based) -->
+                                        <Canvas x:Name="SpreadChartCanvas" Grid.Column="1" Height="40" Margin="15,0" ClipToBounds="True">
+                                            <Polyline x:Name="SpreadChartLine" Stroke="#7C3AED" StrokeThickness="2" Points="0,20 20,18 40,22 60,15 80,20 100,18 120,25 140,20 160,22 180,18 200,20"/>
+                                            <!-- Chart Grid Lines -->
+                                            <Line X1="0" Y1="0" X2="0" Y2="40" Stroke="#20FFFFFF" StrokeThickness="1"/>
+                                            <Line X1="0" Y1="20" X2="200" Y2="20" Stroke="#15FFFFFF" StrokeThickness="1" StrokeDashArray="4,4"/>
+                                        </Canvas>
+
+                                        <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                            <TextBlock x:Name="SpreadHistoryMax" Text="Max: 0.00%" FontSize="10" Foreground="#60FFFFFF"/>
+                                            <TextBlock x:Name="SpreadHistoryAvg" Text="Avg: 0.00%" FontSize="10" Foreground="#7C3AED" Margin="0,3,0,0" FontWeight="SemiBold"/>
+                                        </StackPanel>
+
+                                        <!-- Supported Exchanges -->
+                                        <Border Grid.Row="1" Grid.ColumnSpan="3" Margin="0,15,0,0" Padding="0,12,0,0" BorderThickness="0,1,0,0" BorderBrush="#15FFFFFF">
+                                            <StackPanel>
+                                                <TextBlock Text="SUPPORTED EXCHANGES" FontSize="9" FontWeight="Bold" Foreground="#50FFFFFF" Margin="0,0,0,12"/>
+                                                <WrapPanel HorizontalAlignment="Center">
+                                                    <!-- Binance -->
+                                                    <Border Background="#12F3BA2F" CornerRadius="8" Padding="10,6" Margin="4">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <controls:ExchangeIcon ExchangeName="Binance" Size="22" Margin="0,0,6,0"/>
+                                                            <TextBlock Text="Binance" FontSize="11" Foreground="#F3BA2F" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <!-- KuCoin -->
+                                                    <Border Background="#1223AF91" CornerRadius="8" Padding="10,6" Margin="4">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <controls:ExchangeIcon ExchangeName="KuCoin" Size="22" Margin="0,0,6,0"/>
+                                                            <TextBlock Text="KuCoin" FontSize="11" Foreground="#23AF91" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <!-- OKX -->
+                                                    <Border Background="#12FFFFFF" CornerRadius="8" Padding="10,6" Margin="4">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <controls:ExchangeIcon ExchangeName="OKX" Size="22" Margin="0,0,6,0"/>
+                                                            <TextBlock Text="OKX" FontSize="11" Foreground="White" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <!-- Bybit -->
+                                                    <Border Background="#12F7A600" CornerRadius="8" Padding="10,6" Margin="4">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <controls:ExchangeIcon ExchangeName="Bybit" Size="22" Margin="0,0,6,0"/>
+                                                            <TextBlock Text="Bybit" FontSize="11" Foreground="#F7A600" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <!-- Gate.io -->
+                                                    <Border Background="#1200D4FF" CornerRadius="8" Padding="10,6" Margin="4">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <controls:ExchangeIcon ExchangeName="Gate.io" Size="22" Margin="0,0,6,0"/>
+                                                            <TextBlock Text="Gate.io" FontSize="11" Foreground="#00D4FF" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <!-- Bitkub -->
+                                                    <Border Background="#1200B14F" CornerRadius="8" Padding="10,6" Margin="4">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <controls:ExchangeIcon ExchangeName="Bitkub" Size="22" Margin="0,0,6,0"/>
+                                                            <TextBlock Text="Bitkub" FontSize="11" Foreground="#00B14F" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </WrapPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                    </Grid>
+
+                    <!-- Right Panel - AI Scanner & Trades -->
+                    <StackPanel Grid.Column="2" Margin="10,0,0,0">
+                        <!-- AI Smart Scanner -->
+                        <Border Style="{StaticResource GlassCard}" Margin="0,0,0,15">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,12">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="AI SMART SCANNER" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF"/>
+                                        <Border Background="#207C3AED" CornerRadius="4" Padding="6,2" Margin="8,0,0,0">
+                                            <TextBlock Text="BETA" FontSize="9" FontWeight="Bold" Foreground="#7C3AED"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="Scan Now" HorizontalAlignment="Right" FontSize="11"
+                                              Foreground="#7C3AED" Cursor="Hand" FontWeight="SemiBold"/>
+                                </Grid>
+
+                                <TextBlock Text="Top Arbitrage Opportunities" FontSize="12" Foreground="#80FFFFFF" Margin="0,0,0,10"/>
+
+                                <!-- Opportunity 1 - BTC -->
+                                <Border Background="#15FFFFFF" CornerRadius="10" Padding="12" Margin="0,0,0,8">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <StackPanel Orientation="Horizontal">
+                                            <controls:CoinIcon Symbol="BTC" Size="24" Margin="0,0,8,0"/>
+                                            <TextBlock Text="BTC/USDT" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                                            <Border Background="#2010B981" CornerRadius="4" Padding="6,2" Margin="8,0,0,0">
+                                                <TextBlock Text="HIGH" FontSize="9" FontWeight="Bold" Foreground="#10B981"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="32,5,0,0">
+                                            <TextBlock Text="Binance → KuCoin" FontSize="11" Foreground="#60FFFFFF"/>
+                                            <TextBlock Text=" • 0.15%" FontSize="11" FontWeight="SemiBold" Foreground="#10B981"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Opportunity 2 - ETH -->
+                                <Border Background="#15FFFFFF" CornerRadius="10" Padding="12" Margin="0,0,0,8">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <StackPanel Orientation="Horizontal">
+                                            <controls:CoinIcon Symbol="ETH" Size="24" Margin="0,0,8,0"/>
+                                            <TextBlock Text="ETH/USDT" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                                            <Border Background="#20F59E0B" CornerRadius="4" Padding="6,2" Margin="8,0,0,0">
+                                                <TextBlock Text="MEDIUM" FontSize="9" FontWeight="Bold" Foreground="#F59E0B"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="32,5,0,0">
+                                            <TextBlock Text="OKX → Bitkub" FontSize="11" Foreground="#60FFFFFF"/>
+                                            <TextBlock Text=" • 0.12%" FontSize="11" FontWeight="SemiBold" Foreground="#F59E0B"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Opportunity 3 - SOL -->
+                                <Border Background="#15FFFFFF" CornerRadius="10" Padding="12">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <StackPanel Orientation="Horizontal">
+                                            <controls:CoinIcon Symbol="SOL" Size="24" Margin="0,0,8,0"/>
+                                            <TextBlock Text="SOL/USDT" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                                            <Border Background="#20F59E0B" CornerRadius="4" Padding="6,2" Margin="8,0,0,0">
+                                                <TextBlock Text="MEDIUM" FontSize="9" FontWeight="Bold" Foreground="#F59E0B"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="32,5,0,0">
+                                            <TextBlock Text="Bybit → Gate.io" FontSize="11" Foreground="#60FFFFFF"/>
+                                            <TextBlock Text=" • 0.11%" FontSize="11" FontWeight="SemiBold" Foreground="#F59E0B"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Recent Trades -->
+                        <Border Style="{StaticResource GlassCard}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="RECENT TRADES" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,12"/>
+
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="220">
+                                    <StackPanel>
+                                        <Border Background="#15FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,6">
+                                            <Grid>
+                                                <StackPanel>
+                                                    <TextBlock Text="BTC/USDT" FontWeight="SemiBold" Foreground="White" FontSize="12"/>
+                                                    <TextBlock Text="12:45:32 • Binance → KuCoin" FontSize="10" Foreground="#60FFFFFF"/>
+                                                </StackPanel>
+                                                <TextBlock Text="+$89.45" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                          FontWeight="Bold" Foreground="#10B981"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border Background="#15FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,6">
+                                            <Grid>
+                                                <StackPanel>
+                                                    <TextBlock Text="ETH/USDT" FontWeight="SemiBold" Foreground="White" FontSize="12"/>
+                                                    <TextBlock Text="12:43:18 • OKX → Bitkub" FontSize="10" Foreground="#60FFFFFF"/>
+                                                </StackPanel>
+                                                <TextBlock Text="+$45.20" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                          FontWeight="Bold" Foreground="#10B981"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border Background="#15FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,6">
+                                            <Grid>
+                                                <StackPanel>
+                                                    <TextBlock Text="SOL/USDT" FontWeight="SemiBold" Foreground="White" FontSize="12"/>
+                                                    <TextBlock Text="12:40:55 • Bybit → Gate.io" FontSize="10" Foreground="#60FFFFFF"/>
+                                                </StackPanel>
+                                                <TextBlock Text="+$67.30" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                          FontWeight="Bold" Foreground="#10B981"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border Background="#15FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,6">
+                                            <Grid>
+                                                <StackPanel>
+                                                    <TextBlock Text="BTC/USDT" FontWeight="SemiBold" Foreground="White" FontSize="12"/>
+                                                    <TextBlock Text="12:38:22 • Binance → KuCoin" FontSize="10" Foreground="#60FFFFFF"/>
+                                                </StackPanel>
+                                                <TextBlock Text="-$12.80" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                          FontWeight="Bold" Foreground="#EF4444"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border Background="#15FFFFFF" CornerRadius="8" Padding="10">
+                                            <Grid>
+                                                <StackPanel>
+                                                    <TextBlock Text="ETH/USDT" FontWeight="SemiBold" Foreground="White" FontSize="12"/>
+                                                    <TextBlock Text="12:35:45 • Bitkub → OKX" FontSize="10" Foreground="#60FFFFFF"/>
+                                                </StackPanel>
+                                                <TextBlock Text="+$31.15" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                          FontWeight="Bold" Foreground="#10B981"/>
+                                            </Grid>
+                                        </Border>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                    </Grid>
+                    </ScrollViewer>
+
+                    <!-- Trading Content -->
+                    <local:TradingPage x:Name="TradingContent" Visibility="Collapsed"/>
+
+                    <!-- Scanner Content -->
+                    <local:ScannerPage x:Name="ScannerContent" Visibility="Collapsed"/>
+
+                    <!-- History Content -->
+                    <local:HistoryPage x:Name="HistoryContent" Visibility="Collapsed"/>
+
+                    <!-- Settings Content -->
+                    <local:SettingsPage x:Name="SettingsContent" Visibility="Collapsed"/>
+                </Grid>
+
+                <!-- Status Bar - Premium Design -->
+                <Border Grid.Row="2" Height="36">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#08080F" Offset="0"/>
+                            <GradientStop Color="#0D0D18" Offset="0.5"/>
+                            <GradientStop Color="#08080F" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <!-- Top Border Glow -->
+                        <Border Height="1" VerticalAlignment="Top">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#00000000" Offset="0"/>
+                                    <GradientStop Color="#307C3AED" Offset="0.2"/>
+                                    <GradientStop Color="#5000D4FF" Offset="0.5"/>
+                                    <GradientStop Color="#307C3AED" Offset="0.8"/>
+                                    <GradientStop Color="#00000000" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+
+                        <Grid Margin="16,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Left Section - Connection -->
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Grid Margin="0,0,8,0">
+                                    <Ellipse Width="10" Height="10" Fill="#10B981" Opacity="0.3"/>
+                                    <Ellipse x:Name="StatusBarConnectionDot" Width="6" Height="6" Fill="#10B981" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Grid>
+                                <TextBlock x:Name="StatusBarConnectionText" Text="Online" FontSize="11" Foreground="#10B981" VerticalAlignment="Center" FontWeight="Medium"/>
+                                <TextBlock x:Name="StatusBarExchangeCount" Text=" • 6 Exchanges" FontSize="11" Foreground="#50FFFFFF" VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <!-- Center Section - Status Badges (Hidden on small screens) -->
+                            <StackPanel x:Name="StatusBarCenter" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <!-- Bot Status -->
+                                <Border CornerRadius="4" Padding="8,3" Margin="4,0" VerticalAlignment="Center" Background="#12F59E0B">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse x:Name="StatusBarBotDot" Width="5" Height="5" Fill="#F59E0B" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="StatusBarBotStatus" Text="IDLE" FontSize="9" FontWeight="Bold" Foreground="#F59E0B" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- P&L -->
+                                <Border CornerRadius="4" Padding="8,3" Margin="4,0" VerticalAlignment="Center" Background="#1210B981">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="P&amp;L" FontSize="9" Foreground="#60FFFFFF" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock x:Name="StatusBarPnL" Text="+$0.00" FontSize="10" FontWeight="SemiBold" Foreground="#10B981" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Trades -->
+                                <Border CornerRadius="4" Padding="8,3" Margin="4,0" VerticalAlignment="Center" Background="#0CFFFFFF">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Trades" FontSize="9" Foreground="#50FFFFFF" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock x:Name="StatusBarTrades" Text="0" FontSize="10" FontWeight="SemiBold" Foreground="#00D4FF" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- RAM -->
+                                <Border CornerRadius="4" Padding="8,3" Margin="4,0" VerticalAlignment="Center" Background="#08FFFFFF">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="RAM" FontSize="9" Foreground="#40FFFFFF" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock x:Name="StatusBarMemory" Text="--" FontSize="9" Foreground="#7C3AED" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Right Section - Time & Version -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <!-- Xman Studio Badge -->
+                                <Border CornerRadius="4" Padding="6,2" Margin="0,0,10,0" Background="#107C3AED">
+                                    <TextBlock Text="Xman Studio" FontSize="9" Foreground="#7C3AED" FontWeight="Medium"/>
+                                </Border>
+                                <TextBlock Text="v0.1.0-beta" FontSize="9" Foreground="#40FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Text="|" FontSize="9" Foreground="#20FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock x:Name="StatusBarTime" Text="--:--:--" FontSize="11" Foreground="#80FFFFFF" VerticalAlignment="Center" FontFamily="Consolas"/>
+                                <TextBlock Text=" UTC" FontSize="9" Foreground="#40FFFFFF" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Splash Screen Overlay -->
+        <Grid x:Name="SplashOverlay" Background="#0A0A1A" Visibility="Visible">
+            <!-- Animated Background for Splash -->
+            <Canvas IsHitTestVisible="False">
+                <Ellipse Width="500" Height="500" Canvas.Left="200" Canvas.Top="100">
+                    <Ellipse.Fill>
+                        <RadialGradientBrush>
+                            <GradientStop Color="#307C3AED" Offset="0"/>
+                            <GradientStop Color="#00000000" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Ellipse.Fill>
+                </Ellipse>
+                <Ellipse Width="600" Height="600" Canvas.Left="700" Canvas.Top="300">
+                    <Ellipse.Fill>
+                        <RadialGradientBrush>
+                            <GradientStop Color="#2000D4FF" Offset="0"/>
+                            <GradientStop Color="#00000000" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Ellipse.Fill>
+                </Ellipse>
+            </Canvas>
+
+            <!-- Centered Splash Content -->
+            <Grid x:Name="SplashContent" HorizontalAlignment="Center" VerticalAlignment="Center"
+                  RenderTransformOrigin="0.5,0.5">
+                <Grid.RenderTransform>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="SplashScale" ScaleX="1" ScaleY="1"/>
+                        <TranslateTransform x:Name="SplashTranslate" X="0" Y="0"/>
+                    </TransformGroup>
+                </Grid.RenderTransform>
+
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <!-- Large Logo with Hyperdrive -->
+                    <Grid x:Name="SplashLogoContainer" Width="400" Height="300" ClipToBounds="True">
+                        <!-- Hyperdrive Animation Background -->
+                        <Grid>
+                            <Grid.OpacityMask>
+                                <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.7" RadiusY="0.7">
+                                    <GradientStop Color="#FFFFFFFF" Offset="0"/>
+                                    <GradientStop Color="#FFFFFFFF" Offset="0.5"/>
+                                    <GradientStop Color="#00FFFFFF" Offset="1"/>
+                                </RadialGradientBrush>
+                            </Grid.OpacityMask>
+                            <Canvas x:Name="SplashHyperdriveCanvas" Width="400" Height="300">
+                                <!-- Center glow -->
+                                <Ellipse Width="100" Height="100" Canvas.Left="150" Canvas.Top="100">
+                                    <Ellipse.Fill>
+                                        <RadialGradientBrush>
+                                            <GradientStop Color="#607C3AED" Offset="0"/>
+                                            <GradientStop Color="#3000D4FF" Offset="0.5"/>
+                                            <GradientStop Color="#00000000" Offset="1"/>
+                                        </RadialGradientBrush>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+
+                                <!-- Splash Hyperdrive streaks -->
+                                <Line x:Name="SplashLine1" X1="200" Y1="150" X2="0" Y2="0" Stroke="#8000D4FF" StrokeThickness="2" Opacity="0">
+                                    <Line.Effect><BlurEffect Radius="3"/></Line.Effect>
+                                </Line>
+                                <Line x:Name="SplashLine2" X1="200" Y1="150" X2="400" Y2="0" Stroke="#807C3AED" StrokeThickness="2" Opacity="0">
+                                    <Line.Effect><BlurEffect Radius="3"/></Line.Effect>
+                                </Line>
+                                <Line x:Name="SplashLine3" X1="200" Y1="150" X2="0" Y2="300" Stroke="#807C3AED" StrokeThickness="2" Opacity="0">
+                                    <Line.Effect><BlurEffect Radius="3"/></Line.Effect>
+                                </Line>
+                                <Line x:Name="SplashLine4" X1="200" Y1="150" X2="400" Y2="300" Stroke="#8000D4FF" StrokeThickness="2" Opacity="0">
+                                    <Line.Effect><BlurEffect Radius="3"/></Line.Effect>
+                                </Line>
+                                <Line x:Name="SplashLine5" X1="200" Y1="150" X2="50" Y2="0" Stroke="#6010B981" StrokeThickness="1.5" Opacity="0"/>
+                                <Line x:Name="SplashLine6" X1="200" Y1="150" X2="350" Y2="0" Stroke="#60FFFFFF" StrokeThickness="1.5" Opacity="0"/>
+                                <Line x:Name="SplashLine7" X1="200" Y1="150" X2="0" Y2="150" Stroke="#607C3AED" StrokeThickness="1.5" Opacity="0"/>
+                                <Line x:Name="SplashLine8" X1="200" Y1="150" X2="400" Y2="150" Stroke="#6000D4FF" StrokeThickness="1.5" Opacity="0"/>
+                                <Line x:Name="SplashLine9" X1="200" Y1="150" X2="100" Y2="300" Stroke="#60FFFFFF" StrokeThickness="1.5" Opacity="0"/>
+                                <Line x:Name="SplashLine10" X1="200" Y1="150" X2="300" Y2="300" Stroke="#6010B981" StrokeThickness="1.5" Opacity="0"/>
+
+                                <!-- Star particles -->
+                                <Ellipse x:Name="SplashStar1" Width="4" Height="4" Fill="#A000D4FF" Canvas.Left="200" Canvas.Top="150" Opacity="0"/>
+                                <Ellipse x:Name="SplashStar2" Width="3" Height="3" Fill="#A07C3AED" Canvas.Left="200" Canvas.Top="150" Opacity="0"/>
+                                <Ellipse x:Name="SplashStar3" Width="3" Height="3" Fill="#A0FFFFFF" Canvas.Left="200" Canvas.Top="150" Opacity="0"/>
+                                <Ellipse x:Name="SplashStar4" Width="4" Height="4" Fill="#A010B981" Canvas.Left="200" Canvas.Top="150" Opacity="0"/>
+                            </Canvas>
+                        </Grid>
+
+                        <!-- Logo Glow -->
+                        <Border>
+                            <Border.Background>
+                                <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.6" RadiusY="0.6">
+                                    <GradientStop Color="#407C3AED" Offset="0"/>
+                                    <GradientStop Color="#2000D4FF" Offset="0.5"/>
+                                    <GradientStop Color="#00000000" Offset="1"/>
+                                </RadialGradientBrush>
+                            </Border.Background>
+                        </Border>
+
+                        <!-- Logo Image -->
+                        <Image Source="/Assets/logo2.png" Stretch="Uniform" Margin="40"
+                               RenderOptions.BitmapScalingMode="HighQuality"/>
+
+                        <!-- Edge Fade -->
+                        <Border VerticalAlignment="Bottom" Height="60">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#00000000" Offset="0"/>
+                                    <GradientStop Color="#FF0A0A1A" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                    </Grid>
+
+                    <!-- Loading Text -->
+                    <StackPanel x:Name="LoadingPanel" HorizontalAlignment="Center" Margin="0,20,0,0">
+                        <TextBlock x:Name="LoadingText" Text="Initializing..."
+                                   FontSize="16" FontWeight="Light" Foreground="#80FFFFFF"
+                                   HorizontalAlignment="Center"/>
+
+                        <!-- Loading Progress Bar -->
+                        <Border Background="#15FFFFFF" CornerRadius="4" Height="6" Width="200" Margin="0,15,0,0">
+                            <Border x:Name="LoadingProgress" Background="#7C3AED" CornerRadius="4"
+                                    HorizontalAlignment="Left" Width="0">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="10" ShadowDepth="0" Color="#7C3AED" Opacity="0.7"/>
+                                </Border.Effect>
+                            </Border>
+                        </Border>
+
+                        <!-- Version & License Info -->
+                        <StackPanel HorizontalAlignment="Center" Margin="0,25,0,0">
+                            <TextBlock Text="v0.1.0-beta" FontSize="13" FontWeight="SemiBold" Foreground="#60FFFFFF"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Developed by Xman Studio" FontSize="11" Foreground="#50FFFFFF"
+                                       HorizontalAlignment="Center" Margin="0,5,0,0"/>
+                            <TextBlock Text="Licensed for Educational Use Only" FontSize="10" Foreground="#30FFFFFF"
+                                       HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Grid>
+        </Grid>
+    </Border>
+</Window>

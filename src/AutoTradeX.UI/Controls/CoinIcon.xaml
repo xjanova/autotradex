@@ -1,0 +1,16 @@
+<UserControl x:Class="AutoTradeX.UI.Controls.CoinIcon"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border x:Name="IconBorder" CornerRadius="50">
+        <Border.Background>
+            <ImageBrush x:Name="IconImage" Stretch="UniformToFill"/>
+        </Border.Background>
+        <!-- Fallback text when image fails -->
+        <TextBlock x:Name="FallbackText"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   FontWeight="Bold"
+                   Foreground="White"
+                   Visibility="Collapsed"/>
+    </Border>
+</UserControl>
