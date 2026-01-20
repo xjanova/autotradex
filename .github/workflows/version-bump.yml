@@ -1,0 +1,131 @@
+# Auto Version Bump on Merge to Main
+# Bumps version based on commit messages or PR labels
+
+name: Version Bump
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+      bump_type: ${{ steps.determine.outputs.bump_type }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Get current version
+        id: current
+        run: |
+          VERSION=$(grep -oP '(?<=<Version>)[^<]+' src/AutoTradeX.UI/AutoTradeX.UI.csproj | head -1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+
+      - name: Determine bump type
+        id: determine
+        run: |
+          # Check PR labels first
+          LABELS="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+
+          BUMP_TYPE="patch"
+
+          # Check labels
+          if [[ "$LABELS" == *"major"* ]] || [[ "$LABELS" == *"breaking"* ]]; then
+            BUMP_TYPE="major"
+          elif [[ "$LABELS" == *"minor"* ]] || [[ "$LABELS" == *"feature"* ]]; then
+            BUMP_TYPE="minor"
+          elif [[ "$LABELS" == *"patch"* ]] || [[ "$LABELS" == *"fix"* ]] || [[ "$LABELS" == *"bugfix"* ]]; then
+            BUMP_TYPE="patch"
+          # Check PR title for conventional commits
+          elif [[ "$PR_TITLE" == *"BREAKING"* ]] || [[ "$PR_TITLE" == *"!"* ]]; then
+            BUMP_TYPE="major"
+          elif [[ "$PR_TITLE" == feat* ]] || [[ "$PR_TITLE" == *"feature"* ]]; then
+            BUMP_TYPE="minor"
+          elif [[ "$PR_TITLE" == fix* ]] || [[ "$PR_TITLE" == *"bugfix"* ]]; then
+            BUMP_TYPE="patch"
+          fi
+
+          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+          echo "Bump type: $BUMP_TYPE"
+
+      - name: Bump version
+        id: bump
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          BUMP_TYPE="${{ steps.determine.outputs.bump_type }}"
+
+          # Remove -beta or other suffixes for calculation
+          BASE_VERSION=$(echo "$CURRENT" | sed 's/-.*$//')
+
+          # Split version
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+
+          # Bump based on type
+          case $BUMP_TYPE in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      - name: Update version in csproj files
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+
+          # Update UI project
+          sed -i "s|<Version>.*</Version>|<Version>$NEW_VERSION</Version>|g" src/AutoTradeX.UI/AutoTradeX.UI.csproj
+          sed -i "s|<AssemblyVersion>.*</AssemblyVersion>|<AssemblyVersion>$NEW_VERSION.0</AssemblyVersion>|g" src/AutoTradeX.UI/AutoTradeX.UI.csproj
+          sed -i "s|<FileVersion>.*</FileVersion>|<FileVersion>$NEW_VERSION.0</FileVersion>|g" src/AutoTradeX.UI/AutoTradeX.UI.csproj
+
+          # Update version in MainWindow.xaml
+          sed -i "s|v[0-9]*\.[0-9]*\.[0-9]*-beta|v$NEW_VERSION|g" src/AutoTradeX.UI/Views/MainWindow.xaml
+          sed -i "s|v[0-9]*\.[0-9]*\.[0-9]*|v$NEW_VERSION|g" src/AutoTradeX.UI/Views/MainWindow.xaml
+
+      - name: Commit version bump
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+
+          git add -A
+          git commit -m "chore: bump version to $NEW_VERSION [skip ci]" || echo "No changes to commit"
+          git push
+
+      - name: Create version tag
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+          git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
+          git push origin "v$NEW_VERSION"

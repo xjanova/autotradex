@@ -1,0 +1,125 @@
+# Auto Release on Version Tag
+# Creates GitHub Release with build artifacts when a version tag is pushed
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Get version from tag
+        id: version
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build Release
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test --no-build --configuration Release --verbosity normal
+        continue-on-error: true
+
+      - name: Publish Windows x64
+        run: |
+          dotnet publish src/AutoTradeX.UI/AutoTradeX.UI.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o publish/win-x64
+
+      - name: Publish Windows x64 (Framework-dependent)
+        run: |
+          dotnet publish src/AutoTradeX.UI/AutoTradeX.UI.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -o publish/win-x64-fd
+
+      - name: Create ZIP archives
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+
+          # Self-contained (portable)
+          Compress-Archive -Path "publish/win-x64/*" -DestinationPath "AutoTradeX-v$version-win-x64-portable.zip"
+
+          # Framework-dependent (smaller, requires .NET runtime)
+          Compress-Archive -Path "publish/win-x64-fd/*" -DestinationPath "AutoTradeX-v$version-win-x64.zip"
+
+      - name: Generate changelog
+        id: changelog
+        shell: bash
+        run: |
+          # Get commits since last tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log $PREV_TAG..HEAD --pretty=format:"- %s" --no-merges | head -50)
+          else
+            CHANGES=$(git log --pretty=format:"- %s" --no-merges | head -20)
+          fi
+
+          # Write to file for multi-line output
+          echo "$CHANGES" > changelog.txt
+          echo "Generated changelog"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: AutoTrade-X v${{ steps.version.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'alpha') }}
+          generate_release_notes: true
+          body: |
+            ## AutoTrade-X v${{ steps.version.outputs.version }}
+
+            ### 📦 Downloads
+
+            | File | Description |
+            |------|-------------|
+            | `AutoTradeX-v${{ steps.version.outputs.version }}-win-x64-portable.zip` | Portable version (no .NET required) |
+            | `AutoTradeX-v${{ steps.version.outputs.version }}-win-x64.zip` | Requires .NET 8 Runtime |
+
+            ### ⚙️ Requirements
+
+            - **Portable**: Windows 10/11 x64 (self-contained)
+            - **Standard**: Windows 10/11 x64 + [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+
+            ### ⚠️ Disclaimer
+
+            This software is for **educational purposes only**. Use at your own risk.
+
+            ---
+
+            *Developed by Xman Studio*
+          files: |
+            AutoTradeX-v${{ steps.version.outputs.version }}-win-x64-portable.zip
+            AutoTradeX-v${{ steps.version.outputs.version }}-win-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
