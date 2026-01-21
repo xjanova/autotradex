@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using Microsoft.Extensions.DependencyInjection;
 using AutoTradeX.Core.Interfaces;
+using AutoTradeX.Core.Models;
 using AutoTradeX.Infrastructure.Services;
 
 namespace AutoTradeX.UI.Views;
@@ -16,6 +17,10 @@ public partial class ScannerPage : UserControl
     private readonly ICoinDataService? _coinDataService;
     private readonly ILoggingService? _logger;
     private readonly IArbEngine? _arbEngine;
+    private readonly IProjectService? _projectService;
+    private readonly IStrategyService? _strategyService;
+    private readonly IExchangeClientFactory? _exchangeFactory;
+    private readonly ICurrencyConverterService? _currencyConverter;
     private System.Windows.Threading.DispatcherTimer? _scanTimer;
     private bool _isScanning = false;
     private int _scanCount = 0;
@@ -33,6 +38,10 @@ public partial class ScannerPage : UserControl
         _coinDataService = App.Services?.GetService<ICoinDataService>();
         _logger = App.Services?.GetService<ILoggingService>();
         _arbEngine = App.Services?.GetService<IArbEngine>();
+        _projectService = App.Services?.GetService<IProjectService>();
+        _strategyService = App.Services?.GetService<IStrategyService>();
+        _exchangeFactory = App.Services?.GetService<IExchangeClientFactory>();
+        _currencyConverter = App.Services?.GetService<ICurrencyConverterService>();
 
         ResultsList.ItemsSource = ScanResults;
 
@@ -40,11 +49,59 @@ public partial class ScannerPage : UserControl
         Unloaded += ScannerPage_Unloaded;
     }
 
-    private void ScannerPage_Loaded(object sender, RoutedEventArgs e)
+    private async void ScannerPage_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_scanner != null)
+        // Check exchange connections first
+        var isConnected = await CheckExchangeConnectionsAsync();
+
+        if (isConnected)
         {
-            _scanner.OpportunityFound += Scanner_OpportunityFound;
+            NotConnectedOverlay.Visibility = Visibility.Collapsed;
+            MainScannerContent.Visibility = Visibility.Visible;
+
+            if (_scanner != null)
+            {
+                _scanner.OpportunityFound += Scanner_OpportunityFound;
+            }
+        }
+        else
+        {
+            // Show not connected overlay
+            NotConnectedOverlay.Visibility = Visibility.Visible;
+            MainScannerContent.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private async Task<bool> CheckExchangeConnectionsAsync()
+    {
+        if (_exchangeFactory == null) return false;
+
+        var exchanges = new[] { "Binance", "KuCoin", "OKX", "Bybit", "Gate.io", "Bitkub" };
+        var connectedCount = 0;
+
+        foreach (var exchangeName in exchanges)
+        {
+            try
+            {
+                var client = _exchangeFactory.CreateClient(exchangeName);
+                var isConnected = await client.TestConnectionAsync();
+                if (isConnected) connectedCount++;
+            }
+            catch
+            {
+                // Ignore connection errors
+            }
+        }
+
+        return connectedCount > 0;
+    }
+
+    private void GoToSettings_Click(object sender, RoutedEventArgs e)
+    {
+        // Navigate to Settings page
+        if (Window.GetWindow(this) is MainWindow mainWindow)
+        {
+            mainWindow.NavigateToPage("Settings");
         }
     }
 
@@ -179,9 +236,10 @@ public partial class ScannerPage : UserControl
                 var filtered = results.Where(r => r.Score >= minScore).ToList();
 
                 ScanResults.Clear();
+                var thbRate = _currencyConverter?.GetCachedThbUsdtRate() ?? 35.0m;
                 foreach (var result in filtered)
                 {
-                    ScanResults.Add(new ScanResultDisplay(result));
+                    ScanResults.Add(new ScanResultDisplay(result, thbRate));
                 }
 
                 UpdateStats();
@@ -291,19 +349,16 @@ public partial class ScannerPage : UserControl
             {
                 _logger?.LogInfo("Scanner", $"Selected: {result.Symbol} (Score: {result.Score:F0})");
 
-                // Show confirmation
-                var message = $"Selected: {result.Symbol}\n\n" +
-                              $"Score: {result.Score:F0}\n" +
-                              $"Spread: {result.SpreadPercent:F3}%\n" +
-                              $"Est. Profit: ${result.EstimatedProfit:F2}\n\n" +
-                              $"Buy from: {result.BestBuyExchange} @ ${result.BestBuyPrice:N2}\n" +
-                              $"Sell to: {result.BestSellExchange} @ ${result.BestSellPrice:N2}\n\n" +
-                              $"Execute trade now?";
+                // Show action selection dialog
+                var dialog = new ScannerActionDialog(result);
+                dialog.Owner = Window.GetWindow(this);
+                dialog.ShowDialog();
 
-                var dialogResult = MessageBox.Show(message, "Confirm Trade",
-                    MessageBoxButton.YesNo, MessageBoxImage.Question);
-
-                if (dialogResult == MessageBoxResult.Yes)
+                if (dialog.SelectedAction == ScannerAction.AddToProject)
+                {
+                    await AddToProjectAsync(result);
+                }
+                else if (dialog.SelectedAction == ScannerAction.ExecuteTrade)
                 {
                     await ExecuteTradeAsync(result.ToScanResult());
                 }
@@ -312,6 +367,81 @@ public partial class ScannerPage : UserControl
             {
                 button.IsEnabled = true;
                 button.Content = "SELECT";
+            }
+        }
+    }
+
+    private async Task AddToProjectAsync(ScanResultDisplay result)
+    {
+        if (_projectService == null)
+        {
+            MessageBox.Show("Project service not available.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        // Get projects
+        var projects = await _projectService.GetAllProjectsAsync();
+        if (!projects.Any())
+        {
+            // No projects - ask to create one
+            var createResult = MessageBox.Show(
+                "ยังไม่มีโปรเจคใดๆ\n\nต้องการสร้างโปรเจคใหม่หรือไม่?",
+                "ไม่พบโปรเจค",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (createResult == MessageBoxResult.Yes)
+            {
+                // Navigate to Projects page
+                if (Window.GetWindow(this) is MainWindow mainWindow)
+                {
+                    mainWindow.NavigateToPage("Projects");
+                }
+            }
+            return;
+        }
+
+        // Show project selection dialog
+        var selectDialog = new SelectProjectDialog(projects, result);
+        selectDialog.Owner = Window.GetWindow(this);
+        selectDialog.ShowDialog();
+
+        if (selectDialog.DialogResultOk && selectDialog.SelectedProject != null)
+        {
+            try
+            {
+                // Get strategies for the dialog
+                var strategies = _strategyService?.GetPresetStrategies() ?? Enumerable.Empty<TradingStrategy>();
+
+                // Create the trading pair
+                var newPair = new ProjectTradingPair
+                {
+                    Symbol = result.Symbol,
+                    BaseAsset = result.BaseAsset,
+                    ExchangeA = result.BestBuyExchange,
+                    ExchangeB = result.BestSellExchange,
+                    StrategyId = selectDialog.SelectedStrategyId ?? strategies.FirstOrDefault()?.Id ?? "default",
+                    TradeAmount = selectDialog.TradeAmount,
+                    IsEnabled = true
+                };
+
+                // Add pair to project
+                await _projectService.AddTradingPairAsync(selectDialog.SelectedProject.Id, newPair);
+
+                _logger?.LogInfo("Scanner", $"Added {result.Symbol} to project: {selectDialog.SelectedProject.Name}");
+
+                MessageBox.Show(
+                    $"เพิ่ม {result.Symbol} เข้าโปรเจค \"{selectDialog.SelectedProject.Name}\" เรียบร้อยแล้ว!\n\n" +
+                    $"Exchange: {result.BestBuyExchange} → {result.BestSellExchange}\n" +
+                    $"Trade Amount: ${selectDialog.TradeAmount:N0}",
+                    "เพิ่มคู่เทรดสำเร็จ",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"เกิดข้อผิดพลาด: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                _logger?.LogError("Scanner", $"Failed to add pair to project: {ex.Message}");
             }
         }
     }
@@ -347,17 +477,32 @@ public partial class ScannerPage : UserControl
 
 /// <summary>
 /// Display model for scan results with UI bindings
+/// Supports THB conversion for Bitkub exchange
 /// </summary>
 public class ScanResultDisplay : INotifyPropertyChanged
 {
     private readonly ScanResult _result;
+    private readonly decimal _thbRate;
 
-    public ScanResultDisplay(ScanResult result)
+    public ScanResultDisplay(ScanResult result, decimal thbRate = 35.0m)
     {
         _result = result;
+        _thbRate = thbRate;
     }
 
     public ScanResult ToScanResult() => _result;
+
+    /// <summary>
+    /// Check if Bitkub is involved (uses THB)
+    /// </summary>
+    public bool InvolvesBitkub =>
+        BestBuyExchange.Contains("Bitkub", StringComparison.OrdinalIgnoreCase) ||
+        BestSellExchange.Contains("Bitkub", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// THB/USDT rate for display
+    /// </summary>
+    public decimal ThbRate => _thbRate;
 
     // Core properties
     public string Symbol => _result.Symbol;
@@ -387,6 +532,53 @@ public class ScanResultDisplay : INotifyPropertyChanged
     public string SpreadDisplay => $"{SpreadPercent:F3}%";
     public string EstProfitDisplay => $"~${EstimatedProfit:F2}";
     public string ScoreDisplay => $"{Score:F0}";
+
+    // THB Display Properties (for Bitkub)
+    public decimal BestBuyPriceThb => BestBuyPrice * _thbRate;
+    public decimal BestSellPriceThb => BestSellPrice * _thbRate;
+    public decimal EstimatedProfitThb => EstimatedProfit * _thbRate;
+
+    /// <summary>
+    /// Display buy price with THB if Bitkub is involved
+    /// </summary>
+    public string BuyPriceDisplay
+    {
+        get
+        {
+            var isBitkubBuy = BestBuyExchange.Contains("Bitkub", StringComparison.OrdinalIgnoreCase);
+            if (isBitkubBuy)
+            {
+                return $"฿{BestBuyPriceThb:N2}";
+            }
+            return BestBuyPrice >= 1000 ? $"${BestBuyPrice:N0}" : $"${BestBuyPrice:N2}";
+        }
+    }
+
+    /// <summary>
+    /// Display sell price with THB if Bitkub is involved
+    /// </summary>
+    public string SellPriceDisplay
+    {
+        get
+        {
+            var isBitkubSell = BestSellExchange.Contains("Bitkub", StringComparison.OrdinalIgnoreCase);
+            if (isBitkubSell)
+            {
+                return $"฿{BestSellPriceThb:N2}";
+            }
+            return BestSellPrice >= 1000 ? $"${BestSellPrice:N0}" : $"${BestSellPrice:N2}";
+        }
+    }
+
+    /// <summary>
+    /// THB rate display for reference
+    /// </summary>
+    public string ThbRateDisplay => InvolvesBitkub ? $"(1 USDT = ฿{_thbRate:N2})" : "";
+
+    /// <summary>
+    /// Show THB info badge visibility
+    /// </summary>
+    public Visibility ThbInfoVisibility => InvolvesBitkub ? Visibility.Visible : Visibility.Collapsed;
 
     // Colors
     public Brush PriceChangeColor => new SolidColorBrush(

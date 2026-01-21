@@ -3,8 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Border x:Name="IconBorder" CornerRadius="12">
         <Grid>
-            <!-- Image when loaded -->
-            <Image x:Name="IconImage" Stretch="Uniform" Margin="6"/>
+            <!-- Image when loaded (2px padding from border) -->
+            <Image x:Name="IconImage" Stretch="Uniform" Margin="2"/>
             <!-- Fallback text -->
             <TextBlock x:Name="FallbackText"
                        HorizontalAlignment="Center"

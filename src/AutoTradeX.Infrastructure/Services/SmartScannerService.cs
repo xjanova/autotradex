@@ -1,18 +1,14 @@
 /*
  * ============================================================================
- * AutoTrade-X - Smart Scanner Service
+ * AutoTrade-X - Smart Scanner Service (PRODUCTION VERSION)
  * ============================================================================
- * Intelligent coin scanning with multiple strategies:
- * - Price Drop (ราคาลดลง) - หาเหรียญที่ราคาลดลงมาก
- * - High Volatility (ผันผวนสูง) - หาเหรียญที่มีความผันผวนสูง
- * - Volume Surge (ปริมาณเพิ่ม) - หาเหรียญที่มี volume เพิ่มขึ้นมาก
- * - Momentum (แรงส่ง) - หาเหรียญที่มี momentum ดี
- * - Arbitrage Best (Arb ดีสุด) - หาโอกาส arbitrage ที่ดีที่สุด
+ * Intelligent coin scanning with multiple strategies using REAL exchange data
  * ============================================================================
  */
 
 using AutoTradeX.Core.Interfaces;
 using AutoTradeX.Core.Models;
+using System.Collections.Concurrent;
 
 namespace AutoTradeX.Infrastructure.Services;
 
@@ -71,6 +67,7 @@ public class ExchangePrice
     public decimal Volume24h { get; set; }
     public decimal Spread { get; set; }
     public DateTime UpdateTime { get; set; }
+    public bool IsLive { get; set; } = true;
 }
 
 public interface ISmartScannerService
@@ -100,16 +97,18 @@ public class ScanOptions
 public class SmartScannerService : ISmartScannerService
 {
     private readonly ICoinDataService _coinDataService;
+    private readonly IExchangeClientFactory _exchangeFactory;
     private readonly ILoggingService _logger;
     private readonly List<ScanResult> _lastResults = new();
     private readonly object _lock = new();
+    private readonly ConcurrentDictionary<string, DateTime> _lastExchangeError = new();
 
     public event EventHandler<ScanResult>? OpportunityFound;
 
-    // Supported exchanges (including Bitkub for Thailand market)
+    // Supported exchanges for real trading
     private static readonly string[] SupportedExchanges = new[]
     {
-        "Binance", "KuCoin", "OKX", "Bybit", "Gate.io", "MEXC", "Bitget", "Huobi", "Bitkub"
+        "Binance", "KuCoin", "OKX", "Bybit", "Gate.io", "Bitkub"
     };
 
     // Popular trading pairs
@@ -122,9 +121,13 @@ public class SmartScannerService : ISmartScannerService
         "MKR", "SNX", "CRV", "1INCH", "ENS", "BLUR", "STX", "IMX", "RENDER", "FET"
     };
 
-    public SmartScannerService(ICoinDataService coinDataService, ILoggingService logger)
+    public SmartScannerService(
+        ICoinDataService coinDataService,
+        IExchangeClientFactory exchangeFactory,
+        ILoggingService logger)
     {
         _coinDataService = coinDataService;
+        _exchangeFactory = exchangeFactory;
         _logger = logger;
     }
 
@@ -138,10 +141,15 @@ public class SmartScannerService : ISmartScannerService
 
         try
         {
-            _logger.LogInfo("SmartScanner", $"Starting scan with strategy: {strategy}");
+            _logger.LogInfo("SmartScanner", $"Starting LIVE scan with strategy: {strategy}");
 
-            // Get market data from CoinGecko
+            // Get market data from CoinGecko for basic info
             var topCoins = await _coinDataService.GetTopCoinsAsync(100);
+
+            // Determine which exchanges to scan
+            var exchangesToScan = options.FilterExchanges?.Any() == true
+                ? options.FilterExchanges.Intersect(SupportedExchanges, StringComparer.OrdinalIgnoreCase).ToList()
+                : SupportedExchanges.ToList();
 
             // Filter and score based on strategy
             foreach (var coin in topCoins)
@@ -170,13 +178,13 @@ public class SmartScannerService : ISmartScannerService
                     MatchedStrategy = strategy
                 };
 
+                // Fetch REAL prices from exchanges
+                await FetchRealExchangePricesAsync(result, exchangesToScan);
+
                 // Calculate score based on strategy
                 var (score, reason) = CalculateScore(result, strategy, options);
                 result.Score = score;
                 result.ScoreReason = reason;
-
-                // Generate simulated exchange prices for demo
-                GenerateExchangePrices(result);
 
                 if (score > 0)
                 {
@@ -208,7 +216,7 @@ public class SmartScannerService : ISmartScannerService
                 OpportunityFound?.Invoke(this, results[0]);
             }
 
-            _logger.LogInfo("SmartScanner", $"Scan complete: {results.Count} results found");
+            _logger.LogInfo("SmartScanner", $"LIVE scan complete: {results.Count} results found");
         }
         catch (Exception ex)
         {
@@ -257,7 +265,8 @@ public class SmartScannerService : ISmartScannerService
                 ImageUrl = coinInfo.ImageUrl
             };
 
-            GenerateExchangePrices(result);
+            // Fetch REAL prices
+            await FetchRealExchangePricesAsync(result, SupportedExchanges.ToList());
 
             // Calculate score for arbitrage
             var (score, reason) = CalculateScore(result, ScanStrategy.ArbitrageBest, new ScanOptions());
@@ -278,6 +287,93 @@ public class SmartScannerService : ISmartScannerService
         lock (_lock)
         {
             return _lastResults.FirstOrDefault();
+        }
+    }
+
+    /// <summary>
+    /// Fetch REAL prices from configured exchanges
+    /// </summary>
+    private async Task FetchRealExchangePricesAsync(ScanResult result, List<string> exchanges)
+    {
+        var symbol = result.BaseAsset + "USDT";
+        var tasks = new List<Task<ExchangePrice?>>();
+
+        foreach (var exchangeName in exchanges)
+        {
+            tasks.Add(FetchPriceFromExchangeAsync(exchangeName, symbol));
+        }
+
+        var prices = await Task.WhenAll(tasks);
+
+        foreach (var price in prices.Where(p => p != null))
+        {
+            result.ExchangePrices.Add(price!);
+        }
+
+        // Calculate best arbitrage opportunity
+        CalculateBestArbitrage(result);
+    }
+
+    private async Task<ExchangePrice?> FetchPriceFromExchangeAsync(string exchangeName, string symbol)
+    {
+        // Check if exchange recently errored (cool down)
+        if (_lastExchangeError.TryGetValue(exchangeName, out var lastError) &&
+            DateTime.UtcNow - lastError < TimeSpan.FromMinutes(1))
+        {
+            return null;
+        }
+
+        try
+        {
+            var client = _exchangeFactory.CreateClient(exchangeName);
+            var ticker = await client.GetTickerAsync(symbol);
+
+            if (ticker != null && ticker.BidPrice > 0 && ticker.AskPrice > 0)
+            {
+                return new ExchangePrice
+                {
+                    Exchange = exchangeName,
+                    BidPrice = ticker.BidPrice,
+                    AskPrice = ticker.AskPrice,
+                    Volume24h = ticker.Volume24h,
+                    Spread = (ticker.AskPrice - ticker.BidPrice) / ticker.AskPrice * 100,
+                    UpdateTime = DateTime.UtcNow,
+                    IsLive = true
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("SmartScanner", $"Failed to fetch price from {exchangeName} for {symbol}: {ex.Message}");
+            _lastExchangeError[exchangeName] = DateTime.UtcNow;
+        }
+
+        return null;
+    }
+
+    private void CalculateBestArbitrage(ScanResult result)
+    {
+        if (result.ExchangePrices.Count < 2) return;
+
+        var bestBuy = result.ExchangePrices
+            .Where(p => p.AskPrice > 0)
+            .MinBy(p => p.AskPrice);
+
+        var bestSell = result.ExchangePrices
+            .Where(p => p.BidPrice > 0)
+            .MaxBy(p => p.BidPrice);
+
+        if (bestBuy != null && bestSell != null && bestBuy.Exchange != bestSell.Exchange)
+        {
+            result.BestBuyExchange = bestBuy.Exchange;
+            result.BestBuyPrice = bestBuy.AskPrice;
+            result.BestSellExchange = bestSell.Exchange;
+            result.BestSellPrice = bestSell.BidPrice;
+            result.SpreadPercent = (bestSell.BidPrice - bestBuy.AskPrice) / bestBuy.AskPrice * 100;
+
+            // Estimate profit after fees (typical 0.1% per side = 0.2% total)
+            var feePercent = 0.2m;
+            result.EstimatedProfit = 1000m * (result.SpreadPercent - feePercent) / 100;
         }
     }
 
@@ -393,46 +489,13 @@ public class SmartScannerService : ISmartScannerService
         if (result.MarketCapRank <= 10) score += 10;
         else if (result.MarketCapRank <= 50) score += 5;
 
+        // Bonus for having multiple exchange prices (more reliable arbitrage)
+        if (result.ExchangePrices.Count >= 4) score += 5;
+        else if (result.ExchangePrices.Count >= 2) score += 2;
+
         // Ensure score is in range
         score = Math.Clamp(score, 0, 100);
 
         return (score, string.Join(", ", reasons));
-    }
-
-    private void GenerateExchangePrices(ScanResult result)
-    {
-        var random = new Random();
-        var basePrice = result.CurrentPrice > 0 ? result.CurrentPrice : 1000m;
-
-        foreach (var exchange in SupportedExchanges.Take(4))
-        {
-            var variation = (decimal)(random.NextDouble() * 0.002 - 0.001); // ±0.1%
-            var askPrice = basePrice * (1 + Math.Abs(variation));
-            var bidPrice = basePrice * (1 - Math.Abs(variation));
-
-            result.ExchangePrices.Add(new ExchangePrice
-            {
-                Exchange = exchange,
-                AskPrice = askPrice,
-                BidPrice = bidPrice,
-                Volume24h = (decimal)(random.NextDouble() * 10_000_000 + 1_000_000),
-                Spread = (askPrice - bidPrice) / askPrice * 100,
-                UpdateTime = DateTime.UtcNow
-            });
-        }
-
-        // Find best arbitrage opportunity
-        var bestBuy = result.ExchangePrices.MinBy(p => p.AskPrice);
-        var bestSell = result.ExchangePrices.MaxBy(p => p.BidPrice);
-
-        if (bestBuy != null && bestSell != null && bestBuy.Exchange != bestSell.Exchange)
-        {
-            result.BestBuyExchange = bestBuy.Exchange;
-            result.BestBuyPrice = bestBuy.AskPrice;
-            result.BestSellExchange = bestSell.Exchange;
-            result.BestSellPrice = bestSell.BidPrice;
-            result.SpreadPercent = (bestSell.BidPrice - bestBuy.AskPrice) / bestBuy.AskPrice * 100;
-            result.EstimatedProfit = 1000m * result.SpreadPercent / 100 * 0.998m; // Assuming $1000 trade with 0.2% fees
-        }
     }
 }

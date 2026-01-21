@@ -20,7 +20,7 @@ public interface IDatabaseService
     Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null);
     Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null);
     Task<int> ExecuteAsync(string sql, object? param = null);
-    Task<T> ExecuteScalarAsync<T>(string sql, object? param = null);
+    Task<T?> ExecuteScalarAsync<T>(string sql, object? param = null);
 }
 
 public class DatabaseService : IDatabaseService
@@ -292,7 +292,7 @@ public class DatabaseService : IDatabaseService
         return await connection.ExecuteAsync(sql, param);
     }
 
-    public async Task<T> ExecuteScalarAsync<T>(string sql, object? param = null)
+    public async Task<T?> ExecuteScalarAsync<T>(string sql, object? param = null)
     {
         await InitializeAsync();
         using var connection = CreateConnection();

@@ -19,11 +19,13 @@ public class ExchangeClientFactory : IExchangeClientFactory
 {
     private readonly ILoggingService _logger;
     private readonly AppConfig _config;
+    private readonly ICurrencyConverterService? _currencyConverter;
 
-    public ExchangeClientFactory(AppConfig config, ILoggingService logger)
+    public ExchangeClientFactory(AppConfig config, ILoggingService logger, ICurrencyConverterService? currencyConverter = null)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _currencyConverter = currencyConverter;
     }
 
     /// <summary>
@@ -51,17 +53,13 @@ public class ExchangeClientFactory : IExchangeClientFactory
             // Bitkub (Thailand)
             "bitkub" => CreateBitkubClient(),
 
-            // Legacy names (backward compatible)
-            "exchangea" or "a" => CreateExchangeAClient(),
-            "exchangeb" or "b" => CreateExchangeBClient(),
-
-            // Simulation
+            // Simulation (for testing only)
             "simulation_a" or "sim_a" => CreateSimulationClient(true),
             "simulation_b" or "sim_b" => CreateSimulationClient(false),
             "simulation" or "sim" => CreateSimulationClient(true),
 
             _ => throw new ArgumentException($"Unknown exchange: {exchangeName}. " +
-                $"Supported: Binance, KuCoin, Bybit, OKX, Gate.io, Bitkub, Simulation_A, Simulation_B")
+                $"Supported: Binance, KuCoin, Bybit, OKX, Gate.io, Bitkub")
         };
     }
 
@@ -227,11 +225,31 @@ public class ExchangeClientFactory : IExchangeClientFactory
         };
 
         _logger.LogInfo("Factory", "Creating Bitkub Client");
-        return new BitkubClient(config, _logger);
+        return new BitkubClient(config, _logger, _currencyConverter);
     }
 
     /// <summary>
-    /// สร้าง Client สำหรับ Exchange A (Smart detection)
+    /// Get THB/USDT rate from currency converter
+    /// </summary>
+    public async Task<decimal> GetThbUsdtRateAsync(CancellationToken cancellationToken = default)
+    {
+        if (_currencyConverter != null)
+        {
+            return await _currencyConverter.GetThbUsdtRateAsync(cancellationToken);
+        }
+        return 35.0m; // Default fallback
+    }
+
+    /// <summary>
+    /// Get cached THB/USDT rate (for fast access)
+    /// </summary>
+    public decimal GetCachedThbUsdtRate()
+    {
+        return _currencyConverter?.GetCachedThbUsdtRate() ?? 35.0m;
+    }
+
+    /// <summary>
+    /// สร้าง Client สำหรับ Exchange A (Smart detection based on config)
     /// </summary>
     public IExchangeClient CreateExchangeAClient()
     {
@@ -249,12 +267,15 @@ public class ExchangeClientFactory : IExchangeClientFactory
             "binance" => CreateRealBinanceClient(_config.ExchangeA),
             "kucoin" => CreateRealKuCoinClient(_config.ExchangeA),
             "bybit" => CreateRealBybitClient(_config.ExchangeA),
-            _ => new ExchangeAClient(_config.ExchangeA, _logger) // Fallback to placeholder
+            "okx" => CreateOKXClient(),
+            "gateio" or "gate.io" => CreateGateIOClient(),
+            "bitkub" => CreateBitkubClient(),
+            _ => throw new InvalidOperationException($"Exchange A not configured properly. Set a valid exchange name in settings. Current: {_config.ExchangeA.Name}")
         };
     }
 
     /// <summary>
-    /// สร้าง Client สำหรับ Exchange B (Smart detection)
+    /// สร้าง Client สำหรับ Exchange B (Smart detection based on config)
     /// </summary>
     public IExchangeClient CreateExchangeBClient()
     {
@@ -272,7 +293,10 @@ public class ExchangeClientFactory : IExchangeClientFactory
             "binance" => CreateRealBinanceClient(_config.ExchangeB),
             "kucoin" => CreateRealKuCoinClient(_config.ExchangeB),
             "bybit" => CreateRealBybitClient(_config.ExchangeB),
-            _ => new ExchangeBClient(_config.ExchangeB, _logger) // Fallback to placeholder
+            "okx" => CreateOKXClient(),
+            "gateio" or "gate.io" => CreateGateIOClient(),
+            "bitkub" => CreateBitkubClient(),
+            _ => throw new InvalidOperationException($"Exchange B not configured properly. Set a valid exchange name in settings. Current: {_config.ExchangeB.Name}")
         };
     }
 

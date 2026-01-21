@@ -28,6 +28,11 @@ public interface INotificationService
     void MarkAsRead(string notificationId);
     void SetSettings(NotificationSettings settings);
     int UnreadCount { get; }
+
+    /// <summary>
+    /// Register a custom toast notification handler (for UI layer to provide implementation)
+    /// </summary>
+    void SetToastHandler(Action<NotificationItem>? handler);
 }
 
 public class NotificationService : INotificationService
@@ -38,12 +43,18 @@ public class NotificationService : INotificationService
     private readonly ILoggingService _logger;
     private NotificationSettings _settings = new();
     private readonly object _lock = new();
+    private Action<NotificationItem>? _toastHandler;
 
     public int UnreadCount => Notifications.Count(n => !n.IsRead);
 
     public NotificationService(ILoggingService logger)
     {
         _logger = logger;
+    }
+
+    public void SetToastHandler(Action<NotificationItem>? handler)
+    {
+        _toastHandler = handler;
     }
 
     public void NotifyTrade(string symbol, decimal pnl, string message)
@@ -223,12 +234,20 @@ public class NotificationService : INotificationService
 
     private void ShowToastNotification(NotificationItem notification)
     {
-        // For Windows toast notifications, we would use Windows.UI.Notifications
-        // This is a simplified version that could be extended
+        // Try to use registered toast handler from UI layer
         try
         {
-            // The actual implementation would use ToastNotificationManager
-            // For now, this is a placeholder
+            if (_toastHandler != null)
+            {
+                _toastHandler.Invoke(notification);
+            }
+            else
+            {
+                // No toast handler registered, just play sound as fallback
+                PlaySound(notification.Type == NotificationType.Error
+                    ? NotificationSoundType.Error
+                    : NotificationSoundType.Default);
+            }
         }
         catch
         {

@@ -126,8 +126,7 @@ public class GateIOClient : BaseExchangeClient
         {
             if (!HasCredentials())
             {
-                _logger.LogWarning(ExchangeName, "API credentials not configured. Using demo balance.");
-                return GetDemoBalance();
+                throw new InvalidOperationException($"{ExchangeName}: API credentials not configured. Please configure API keys in Settings.");
             }
 
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
@@ -248,8 +247,8 @@ public class GateIOClient : BaseExchangeClient
 
             return new Order
             {
-                OrderId = result.Id,
-                ClientOrderId = result.Text,
+                OrderId = result.Id ?? "",
+                ClientOrderId = result.Text ?? "",
                 Exchange = ExchangeName,
                 Symbol = request.Symbol,
                 Side = request.Side,
@@ -343,8 +342,8 @@ public class GateIOClient : BaseExchangeClient
 
             return new Order
             {
-                OrderId = result.Id,
-                ClientOrderId = result.Text,
+                OrderId = result.Id ?? "",
+                ClientOrderId = result.Text ?? "",
                 Exchange = ExchangeName,
                 Symbol = symbol,
                 Side = result.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
@@ -399,8 +398,8 @@ public class GateIOClient : BaseExchangeClient
 
             return result.Select(data => new Order
             {
-                OrderId = data.Id,
-                ClientOrderId = data.Text,
+                OrderId = data.Id ?? "",
+                ClientOrderId = data.Text ?? "",
                 Exchange = ExchangeName,
                 Symbol = data.CurrencyPair?.Replace("_", "/") ?? "",
                 Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
@@ -480,21 +479,6 @@ public class GateIOClient : BaseExchangeClient
             "closed" => OrderStatus.Filled,
             "cancelled" or "canceled" => OrderStatus.Cancelled,
             _ => OrderStatus.Error
-        };
-    }
-
-    private AccountBalance GetDemoBalance()
-    {
-        return new AccountBalance
-        {
-            Exchange = ExchangeName,
-            Timestamp = DateTime.UtcNow,
-            Assets = new Dictionary<string, AssetBalance>
-            {
-                ["USDT"] = new AssetBalance { Asset = "USDT", Total = 5000m, Available = 5000m },
-                ["BTC"] = new AssetBalance { Asset = "BTC", Total = 0.1m, Available = 0.1m },
-                ["ETH"] = new AssetBalance { Asset = "ETH", Total = 2m, Available = 2m }
-            }
         };
     }
 

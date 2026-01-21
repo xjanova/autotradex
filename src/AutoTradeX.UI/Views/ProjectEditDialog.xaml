@@ -1,0 +1,140 @@
+<Window x:Class="AutoTradeX.UI.Views.ProjectEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Project Settings"
+        Width="450" Height="280"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <Border CornerRadius="16" BorderThickness="1" BorderBrush="#40FFFFFF">
+        <Border.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#1A1A2E" Offset="0"/>
+                <GradientStop Color="#0D0D1A" Offset="1"/>
+            </LinearGradientBrush>
+        </Border.Background>
+        <Border.Effect>
+            <DropShadowEffect Color="Black" BlurRadius="30" ShadowDepth="0" Opacity="0.6"/>
+        </Border.Effect>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <Border Grid.Row="0" Background="#15FFFFFF" Padding="20,16">
+                <Grid>
+                    <TextBlock x:Name="DialogTitle" Text="New Project" FontSize="18" FontWeight="SemiBold" Foreground="White"/>
+                    <Button Content="X" HorizontalAlignment="Right" VerticalAlignment="Top"
+                            Background="Transparent" Foreground="#80FFFFFF" BorderThickness="0"
+                            FontWeight="Bold" FontSize="14" Cursor="Hand"
+                            Click="CloseButton_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- Content -->
+            <StackPanel Grid.Row="1" Margin="20">
+                <TextBlock Text="Project Name" Foreground="#80FFFFFF" FontSize="13" Margin="0,0,0,6"/>
+                <TextBox x:Name="ProjectNameInput"
+                         Background="#15FFFFFF" Foreground="White"
+                         BorderBrush="#30FFFFFF" BorderThickness="1"
+                         Padding="12,10" FontSize="14">
+                    <TextBox.Template>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8">
+                                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                            </Border>
+                        </ControlTemplate>
+                    </TextBox.Template>
+                </TextBox>
+
+                <TextBlock Text="Description (optional)" Foreground="#80FFFFFF" FontSize="13" Margin="0,16,0,6"/>
+                <TextBox x:Name="ProjectDescriptionInput"
+                         Background="#15FFFFFF" Foreground="White"
+                         BorderBrush="#30FFFFFF" BorderThickness="1"
+                         Padding="12,10" FontSize="14"
+                         TextWrapping="Wrap" AcceptsReturn="True"
+                         Height="60">
+                    <TextBox.Template>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8">
+                                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                            </Border>
+                        </ControlTemplate>
+                    </TextBox.Template>
+                </TextBox>
+            </StackPanel>
+
+            <!-- Footer -->
+            <Border Grid.Row="2" Background="#10FFFFFF" Padding="20,16">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Cancel" Click="CancelButton_Click"
+                            Background="#20FFFFFF" Foreground="White"
+                            BorderBrush="#40FFFFFF" BorderThickness="1"
+                            Padding="20,10" Margin="0,0,12,0" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="border" Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="8" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="border" Property="Background" Value="#30FFFFFF"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <Button x:Name="SaveButton" Content="Save Project" Click="SaveButton_Click"
+                            Foreground="White" BorderThickness="0"
+                            Padding="20,10" Cursor="Hand" FontWeight="SemiBold">
+                        <Button.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#7C3AED" Offset="0"/>
+                                <GradientStop Color="#6D28D9" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Button.Background>
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="border" Background="{TemplateBinding Background}"
+                                        CornerRadius="8" Padding="{TemplateBinding Padding}">
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="#7C3AED" BlurRadius="15" ShadowDepth="0" Opacity="0.4"/>
+                                    </Border.Effect>
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="border" Property="Background">
+                                            <Setter.Value>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <GradientStop Color="#8B5CF6" Offset="0"/>
+                                                    <GradientStop Color="#7C3AED" Offset="1"/>
+                                                </LinearGradientBrush>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

@@ -38,8 +38,10 @@ public class ArbEngine : IArbEngine
     public event EventHandler<EngineStatusEventArgs>? StatusChanged;
     public event EventHandler<EngineErrorEventArgs>? ErrorOccurred;
     public event EventHandler<PriceUpdateEventArgs>? PriceUpdated;
+#pragma warning disable CS0067 // Events are part of IArbEngine interface - reserved for future use
     public event EventHandler<BalancePoolUpdateEventArgs>? BalancePoolUpdated;
     public event EventHandler<EmergencyProtectionEventArgs>? EmergencyTriggered;
+#pragma warning restore CS0067
 
     public ArbEngine(
         IExchangeClient exchangeA,

@@ -10,6 +10,115 @@
         Background="Transparent">
 
     <Window.Resources>
+        <!-- Premium ScrollBar Thumb with Glow Effect -->
+        <Style x:Key="PremiumScrollBarThumb" TargetType="Thumb">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Grid>
+                            <!-- Outer Glow -->
+                            <Border x:Name="glowBorder" CornerRadius="4" Margin="-2" Opacity="0.3">
+                                <Border.Background>
+                                    <RadialGradientBrush>
+                                        <GradientStop Color="#7C3AED" Offset="0"/>
+                                        <GradientStop Color="Transparent" Offset="1"/>
+                                    </RadialGradientBrush>
+                                </Border.Background>
+                            </Border>
+                            <!-- Main Thumb -->
+                            <Border x:Name="thumbBorder" CornerRadius="4" Margin="1">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                        <GradientStop Color="#8B5CF6" Offset="0"/>
+                                        <GradientStop Color="#7C3AED" Offset="0.4"/>
+                                        <GradientStop Color="#6D28D9" Offset="0.8"/>
+                                        <GradientStop Color="#8B5CF6" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#7C3AED" BlurRadius="8" ShadowDepth="0" Opacity="0.5"/>
+                                </Border.Effect>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="thumbBorder" Property="Background">
+                                    <Setter.Value>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Color="#A78BFA" Offset="0"/>
+                                            <GradientStop Color="#8B5CF6" Offset="0.4"/>
+                                            <GradientStop Color="#7C3AED" Offset="0.8"/>
+                                            <GradientStop Color="#A78BFA" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter TargetName="glowBorder" Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="thumbBorder" Property="Background">
+                                    <Setter.Value>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Color="#C4B5FD" Offset="0"/>
+                                            <GradientStop Color="#A78BFA" Offset="0.4"/>
+                                            <GradientStop Color="#8B5CF6" Offset="0.8"/>
+                                            <GradientStop Color="#C4B5FD" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter TargetName="glowBorder" Property="Opacity" Value="0.8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Premium Vertical ScrollBar -->
+        <Style x:Key="PremiumScrollBar" TargetType="ScrollBar">
+            <Setter Property="Background" Value="#10FFFFFF"/>
+            <Setter Property="Width" Value="10"/>
+            <Setter Property="MinWidth" Value="10"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Border Background="#08FFFFFF" CornerRadius="5" Margin="2,0">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource PremiumScrollBarThumb}"/>
+                                </Track.Thumb>
+                            </Track>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Premium ScrollViewer Style -->
+        <Style x:Key="PremiumScrollViewer" TargetType="ScrollViewer">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollViewer">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ScrollContentPresenter Grid.Column="0"/>
+                            <ScrollBar x:Name="PART_VerticalScrollBar"
+                                      Grid.Column="1"
+                                      Style="{StaticResource PremiumScrollBar}"
+                                      Value="{TemplateBinding VerticalOffset}"
+                                      Maximum="{TemplateBinding ScrollableHeight}"
+                                      ViewportSize="{TemplateBinding ViewportHeight}"
+                                      Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Dark ComboBox Style -->
         <Style x:Key="DarkComboBox" TargetType="ComboBox">
             <Setter Property="Background" Value="#1A1A2E"/>
@@ -65,7 +174,7 @@
                                     <Border.Effect>
                                         <DropShadowEffect BlurRadius="20" ShadowDepth="5" Opacity="0.5" Color="#000000"/>
                                     </Border.Effect>
-                                    <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
+                                    <ScrollViewer MaxHeight="200" Style="{StaticResource PremiumScrollViewer}" VerticalScrollBarVisibility="Auto">
                                         <ItemsPresenter/>
                                     </ScrollViewer>
                                 </Border>
@@ -150,7 +259,7 @@
             </Grid>
 
             <!-- Content -->
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="25,10">
+            <ScrollViewer Grid.Row="1" Style="{StaticResource PremiumScrollViewer}" VerticalScrollBarVisibility="Auto" Margin="25,10">
                 <StackPanel>
                     <!-- Pair Selection -->
                     <TextBlock Text="TRADING PAIR" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>
@@ -195,7 +304,26 @@
                     <!-- Exchange Selection -->
                     <TextBlock Text="EXCHANGE PAIR" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>
 
-                    <Grid Margin="0,0,0,20">
+                    <!-- Pairing Mode Selection -->
+                    <Border Background="#15FFFFFF" CornerRadius="10" Padding="12" Margin="0,0,0,15">
+                        <StackPanel>
+                            <TextBlock Text="Pairing Mode" FontSize="10" Foreground="#80FFFFFF" Margin="0,0,0,8"/>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="SinglePairMode" Content="Single Pair (1:1)" GroupName="PairMode"
+                                            IsChecked="True" Foreground="White" Margin="0,0,20,0"
+                                            Checked="PairMode_Changed"/>
+                                <RadioButton x:Name="OneToManyMode" Content="One to Selected" GroupName="PairMode"
+                                            Foreground="White" Margin="0,0,20,0"
+                                            Checked="PairMode_Changed"/>
+                                <RadioButton x:Name="OneToAllMode" Content="One to All" GroupName="PairMode"
+                                            Foreground="White"
+                                            Checked="PairMode_Changed"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Single Pair Mode (1:1) -->
+                    <Grid x:Name="SinglePairPanel" Margin="0,0,0,20">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="50"/>
@@ -229,6 +357,70 @@
                             </ComboBox>
                         </StackPanel>
                     </Grid>
+
+                    <!-- One to Many Mode -->
+                    <StackPanel x:Name="OneToManyPanel" Visibility="Collapsed" Margin="0,0,0,20">
+                        <StackPanel>
+                            <TextBlock Text="Primary Exchange (Buy from)" FontSize="10" Foreground="#10B981" Margin="0,0,0,5"/>
+                            <ComboBox x:Name="PrimaryExchangeCombo" Style="{StaticResource DarkComboBox}">
+                                <ComboBoxItem Content="Binance" IsSelected="True"/>
+                                <ComboBoxItem Content="KuCoin"/>
+                                <ComboBoxItem Content="OKX"/>
+                                <ComboBoxItem Content="Bybit"/>
+                                <ComboBoxItem Content="Gate.io"/>
+                                <ComboBoxItem Content="Bitkub"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <TextBlock Text="Target Exchanges (Sell to)" FontSize="10" Foreground="#EF4444" Margin="0,15,0,8"/>
+                        <Border Background="#10FFFFFF" CornerRadius="8" Padding="10">
+                            <StackPanel>
+                                <CheckBox x:Name="CheckBinance" Content="Binance" Foreground="White" Margin="0,3"/>
+                                <CheckBox x:Name="CheckKuCoin" Content="KuCoin" IsChecked="True" Foreground="White" Margin="0,3"/>
+                                <CheckBox x:Name="CheckOKX" Content="OKX" IsChecked="True" Foreground="White" Margin="0,3"/>
+                                <CheckBox x:Name="CheckBybit" Content="Bybit" Foreground="White" Margin="0,3"/>
+                                <CheckBox x:Name="CheckGateIO" Content="Gate.io" Foreground="White" Margin="0,3"/>
+                                <CheckBox x:Name="CheckBitkub" Content="Bitkub" Foreground="White" Margin="0,3"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- One to All Info -->
+                    <Border x:Name="OneToAllInfoPanel" Visibility="Collapsed" Background="#1510B981" CornerRadius="10" Padding="15" Margin="0,0,0,20">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="⚡" FontSize="16" Margin="0,0,8,0"/>
+                                <TextBlock Text="One to All Mode" FontSize="14" FontWeight="Bold" Foreground="#10B981"/>
+                            </StackPanel>
+                            <TextBlock Text="This will create trading pairs between the primary exchange and ALL other exchanges automatically."
+                                      Foreground="#80FFFFFF" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                            <StackPanel>
+                                <TextBlock Text="Primary Exchange" FontSize="10" Foreground="#10B981" Margin="0,0,0,5"/>
+                                <ComboBox x:Name="AllModePrimaryCombo" Style="{StaticResource DarkComboBox}">
+                                    <ComboBoxItem Content="Binance" IsSelected="True"/>
+                                    <ComboBoxItem Content="KuCoin"/>
+                                    <ComboBoxItem Content="OKX"/>
+                                    <ComboBoxItem Content="Bybit"/>
+                                    <ComboBoxItem Content="Gate.io"/>
+                                    <ComboBoxItem Content="Bitkub"/>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock Text="Will create 5 pairs: Primary → KuCoin, OKX, Bybit, Gate.io, Bitkub"
+                                      x:Name="AllModePairsPreview" Foreground="#60FFFFFF" FontSize="11" Margin="0,10,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Strategy Selection -->
+                    <TextBlock Text="TRADING STRATEGY" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>
+
+                    <Border Background="#10FFFFFF" CornerRadius="10" Padding="15" Margin="0,0,0,20">
+                        <StackPanel>
+                            <TextBlock Text="Select Strategy" FontSize="10" Foreground="#80FFFFFF" Margin="0,0,0,5"/>
+                            <ComboBox x:Name="StrategyCombo" Style="{StaticResource DarkComboBox}"/>
+                            <TextBlock x:Name="StrategyDescription" Text="" FontSize="11" Foreground="#60FFFFFF"
+                                       Margin="0,8,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
 
                     <!-- Trading Settings -->
                     <TextBlock Text="TRADING SETTINGS" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>

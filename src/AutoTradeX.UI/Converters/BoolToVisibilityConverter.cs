@@ -79,7 +79,9 @@ public class NullToVisibilityConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        // One-way binding - ConvertBack not typically used for visibility converters
+        // Return null to indicate the value could be either null or non-null
+        return null!;
     }
 }
 
@@ -99,6 +101,8 @@ public class PnLToColorConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        // One-way binding - Cannot determine decimal value from color
+        // Return 0 as default
+        return 0m;
     }
 }

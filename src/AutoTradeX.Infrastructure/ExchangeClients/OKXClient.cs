@@ -129,8 +129,7 @@ public class OKXClient : BaseExchangeClient
         {
             if (!HasCredentials())
             {
-                _logger.LogWarning(ExchangeName, "API credentials not configured. Using demo balance.");
-                return GetDemoBalance();
+                throw new InvalidOperationException($"{ExchangeName}: API credentials not configured. Please configure API keys in Settings.");
             }
 
             var timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
@@ -257,8 +256,8 @@ public class OKXClient : BaseExchangeClient
 
             return new Order
             {
-                OrderId = orderResult.OrdId,
-                ClientOrderId = orderResult.ClOrdId,
+                OrderId = orderResult.OrdId ?? "",
+                ClientOrderId = orderResult.ClOrdId ?? "",
                 Exchange = ExchangeName,
                 Symbol = request.Symbol,
                 Side = request.Side,
@@ -364,8 +363,8 @@ public class OKXClient : BaseExchangeClient
 
             return new Order
             {
-                OrderId = data.OrdId,
-                ClientOrderId = data.ClOrdId,
+                OrderId = data.OrdId ?? "",
+                ClientOrderId = data.ClOrdId ?? "",
                 Exchange = ExchangeName,
                 Symbol = symbol,
                 Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
@@ -422,10 +421,10 @@ public class OKXClient : BaseExchangeClient
 
             return result.Data.Select(data => new Order
             {
-                OrderId = data.OrdId,
-                ClientOrderId = data.ClOrdId,
+                OrderId = data.OrdId ?? "",
+                ClientOrderId = data.ClOrdId ?? "",
                 Exchange = ExchangeName,
-                Symbol = data.InstId,
+                Symbol = data.InstId ?? "",
                 Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
                 Type = data.OrdType == "market" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(data.State),
@@ -487,21 +486,6 @@ public class OKXClient : BaseExchangeClient
             "filled" => OrderStatus.Filled,
             "canceled" or "cancelled" => OrderStatus.Cancelled,
             _ => OrderStatus.Error
-        };
-    }
-
-    private AccountBalance GetDemoBalance()
-    {
-        return new AccountBalance
-        {
-            Exchange = ExchangeName,
-            Timestamp = DateTime.UtcNow,
-            Assets = new Dictionary<string, AssetBalance>
-            {
-                ["USDT"] = new AssetBalance { Asset = "USDT", Total = 5000m, Available = 5000m },
-                ["BTC"] = new AssetBalance { Asset = "BTC", Total = 0.1m, Available = 0.1m },
-                ["ETH"] = new AssetBalance { Asset = "ETH", Total = 2m, Available = 2m }
-            }
         };
     }
 

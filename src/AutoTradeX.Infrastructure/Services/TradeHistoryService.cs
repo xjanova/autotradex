@@ -23,6 +23,10 @@ public interface ITradeHistoryService
     Task<int> GetTotalTradeCountAsync();
     Task<DailyPnLRecord> GetTodayPnLAsync();
     Task<List<DailyPnLRecord>> GetDailyPnLHistoryAsync(int days = 30);
+    Task<List<string>> GetDistinctSymbolsAsync();
+    Task<List<string>> GetDistinctExchangesAsync();
+    Task<int> CleanupOldDataAsync(int keepDays = 90);
+    Task<long> GetDatabaseSizeAsync();
 }
 
 public class TradeHistoryService : ITradeHistoryService
@@ -355,9 +359,87 @@ public class TradeHistoryService : ITradeHistoryService
                 }
             );
     }
+
+    public async Task<List<string>> GetDistinctSymbolsAsync()
+    {
+        var records = await _db.QueryAsync<SymbolRecord>(
+            "SELECT DISTINCT Symbol FROM Trades ORDER BY Symbol");
+        return records.Select(r => r.Symbol).ToList();
+    }
+
+    public async Task<List<string>> GetDistinctExchangesAsync()
+    {
+        var buyExchanges = await _db.QueryAsync<ExchangeRecord>(
+            "SELECT DISTINCT BuyExchange as Exchange FROM Trades");
+        var sellExchanges = await _db.QueryAsync<ExchangeRecord>(
+            "SELECT DISTINCT SellExchange as Exchange FROM Trades");
+
+        return buyExchanges.Select(r => r.Exchange)
+            .Union(sellExchanges.Select(r => r.Exchange))
+            .Distinct()
+            .OrderBy(e => e)
+            .ToList();
+    }
+
+    public async Task<int> CleanupOldDataAsync(int keepDays = 90)
+    {
+        var cutoffDate = DateTime.UtcNow.AddDays(-keepDays).ToString("o");
+
+        // Backup before cleanup
+        var backupPath = Path.Combine(
+            Path.GetDirectoryName(_db.DatabasePath) ?? "",
+            $"trades_cleanup_backup_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+
+        var oldTradesFilter = new TradeHistoryFilter
+        {
+            ToDate = DateTime.UtcNow.AddDays(-keepDays)
+        };
+        await ExportToCsvAsync(backupPath, oldTradesFilter);
+
+        // Delete old trades
+        var deletedTrades = await _db.ExecuteAsync(
+            "DELETE FROM Trades WHERE Timestamp < @CutoffDate",
+            new { CutoffDate = cutoffDate });
+
+        // Delete old daily PnL
+        var cutoffDateStr = DateTime.UtcNow.AddDays(-keepDays).Date.ToString("yyyy-MM-dd");
+        await _db.ExecuteAsync(
+            "DELETE FROM DailyPnL WHERE Date < @CutoffDate",
+            new { CutoffDate = cutoffDateStr });
+
+        // Vacuum to reclaim space
+        await _db.ExecuteAsync("VACUUM");
+
+        _logger.LogInfo("TradeHistory", $"Cleanup completed. Deleted {deletedTrades} trades older than {keepDays} days. Backup: {backupPath}");
+
+        return deletedTrades;
+    }
+
+    public async Task<long> GetDatabaseSizeAsync()
+    {
+        try
+        {
+            var fileInfo = new FileInfo(_db.DatabasePath);
+            return fileInfo.Exists ? fileInfo.Length : 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
 }
 
 // Database record classes
+internal class SymbolRecord
+{
+    public string Symbol { get; set; } = "";
+}
+
+internal class ExchangeRecord
+{
+    public string Exchange { get; set; } = "";
+}
+
 internal class TradeDbRecord
 {
     public string Id { get; set; } = "";

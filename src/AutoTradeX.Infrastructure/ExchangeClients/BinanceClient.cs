@@ -134,8 +134,7 @@ public class BinanceClient : BaseExchangeClient
         {
             if (!HasCredentials())
             {
-                _logger.LogWarning(ExchangeName, "API credentials not configured. Using demo balance.");
-                return GetDemoBalance();
+                throw new InvalidOperationException($"{ExchangeName}: API credentials not configured. Please configure API keys in Settings.");
             }
 
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -455,21 +454,6 @@ public class BinanceClient : BaseExchangeClient
             ? decimal.Parse(response.AvgPrice)
             : !string.IsNullOrEmpty(response.Price) ? decimal.Parse(response.Price) : 0;
         return qty * price * 0.001m;
-    }
-
-    private AccountBalance GetDemoBalance()
-    {
-        return new AccountBalance
-        {
-            Exchange = ExchangeName,
-            Timestamp = DateTime.UtcNow,
-            Assets = new Dictionary<string, AssetBalance>
-            {
-                ["USDT"] = new AssetBalance { Asset = "USDT", Total = 5000m, Available = 5000m },
-                ["BTC"] = new AssetBalance { Asset = "BTC", Total = 0.1m, Available = 0.1m },
-                ["ETH"] = new AssetBalance { Asset = "ETH", Total = 2m, Available = 2m }
-            }
-        };
     }
 
     #endregion

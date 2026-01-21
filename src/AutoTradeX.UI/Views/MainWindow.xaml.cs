@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private System.Windows.Threading.DispatcherTimer? _priceUpdateTimer;
     private System.Windows.Threading.DispatcherTimer? _aiScannerTimer;
     private System.Windows.Threading.DispatcherTimer? _statusBarTimer;
+    private readonly Random _hyperRandom = new();  // Used for splash screen animation
     private bool _isBotRunning = false;
     private bool _isBotPaused = false;
     private CancellationTokenSource? _botCancellationTokenSource;
@@ -155,96 +156,28 @@ public partial class MainWindow : Window
             // Update recent trades display
             UpdateRecentTradesDisplay();
 
-            // Show trade completion animation
-            ShowTradeCompletedAnimation(e.Result.NetPnL >= 0);
+            // Log trade completion
+            _logger?.LogInfo("UI", $"Trade completed - Profit: {e.Result.NetPnL >= 0}");
         });
     }
 
     private void BalancePool_BalanceUpdated(object? sender, BalanceUpdateEventArgs e)
     {
+        // Note: Balance UI updates are now handled by DashboardPage
+        // This handler is kept for status bar P&L update only
         Dispatcher.Invoke(() =>
         {
-            // Update Real P&L display with animation
-            if (RealPnLDisplay != null)
-            {
-                var pnlText = e.PnL.TotalPnLUSDT >= 0
-                    ? $"+${e.PnL.TotalPnLUSDT:F2}"
-                    : $"-${Math.Abs(e.PnL.TotalPnLUSDT):F2}";
-                RealPnLDisplay.Text = pnlText;
-                var pnlColor = e.PnL.TotalPnLUSDT >= 0 ? "#10B981" : "#EF4444";
-                RealPnLDisplay.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(pnlColor));
-            }
-
-            // Update total balance
-            if (TotalBalanceDisplay != null)
-                TotalBalanceDisplay.Text = $"Total: ${e.Snapshot.TotalValueUSDT:F2}";
-
-            // Update exchange balance displays
-            if (e.Snapshot.CombinedBalances != null)
-            {
-                if (e.Snapshot.CombinedBalances.TryGetValue("USDT", out var usdtBalance))
-                {
-                    if (ExchangeABalance != null)
-                        ExchangeABalance.Text = $"{usdtBalance.ExchangeA_Total:N2}";
-                    if (ExchangeBBalance != null)
-                        ExchangeBBalance.Text = $"{usdtBalance.ExchangeB_Total:N2}";
-                }
-            }
-
-            // Update drawdown with color coding
-            if (DrawdownDisplay != null && _balancePool != null)
-            {
-                var drawdown = _balancePool.CurrentDrawdown;
-                DrawdownDisplay.Text = $"-{drawdown:F2}%";
-                var drawdownColor = drawdown > 3 ? "#EF4444" : drawdown > 1 ? "#F59E0B" : "#10B981";
-                DrawdownDisplay.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(drawdownColor));
-
-                // Update emergency dot color
-                if (EmergencyDot != null)
-                    EmergencyDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString(drawdownColor));
-            }
+            _todayPnL = e.PnL.TotalPnLUSDT;
         });
     }
 
     private void BalancePool_EmergencyTriggered(object? sender, EmergencyEventArgs e)
     {
+        // Note: Emergency UI updates are now handled by DashboardPage
+        // This handler is kept for critical emergency actions only
         Dispatcher.Invoke(() =>
         {
             var check = e.Check;
-
-            // Update emergency status
-            var statusText = check.Reason switch
-            {
-                EmergencyTriggerReason.MaxDrawdownExceeded => "CRITICAL",
-                EmergencyTriggerReason.MaxLossExceeded => "CRITICAL",
-                EmergencyTriggerReason.ConsecutiveLosses => "Warning",
-                EmergencyTriggerReason.RapidLossRate => "Warning",
-                EmergencyTriggerReason.CriticalImbalance => "Warning",
-                _ => "Normal"
-            };
-
-            if (EmergencyStatusDisplay != null)
-            {
-                EmergencyStatusDisplay.Text = statusText;
-                var statusColor = statusText switch
-                {
-                    "CRITICAL" => "#EF4444",
-                    "Warning" => "#F59E0B",
-                    _ => "#10B981"
-                };
-                EmergencyStatusDisplay.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(statusColor));
-            }
-
-            if (EmergencyDot != null)
-            {
-                var dotColor = statusText switch
-                {
-                    "CRITICAL" => "#EF4444",
-                    "Warning" => "#F59E0B",
-                    _ => "#10B981"
-                };
-                EmergencyDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString(dotColor));
-            }
 
             // Auto-pause on critical
             if (check.RecommendedAction == EmergencyAction.StopTrading ||
@@ -252,220 +185,58 @@ public partial class MainWindow : Window
             {
                 _arbEngine?.Pause();
                 _logger?.LogCritical("Emergency", $"Trading paused: {check.Message}");
-                MessageBox.Show($"Trading paused due to:\n{check.Message}", "Emergency Protection",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         });
     }
 
     private void UpdateTradeStatsUI(TradeResult result)
     {
-        // Update today P&L
-        if (TodayPnLDisplay != null)
-        {
-            TodayPnLDisplay.Text = _todayPnL >= 0 ? $"+${_todayPnL:F2}" : $"-${Math.Abs(_todayPnL):F2}";
-            TodayPnLDisplay.Foreground = new SolidColorBrush(
-                (Color)ColorConverter.ConvertFromString(_todayPnL >= 0 ? "#10B981" : "#EF4444"));
-        }
-
-        // Update trade count
-        if (TradeCountDisplay != null)
-            TradeCountDisplay.Text = $"{_todayTradeCount} trades";
-
-        // Update win rate
-        if (WinRateDisplay != null && _todayTradeCount > 0)
-        {
-            var winRate = (decimal)_successfulTrades / _todayTradeCount * 100;
-            WinRateDisplay.Text = $"{winRate:F1}%";
-        }
-
-        // Update win/loss display
-        if (WinLossDisplay != null)
-            WinLossDisplay.Text = $"{_successfulTrades}W / {_todayTradeCount - _successfulTrades}L";
-
-        // Update execution speed
-        if (ExecutionSpeedDisplay != null && result.Metadata.TryGetValue("TotalExecutionMs", out var execMs))
-        {
-            ExecutionSpeedDisplay.Text = $"{execMs}ms";
-            // Color based on speed (green < 500ms, yellow < 1000ms, red >= 1000ms)
-            var speedColor = execMs is long ms
-                ? (ms < 500 ? "#10B981" : ms < 1000 ? "#F59E0B" : "#EF4444")
-                : "#00D4FF";
-            ExecutionSpeedDisplay.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(speedColor));
-        }
+        // Note: Trade stats UI updates are now handled by DashboardPage
+        // This method is kept for internal state tracking only
+        _logger?.LogInfo("Trade", $"Trade stats updated - P&L: ${_todayPnL:F2}, Trades: {_todayTradeCount}");
     }
 
     private void ArbEngine_OpportunityFound(object? sender, OpportunityEventArgs e)
     {
+        // Note: Opportunity UI updates are now handled by DashboardPage
+        // This handler is kept for internal state tracking only
         Dispatcher.Invoke(() =>
         {
-            // Update spread display
-            if (SpreadPercent != null)
-                SpreadPercent.Text = $"{e.Opportunity.NetSpreadPercentage:F2}%";
-            if (SpreadAmount != null)
-                SpreadAmount.Text = $"${e.Opportunity.ExpectedNetProfitQuote:F2}";
+            // Track spread history internally
+            _spreadHistory.Add(e.Opportunity.NetSpreadPercentage);
+            if (_spreadHistory.Count > MaxSpreadHistory)
+                _spreadHistory.RemoveAt(0);
 
-            // Update spread history chart
-            UpdateSpreadHistoryChart(e.Opportunity.NetSpreadPercentage);
-
-            // Show opportunity animation
-            if (e.Opportunity.ShouldTrade)
-            {
-                ShowTradingAnimation();
-                UpdateTradingStatus("TRADING", "#10B981", true);
-            }
-            else if (e.Opportunity.HasPositiveSpread)
-            {
-                UpdateTradingStatus("OPPORTUNITY", "#F59E0B", false);
-            }
-            else
-            {
-                UpdateTradingStatus("SCANNING", "#00D4FF", false);
-            }
+            _logger?.LogInfo("Opportunity", $"Spread: {e.Opportunity.NetSpreadPercentage:F2}%");
         });
-    }
-
-    private void UpdateSpreadHistoryChart(decimal spreadPercent)
-    {
-        // Add to history
-        _spreadHistory.Add(spreadPercent);
-        if (_spreadHistory.Count > MaxSpreadHistory)
-            _spreadHistory.RemoveAt(0);
-
-        if (_spreadHistory.Count < 2) return;
-
-        // Calculate stats
-        var min = _spreadHistory.Min();
-        var max = _spreadHistory.Max();
-        var avg = _spreadHistory.Average();
-
-        // Update stat labels
-        if (SpreadHistoryMin != null)
-            SpreadHistoryMin.Text = $"Min: {min:F2}%";
-        if (SpreadHistoryMax != null)
-            SpreadHistoryMax.Text = $"Max: {max:F2}%";
-        if (SpreadHistoryAvg != null)
-            SpreadHistoryAvg.Text = $"Avg: {avg:F2}%";
-
-        // Update chart polyline
-        if (SpreadChartLine != null && SpreadChartCanvas != null)
-        {
-            var canvasWidth = SpreadChartCanvas.ActualWidth > 0 ? SpreadChartCanvas.ActualWidth : 200;
-            var canvasHeight = SpreadChartCanvas.ActualHeight > 0 ? SpreadChartCanvas.ActualHeight : 40;
-
-            var points = new PointCollection();
-            var range = max - min;
-            if (range == 0) range = 1; // Prevent division by zero
-
-            for (int i = 0; i < _spreadHistory.Count; i++)
-            {
-                var x = (double)i / (MaxSpreadHistory - 1) * canvasWidth;
-                var normalizedValue = (double)((_spreadHistory[i] - min) / range);
-                var y = canvasHeight - (normalizedValue * canvasHeight * 0.8 + canvasHeight * 0.1);
-                points.Add(new Point(x, y));
-            }
-
-            SpreadChartLine.Points = points;
-
-            // Color based on trend
-            if (_spreadHistory.Count > 1)
-            {
-                var trend = _spreadHistory[^1] - _spreadHistory[^2];
-                var color = trend >= 0 ? "#10B981" : "#EF4444";
-                SpreadChartLine.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
-            }
-        }
     }
 
     private void ArbEngine_PriceUpdated(object? sender, PriceUpdateEventArgs e)
     {
+        // Note: Price UI updates are now handled by DashboardPage
+        // This handler is kept for internal state tracking only
         Dispatcher.Invoke(() =>
         {
             _scanCount++;
             var isBinance = e.Exchange.Contains("A") || e.Exchange.ToLower().Contains("binance");
 
-            // Update price displays based on exchange
             if (isBinance)
             {
-                if (BinancePrice != null)
-                {
-                    var newPrice = e.Ticker.LastPrice;
-                    BinancePrice.Text = $"${newPrice:N2}";
-
-                    // Flash animation on price change
-                    if (_lastBinancePrice != 0 && newPrice != _lastBinancePrice)
-                    {
-                        var isUp = newPrice > _lastBinancePrice;
-                        ShowPriceFlash(BinancePriceFlash, isUp);
-                    }
-                    _lastBinancePrice = newPrice;
-                }
-
-                // Update bid/ask
-                if (BinanceBid != null)
-                    BinanceBid.Text = $"${e.Ticker.BidPrice:N2}";
-                if (BinanceAsk != null)
-                    BinanceAsk.Text = $"${e.Ticker.AskPrice:N2}";
+                _lastBinancePrice = e.Ticker.LastPrice;
             }
             else
             {
-                if (KuCoinPrice != null)
-                {
-                    var newPrice = e.Ticker.LastPrice;
-                    KuCoinPrice.Text = $"${newPrice:N2}";
-
-                    // Flash animation on price change
-                    if (_lastKuCoinPrice != 0 && newPrice != _lastKuCoinPrice)
-                    {
-                        var isUp = newPrice > _lastKuCoinPrice;
-                        ShowPriceFlash(KuCoinPriceFlash, isUp);
-                    }
-                    _lastKuCoinPrice = newPrice;
-                }
-
-                // Update bid/ask
-                if (KuCoinBid != null)
-                    KuCoinBid.Text = $"${e.Ticker.BidPrice:N2}";
-                if (KuCoinAsk != null)
-                    KuCoinAsk.Text = $"${e.Ticker.AskPrice:N2}";
+                _lastKuCoinPrice = e.Ticker.LastPrice;
             }
-
-            // Update scan stats
-            if (ScanCountText != null)
-                ScanCountText.Text = $"Scans: {_scanCount}";
-            if (LastScanTime != null)
-                LastScanTime.Text = DateTime.Now.ToString("HH:mm:ss");
-
-            // Update last check time
-            if (LastCheckTime != null)
-                LastCheckTime.Text = $"Scanning {e.Symbol} • Last check: {DateTime.Now:HH:mm:ss}";
         });
-    }
-
-    private void ShowPriceFlash(Border? flashBorder, bool isUp)
-    {
-        if (flashBorder == null) return;
-
-        var flashColor = isUp ? Color.FromArgb(0x40, 0x10, 0xB9, 0x81) : Color.FromArgb(0x40, 0xEF, 0x44, 0x44);
-
-        var animation = new ColorAnimation
-        {
-            From = flashColor,
-            To = Colors.Transparent,
-            Duration = TimeSpan.FromMilliseconds(500),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-
-        flashBorder.Background = new SolidColorBrush(flashColor);
-        ((SolidColorBrush)flashBorder.Background).BeginAnimation(SolidColorBrush.ColorProperty, animation);
     }
 
     private void ArbEngine_ErrorOccurred(object? sender, EngineErrorEventArgs e)
     {
+        // Note: Error UI updates are now handled by DashboardPage
         Dispatcher.Invoke(() =>
         {
             _logger?.LogError("Engine", $"Error: {e.Message}");
-            UpdateTradingStatus("ERROR", "#EF4444", false);
         });
     }
 
@@ -475,528 +246,26 @@ public partial class MainWindow : Window
 
     private void UpdateBotStatusUI(EngineStatus status, string? message)
     {
-        // Update status text and colors
-        var (statusText, statusColor, isActive) = status switch
+        // Note: Bot status UI updates are now handled by DashboardPage
+        // This method updates the status bar only
+        var (statusText, statusColor) = status switch
         {
-            EngineStatus.Idle => ("Bot is Idle", "#808080", false),
-            EngineStatus.Starting => ("Bot is Starting...", "#F59E0B", true),
-            EngineStatus.Running => ("Bot is Running", "#10B981", true),
-            EngineStatus.Paused => ("Bot is Paused", "#F59E0B", false),
-            EngineStatus.Stopping => ("Bot is Stopping...", "#F59E0B", false),
-            EngineStatus.Stopped => ("Bot is Stopped", "#808080", false),
-            EngineStatus.Error => ("Bot Error", "#EF4444", false),
-            _ => ("Unknown Status", "#808080", false)
+            EngineStatus.Running => ("RUNNING", "#10B981"),
+            EngineStatus.Paused => ("PAUSED", "#F59E0B"),
+            EngineStatus.Error => ("ERROR", "#EF4444"),
+            _ => ("IDLE", "#808080")
         };
 
-        BotStatusText.Text = statusText;
-
-        // Update status indicator color
-        var color = (Color)ColorConverter.ConvertFromString(statusColor);
-        StatusGlowBrush.Color = color;
-        StatusGlowOuterBrush.Color = color;
-
-        // Update button visibility
-        if (status == EngineStatus.Running || status == EngineStatus.Paused)
+        // Update status bar
+        if (StatusBarBotStatus != null)
         {
-            StartButton.Visibility = Visibility.Collapsed;
-            PauseButton.Visibility = Visibility.Visible;
-            StopButton.Visibility = Visibility.Visible;
-            PauseButton.Content = status == EngineStatus.Paused ? "▶ Resume" : "⏸ Pause";
+            StatusBarBotStatus.Text = statusText;
+            StatusBarBotStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(statusColor));
         }
-        else
-        {
-            StartButton.Visibility = Visibility.Visible;
-            PauseButton.Visibility = Visibility.Collapsed;
-            StopButton.Visibility = Visibility.Collapsed;
-        }
-
-        // Start/stop status pulse animation
-        if (isActive)
-        {
-            StartStatusPulseAnimation();
-        }
-        else
-        {
-            StopStatusPulseAnimation();
-        }
-
-        // Update trading status indicator
-        if (status == EngineStatus.Running)
-        {
-            UpdateTradingStatus("SCANNING", "#00D4FF", true);
-            ShowDataFlowAnimation();
-        }
-        else if (status == EngineStatus.Paused)
-        {
-            UpdateTradingStatus("PAUSED", "#F59E0B", false);
-            HideAnimations();
-        }
-        else
-        {
-            UpdateTradingStatus("IDLE", "#808080", false);
-            HideAnimations();
-        }
+        if (StatusBarBotDot != null)
+            StatusBarBotDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString(statusColor));
 
         _logger?.LogInfo("UI", $"Bot status: {status} - {message}");
-    }
-
-    private void UpdateTradingStatus(string status, string colorHex, bool showPulse)
-    {
-        TradingStatusLabel.Text = status;
-
-        var color = (Color)ColorConverter.ConvertFromString(colorHex);
-        TradingStatusLabel.Foreground = new SolidColorBrush(color);
-        TradingStatusBorder.Background = new SolidColorBrush(Color.FromArgb(0x20, color.R, color.G, color.B));
-
-        // Update status dot color
-        if (StatusDot != null)
-            StatusDot.Fill = new SolidColorBrush(color);
-
-        // Update glow effect on spread indicator
-        SpreadGlowEffect.Color = color;
-
-        // Update Live indicator based on status
-        if (LiveDot != null && LiveText != null)
-        {
-            if (status == "TRADING" || status == "SCANNING" || status == "OPPORTUNITY")
-            {
-                LiveDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"));
-                LiveText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"));
-                LiveText.Text = "LIVE";
-            }
-            else if (status == "PAUSED")
-            {
-                LiveDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B"));
-                LiveText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B"));
-                LiveText.Text = "PAUSED";
-            }
-            else
-            {
-                LiveDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#808080"));
-                LiveText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#808080"));
-                LiveText.Text = "IDLE";
-            }
-        }
-
-        if (showPulse && status == "TRADING")
-        {
-            StartTradingPulseAnimation();
-        }
-    }
-
-    private void ShowTradeCompletedAnimation(bool isProfit)
-    {
-        // Flash the spread border based on profit/loss
-        var flashColor = isProfit ? Color.FromRgb(0x10, 0xB9, 0x81) : Color.FromRgb(0xEF, 0x44, 0x44);
-        var originalColor = (Color)ColorConverter.ConvertFromString("#7C3AED");
-
-        // Glow color animation
-        var colorAnimation = new ColorAnimation
-        {
-            From = flashColor,
-            To = originalColor,
-            Duration = TimeSpan.FromSeconds(0.5),
-            AutoReverse = true,
-            RepeatBehavior = new RepeatBehavior(2),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
-        };
-        TradingGlow.BeginAnimation(SolidColorBrush.ColorProperty, colorAnimation);
-
-        // Flash glow effect
-        var glowAnimation = new ColorAnimation
-        {
-            From = flashColor,
-            To = originalColor,
-            Duration = TimeSpan.FromSeconds(0.3),
-            AutoReverse = true,
-            RepeatBehavior = new RepeatBehavior(3)
-        };
-        SpreadGlowEffect.BeginAnimation(DropShadowEffect.ColorProperty, glowAnimation);
-
-        // Scale animation for spread border
-        var scaleUp = new DoubleAnimation
-        {
-            From = 1,
-            To = 1.05,
-            Duration = TimeSpan.FromSeconds(0.15),
-            AutoReverse = true,
-            RepeatBehavior = new RepeatBehavior(2)
-        };
-
-        if (SpreadBorder.RenderTransform is ScaleTransform st)
-        {
-            st.BeginAnimation(ScaleTransform.ScaleXProperty, scaleUp);
-            st.BeginAnimation(ScaleTransform.ScaleYProperty, scaleUp);
-        }
-        else
-        {
-            var transform = new ScaleTransform(1, 1);
-            SpreadBorder.RenderTransform = transform;
-            SpreadBorder.RenderTransformOrigin = new Point(0.5, 0.5);
-            transform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleUp);
-            transform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleUp);
-        }
-
-        // Flash exchange borders
-        var exchangeFlashColor = isProfit
-            ? Color.FromArgb(0x40, 0x10, 0xB9, 0x81)
-            : Color.FromArgb(0x40, 0xEF, 0x44, 0x44);
-
-        FlashExchangeBorder(ExchangeABorder, exchangeFlashColor);
-        FlashExchangeBorder(ExchangeBBorder, exchangeFlashColor);
-    }
-
-    private void FlashExchangeBorder(Border border, Color flashColor)
-    {
-        if (border == null) return;
-
-        var originalBrush = border.Background?.Clone() as Brush ?? new SolidColorBrush(Colors.Transparent);
-
-        var flashBrush = new SolidColorBrush(flashColor);
-        border.Background = flashBrush;
-
-        var animation = new ColorAnimation
-        {
-            From = flashColor,
-            To = Colors.Transparent,
-            Duration = TimeSpan.FromMilliseconds(500),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-
-        animation.Completed += (s, e) =>
-        {
-            // Restore original gradient
-            if (border.Name == "ExchangeABorder")
-            {
-                border.Background = new LinearGradientBrush
-                {
-                    StartPoint = new Point(0, 0),
-                    EndPoint = new Point(1, 1),
-                    GradientStops = new GradientStopCollection
-                    {
-                        new GradientStop(Color.FromArgb(0x15, 0xF3, 0xBA, 0x2F), 0),
-                        new GradientStop(Color.FromArgb(0x08, 0xF3, 0xBA, 0x2F), 1)
-                    }
-                };
-            }
-            else
-            {
-                border.Background = new LinearGradientBrush
-                {
-                    StartPoint = new Point(0, 0),
-                    EndPoint = new Point(1, 1),
-                    GradientStops = new GradientStopCollection
-                    {
-                        new GradientStop(Color.FromArgb(0x15, 0x23, 0xAF, 0x91), 0),
-                        new GradientStop(Color.FromArgb(0x08, 0x23, 0xAF, 0x91), 1)
-                    }
-                };
-            }
-        };
-
-        flashBrush.BeginAnimation(SolidColorBrush.ColorProperty, animation);
-    }
-
-    #endregion
-
-    #region Animation Control
-
-    private void StartStatusPulseAnimation()
-    {
-        try
-        {
-            var scaleAnimation = new DoubleAnimation
-            {
-                From = 1,
-                To = 1.5,
-                Duration = TimeSpan.FromSeconds(0.8),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            };
-
-            var opacityAnimation = new DoubleAnimation
-            {
-                From = 1,
-                To = 0.3,
-                Duration = TimeSpan.FromSeconds(0.8),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            };
-
-            StatusGlowOuter.BeginAnimation(WidthProperty, new DoubleAnimation
-            {
-                From = 14,
-                To = 28,
-                Duration = TimeSpan.FromSeconds(1),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            });
-
-            StatusGlowOuter.BeginAnimation(HeightProperty, new DoubleAnimation
-            {
-                From = 14,
-                To = 28,
-                Duration = TimeSpan.FromSeconds(1),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            });
-
-            StatusGlowOuter.BeginAnimation(OpacityProperty, new DoubleAnimation
-            {
-                From = 0.6,
-                To = 0,
-                Duration = TimeSpan.FromSeconds(1),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            });
-        }
-        catch { }
-    }
-
-    private void StopStatusPulseAnimation()
-    {
-        try
-        {
-            StatusGlowOuter.BeginAnimation(WidthProperty, null);
-            StatusGlowOuter.BeginAnimation(HeightProperty, null);
-            StatusGlowOuter.BeginAnimation(OpacityProperty, null);
-            StatusGlowOuter.Width = 14;
-            StatusGlowOuter.Height = 14;
-            StatusGlowOuter.Opacity = 1;
-        }
-        catch { }
-    }
-
-    private void ShowDataFlowAnimation()
-    {
-        ConnectionLines.Visibility = Visibility.Visible;
-
-        // Animate the left-to-center dots (Binance -> Center)
-        AnimateDataFlowDotLeftToCenter(DataFlowDot1, 0, "#F3BA2F");
-        AnimateDataFlowDotLeftToCenter(DataFlowDot2, 0.5, "#00D4FF");
-
-        // Animate the center-to-right dots (Center -> KuCoin)
-        AnimateDataFlowDotCenterToRight(DataFlowDot3, 0.3, "#23AF91");
-        AnimateDataFlowDotCenterToRight(DataFlowDot4, 0.8, "#7C3AED");
-    }
-
-    private void AnimateDataFlowDotLeftToCenter(Ellipse dot, double delay, string colorHex)
-    {
-        var animation = new DoubleAnimation
-        {
-            From = -10,
-            To = 80,
-            Duration = TimeSpan.FromSeconds(1.5),
-            BeginTime = TimeSpan.FromSeconds(delay),
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
-        };
-
-        var opacityAnimation = new DoubleAnimation
-        {
-            From = 0,
-            To = 1,
-            Duration = TimeSpan.FromSeconds(0.3),
-            BeginTime = TimeSpan.FromSeconds(delay),
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever
-        };
-
-        dot.BeginAnimation(Canvas.LeftProperty, animation);
-        dot.BeginAnimation(OpacityProperty, opacityAnimation);
-    }
-
-    private void AnimateDataFlowDotCenterToRight(Ellipse dot, double delay, string colorHex)
-    {
-        var animation = new DoubleAnimation
-        {
-            From = 90,
-            To = 180,
-            Duration = TimeSpan.FromSeconds(1.5),
-            BeginTime = TimeSpan.FromSeconds(delay),
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
-        };
-
-        var opacityAnimation = new DoubleAnimation
-        {
-            From = 0,
-            To = 1,
-            Duration = TimeSpan.FromSeconds(0.3),
-            BeginTime = TimeSpan.FromSeconds(delay),
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever
-        };
-
-        dot.BeginAnimation(Canvas.LeftProperty, animation);
-        dot.BeginAnimation(OpacityProperty, opacityAnimation);
-    }
-
-    private void ShowTradingAnimation()
-    {
-        TradingArrowCanvas.Visibility = Visibility.Visible;
-        StartTradingPulseAnimation();
-
-        // Animate the arrow
-        var arrowAnimation = new DoubleAnimation
-        {
-            From = 0,
-            To = 120,
-            Duration = TimeSpan.FromSeconds(1.5),
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever
-        };
-
-        TradingArrow.BeginAnimation(Canvas.LeftProperty, arrowAnimation);
-    }
-
-    private void StartTradingPulseAnimation()
-    {
-        // Animate pulse ring 1 (innermost, cyan)
-        var opacityAnimation1 = new DoubleAnimation
-        {
-            From = 0.8,
-            To = 0,
-            Duration = TimeSpan.FromSeconds(1.5),
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-
-        var scaleAnimation1 = new DoubleAnimation
-        {
-            From = 80,
-            To = 140,
-            Duration = TimeSpan.FromSeconds(1.5),
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-
-        TradingPulse1.BeginAnimation(OpacityProperty, opacityAnimation1);
-        TradingPulse1.BeginAnimation(WidthProperty, scaleAnimation1);
-        TradingPulse1.BeginAnimation(HeightProperty, scaleAnimation1);
-
-        // Animate pulse ring 2 (middle, purple)
-        var opacityAnimation2 = new DoubleAnimation
-        {
-            From = 0.6,
-            To = 0,
-            Duration = TimeSpan.FromSeconds(1.5),
-            BeginTime = TimeSpan.FromSeconds(0.3),
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-
-        var scaleAnimation2 = new DoubleAnimation
-        {
-            From = 100,
-            To = 160,
-            Duration = TimeSpan.FromSeconds(1.5),
-            BeginTime = TimeSpan.FromSeconds(0.3),
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-
-        TradingPulse2.BeginAnimation(OpacityProperty, opacityAnimation2);
-        TradingPulse2.BeginAnimation(WidthProperty, scaleAnimation2);
-        TradingPulse2.BeginAnimation(HeightProperty, scaleAnimation2);
-
-        // Animate pulse ring 3 (outermost, green)
-        var opacityAnimation3 = new DoubleAnimation
-        {
-            From = 0.4,
-            To = 0,
-            Duration = TimeSpan.FromSeconds(1.5),
-            BeginTime = TimeSpan.FromSeconds(0.6),
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-
-        var scaleAnimation3 = new DoubleAnimation
-        {
-            From = 120,
-            To = 180,
-            Duration = TimeSpan.FromSeconds(1.5),
-            BeginTime = TimeSpan.FromSeconds(0.6),
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-
-        TradingPulse3.BeginAnimation(OpacityProperty, opacityAnimation3);
-        TradingPulse3.BeginAnimation(WidthProperty, scaleAnimation3);
-        TradingPulse3.BeginAnimation(HeightProperty, scaleAnimation3);
-
-        // Animate the glow color (cycles through colors)
-        var glowAnimation = new ColorAnimation
-        {
-            From = (Color)ColorConverter.ConvertFromString("#00D4FF"),
-            To = (Color)ColorConverter.ConvertFromString("#10B981"),
-            Duration = TimeSpan.FromSeconds(1),
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever
-        };
-
-        TradingGlow.BeginAnimation(SolidColorBrush.ColorProperty, glowAnimation);
-
-        // Animate status dot
-        var statusDotAnimation = new DoubleAnimation
-        {
-            From = 0.3,
-            To = 1,
-            Duration = TimeSpan.FromSeconds(0.5),
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever
-        };
-        StatusDot.BeginAnimation(OpacityProperty, statusDotAnimation);
-    }
-
-    private void HideAnimations()
-    {
-        try
-        {
-            ConnectionLines.Visibility = Visibility.Collapsed;
-            TradingArrowCanvas.Visibility = Visibility.Collapsed;
-
-            // Stop data flow dot animations
-            DataFlowDot1.BeginAnimation(Canvas.LeftProperty, null);
-            DataFlowDot1.BeginAnimation(OpacityProperty, null);
-            DataFlowDot2.BeginAnimation(Canvas.LeftProperty, null);
-            DataFlowDot2.BeginAnimation(OpacityProperty, null);
-            DataFlowDot3.BeginAnimation(Canvas.LeftProperty, null);
-            DataFlowDot3.BeginAnimation(OpacityProperty, null);
-            DataFlowDot4.BeginAnimation(Canvas.LeftProperty, null);
-            DataFlowDot4.BeginAnimation(OpacityProperty, null);
-
-            TradingArrow.BeginAnimation(Canvas.LeftProperty, null);
-
-            // Stop pulse animations
-            TradingPulse1.BeginAnimation(OpacityProperty, null);
-            TradingPulse1.BeginAnimation(WidthProperty, null);
-            TradingPulse1.BeginAnimation(HeightProperty, null);
-
-            TradingPulse2.BeginAnimation(OpacityProperty, null);
-            TradingPulse2.BeginAnimation(WidthProperty, null);
-            TradingPulse2.BeginAnimation(HeightProperty, null);
-
-            TradingPulse3.BeginAnimation(OpacityProperty, null);
-            TradingPulse3.BeginAnimation(WidthProperty, null);
-            TradingPulse3.BeginAnimation(HeightProperty, null);
-
-            TradingGlow.BeginAnimation(SolidColorBrush.ColorProperty, null);
-            StatusDot.BeginAnimation(OpacityProperty, null);
-
-            // Reset pulse values
-            TradingPulse1.Opacity = 0;
-            TradingPulse2.Opacity = 0;
-            TradingPulse3.Opacity = 0;
-            TradingPulse1.Width = TradingPulse1.Height = 130;
-            TradingPulse2.Width = TradingPulse2.Height = 150;
-            TradingPulse3.Width = TradingPulse3.Height = 170;
-
-            // Reset status dot
-            StatusDot.Opacity = 1;
-            StatusDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#808080"));
-        }
-        catch { }
     }
 
     #endregion
@@ -1104,9 +373,6 @@ public partial class MainWindow : Window
 
             // Start AI Scanner
             StartAIScanner();
-
-            // Start Hyperdrive Animation
-            StartHyperdriveAnimation();
 
             // Start price updates after a delay to let UI load first
             _priceUpdateTimer = new System.Windows.Threading.DispatcherTimer();
@@ -1258,22 +524,23 @@ public partial class MainWindow : Window
 
     private void AnimateSplashStar(Ellipse star)
     {
+        // Updated for 600x500 splash canvas (center at 300, 250)
         var targets = new (double x, double y)[]
         {
-            (0, 0), (400, 0), (0, 300), (400, 300),
-            (200, 0), (200, 300), (0, 150), (400, 150)
+            (0, 0), (600, 0), (0, 500), (600, 500),
+            (300, 0), (300, 500), (0, 250), (600, 250)
         };
 
         var target = targets[_hyperRandom.Next(targets.Length)];
         var duration = TimeSpan.FromMilliseconds(400 + _hyperRandom.Next(300));
 
-        star.SetValue(Canvas.LeftProperty, 200.0);
-        star.SetValue(Canvas.TopProperty, 150.0);
+        star.SetValue(Canvas.LeftProperty, 300.0);
+        star.SetValue(Canvas.TopProperty, 250.0);
 
         var storyboard = new Storyboard();
 
-        var moveX = new DoubleAnimation(200, target.x, duration);
-        var moveY = new DoubleAnimation(150, target.y, duration);
+        var moveX = new DoubleAnimation(300, target.x, duration);
+        var moveY = new DoubleAnimation(250, target.y, duration);
         moveX.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn };
         moveY.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn };
 
@@ -1303,288 +570,28 @@ public partial class MainWindow : Window
     {
         if (SplashContent == null || SplashOverlay == null || LoadingPanel == null) return;
 
-        // Calculate target position (top-left corner)
-        var windowWidth = ActualWidth;
-        var windowHeight = ActualHeight;
-
-        // Target: scale to ~0.4 and move to top-left
-        var targetScale = 0.35;
-        var targetX = -(windowWidth / 2) + 180;  // Move to left
-        var targetY = -(windowHeight / 2) + 120; // Move to top
-
         // Fade out loading panel first
         var fadeOutLoading = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(300));
         LoadingPanel.BeginAnimation(OpacityProperty, fadeOutLoading);
 
         await Task.Delay(300);
 
-        // Animate scale and position
-        var duration = TimeSpan.FromMilliseconds(800);
+        // Simple fade out animation (no shrink/move)
+        var duration = TimeSpan.FromMilliseconds(1000);
         var easing = new CubicEase { EasingMode = EasingMode.EaseInOut };
 
-        var scaleXAnim = new DoubleAnimation(1, targetScale, duration) { EasingFunction = easing };
-        var scaleYAnim = new DoubleAnimation(1, targetScale, duration) { EasingFunction = easing };
-        var translateXAnim = new DoubleAnimation(0, targetX, duration) { EasingFunction = easing };
-        var translateYAnim = new DoubleAnimation(0, targetY, duration) { EasingFunction = easing };
+        // Fade out the splash content smoothly
+        var fadeOutContent = new DoubleAnimation(1, 0, duration) { EasingFunction = easing };
+        SplashContent.BeginAnimation(OpacityProperty, fadeOutContent);
 
-        SplashScale?.BeginAnimation(ScaleTransform.ScaleXProperty, scaleXAnim);
-        SplashScale?.BeginAnimation(ScaleTransform.ScaleYProperty, scaleYAnim);
-        SplashTranslate?.BeginAnimation(TranslateTransform.XProperty, translateXAnim);
-        SplashTranslate?.BeginAnimation(TranslateTransform.YProperty, translateYAnim);
-
-        // Fade out splash overlay
+        // Fade out splash overlay at the same time
         var fadeOutOverlay = new DoubleAnimation(1, 0, duration) { EasingFunction = easing };
-        fadeOutOverlay.BeginTime = TimeSpan.FromMilliseconds(400);
         SplashOverlay.BeginAnimation(OpacityProperty, fadeOutOverlay);
 
-        await Task.Delay(1200);
+        await Task.Delay(1000);
 
         // Hide splash completely
         SplashOverlay.Visibility = Visibility.Collapsed;
-    }
-
-    #endregion
-
-    #region Hyperdrive Animation
-
-    private System.Windows.Threading.DispatcherTimer? _hyperdriveTimer;
-    private readonly Random _hyperRandom = new();
-
-    private void StartHyperdriveAnimation()
-    {
-        try
-        {
-            // Create continuous hyperdrive animation
-            _hyperdriveTimer = new System.Windows.Threading.DispatcherTimer();
-            _hyperdriveTimer.Interval = TimeSpan.FromMilliseconds(100);
-            _hyperdriveTimer.Tick += HyperdriveTimer_Tick;
-            _hyperdriveTimer.Start();
-
-            // Start initial streak animations
-            AnimateHyperdriveStreaks();
-            AnimateStarParticles();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Hyperdrive animation error: {ex.Message}");
-        }
-    }
-
-    private int _hyperdriveFrame = 0;
-
-    private void HyperdriveTimer_Tick(object? sender, EventArgs e)
-    {
-        _hyperdriveFrame++;
-
-        // Trigger new streak animation every few frames
-        if (_hyperdriveFrame % 8 == 0)
-        {
-            AnimateRandomStreak();
-        }
-
-        // Trigger particle animation every few frames
-        if (_hyperdriveFrame % 12 == 0)
-        {
-            AnimateRandomParticle();
-        }
-    }
-
-    private void AnimateHyperdriveStreaks()
-    {
-        // Animate all hyperdrive lines with staggered timing
-        var lines = new[] { HyperLine1, HyperLine2, HyperLine3, HyperLine4,
-                           HyperLine5, HyperLine6, HyperLine7, HyperLine8,
-                           HyperLine9, HyperLine10, HyperLine11, HyperLine12,
-                           HyperLine13, HyperLine14, HyperLine15, HyperLine16 };
-
-        for (int i = 0; i < lines.Length; i++)
-        {
-            if (lines[i] == null) continue;
-
-            var delay = TimeSpan.FromMilliseconds(i * 150 + _hyperRandom.Next(100));
-            var duration = TimeSpan.FromMilliseconds(800 + _hyperRandom.Next(400));
-
-            var storyboard = new Storyboard();
-
-            // Fade in and out
-            var fadeIn = new DoubleAnimation(0, 0.6 + _hyperRandom.NextDouble() * 0.4, TimeSpan.FromMilliseconds(150));
-            var fadeOut = new DoubleAnimation(0.6 + _hyperRandom.NextDouble() * 0.4, 0, duration);
-            fadeOut.BeginTime = TimeSpan.FromMilliseconds(150);
-
-            Storyboard.SetTarget(fadeIn, lines[i]);
-            Storyboard.SetTargetProperty(fadeIn, new PropertyPath(OpacityProperty));
-            Storyboard.SetTarget(fadeOut, lines[i]);
-            Storyboard.SetTargetProperty(fadeOut, new PropertyPath(OpacityProperty));
-
-            storyboard.Children.Add(fadeIn);
-            storyboard.Children.Add(fadeOut);
-            storyboard.BeginTime = delay;
-
-            storyboard.Completed += (s, e) =>
-            {
-                // Restart with random delay for continuous effect
-                var restartDelay = TimeSpan.FromMilliseconds(_hyperRandom.Next(500, 2000));
-                var restartTimer = new System.Windows.Threading.DispatcherTimer { Interval = restartDelay };
-                restartTimer.Tick += (s2, e2) =>
-                {
-                    restartTimer.Stop();
-                    AnimateHyperdriveStreaks();
-                };
-                restartTimer.Start();
-            };
-
-            storyboard.Begin();
-        }
-    }
-
-    private void AnimateRandomStreak()
-    {
-        var lines = new Line?[] { HyperLine1, HyperLine2, HyperLine3, HyperLine4,
-                                  HyperLine5, HyperLine6, HyperLine7, HyperLine8,
-                                  HyperLine9, HyperLine10, HyperLine11, HyperLine12,
-                                  HyperLine13, HyperLine14, HyperLine15, HyperLine16 };
-
-        var line = lines[_hyperRandom.Next(lines.Length)];
-        if (line == null) return;
-
-        var duration = TimeSpan.FromMilliseconds(400 + _hyperRandom.Next(300));
-
-        var fadeIn = new DoubleAnimation(0, 0.5 + _hyperRandom.NextDouble() * 0.5, TimeSpan.FromMilliseconds(100));
-        fadeIn.Completed += (s, e) =>
-        {
-            var fadeOut = new DoubleAnimation(line.Opacity, 0, duration);
-            line.BeginAnimation(OpacityProperty, fadeOut);
-        };
-
-        line.BeginAnimation(OpacityProperty, fadeIn);
-    }
-
-    private void AnimateStarParticles()
-    {
-        var particles = new[] { StarParticle1, StarParticle2, StarParticle3,
-                               StarParticle4, StarParticle5, StarParticle6 };
-
-        // Define target positions (edges of the canvas, radiating from center)
-        var targets = new (double x, double y)[]
-        {
-            (0, 0), (280, 0), (0, 160), (280, 160),
-            (140, 0), (140, 160), (0, 80), (280, 80)
-        };
-
-        for (int i = 0; i < particles.Length; i++)
-        {
-            if (particles[i] == null) continue;
-
-            var particle = particles[i];
-            var target = targets[_hyperRandom.Next(targets.Length)];
-            var delay = TimeSpan.FromMilliseconds(i * 200 + _hyperRandom.Next(300));
-            var duration = TimeSpan.FromMilliseconds(600 + _hyperRandom.Next(400));
-
-            var storyboard = new Storyboard();
-
-            // Move from center to edge
-            var moveX = new DoubleAnimation(140, target.x, duration);
-            var moveY = new DoubleAnimation(80, target.y, duration);
-            moveX.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn };
-            moveY.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn };
-
-            Storyboard.SetTarget(moveX, particle);
-            Storyboard.SetTargetProperty(moveX, new PropertyPath(Canvas.LeftProperty));
-            Storyboard.SetTarget(moveY, particle);
-            Storyboard.SetTargetProperty(moveY, new PropertyPath(Canvas.TopProperty));
-
-            // Fade in then out
-            var fadeIn = new DoubleAnimation(0, 0.8, TimeSpan.FromMilliseconds(100));
-            var fadeOut = new DoubleAnimation(0.8, 0, TimeSpan.FromMilliseconds(200));
-            fadeOut.BeginTime = duration - TimeSpan.FromMilliseconds(200);
-
-            Storyboard.SetTarget(fadeIn, particle);
-            Storyboard.SetTargetProperty(fadeIn, new PropertyPath(OpacityProperty));
-            Storyboard.SetTarget(fadeOut, particle);
-            Storyboard.SetTargetProperty(fadeOut, new PropertyPath(OpacityProperty));
-
-            storyboard.Children.Add(moveX);
-            storyboard.Children.Add(moveY);
-            storyboard.Children.Add(fadeIn);
-            storyboard.Children.Add(fadeOut);
-            storyboard.BeginTime = delay;
-
-            storyboard.Completed += (s, e) =>
-            {
-                // Reset position and restart
-                particle.SetValue(Canvas.LeftProperty, 140.0);
-                particle.SetValue(Canvas.TopProperty, 80.0);
-
-                var restartDelay = TimeSpan.FromMilliseconds(_hyperRandom.Next(300, 1500));
-                var restartTimer = new System.Windows.Threading.DispatcherTimer { Interval = restartDelay };
-                restartTimer.Tick += (s2, e2) =>
-                {
-                    restartTimer.Stop();
-                    AnimateSingleParticle(particle);
-                };
-                restartTimer.Start();
-            };
-
-            storyboard.Begin();
-        }
-    }
-
-    private void AnimateRandomParticle()
-    {
-        var particles = new Ellipse?[] { StarParticle1, StarParticle2, StarParticle3,
-                                         StarParticle4, StarParticle5, StarParticle6 };
-
-        var particle = particles[_hyperRandom.Next(particles.Length)];
-        if (particle == null || particle.Opacity > 0.1) return; // Skip if already animating
-
-        AnimateSingleParticle(particle);
-    }
-
-    private void AnimateSingleParticle(Ellipse particle)
-    {
-        var targets = new (double x, double y)[]
-        {
-            (0, 0), (280, 0), (0, 160), (280, 160),
-            (140, 0), (140, 160), (0, 80), (280, 80),
-            (50, 0), (230, 0), (50, 160), (230, 160)
-        };
-
-        var target = targets[_hyperRandom.Next(targets.Length)];
-        var duration = TimeSpan.FromMilliseconds(500 + _hyperRandom.Next(400));
-
-        // Reset to center
-        particle.SetValue(Canvas.LeftProperty, 140.0);
-        particle.SetValue(Canvas.TopProperty, 80.0);
-
-        var storyboard = new Storyboard();
-
-        // Move from center to edge with acceleration
-        var moveX = new DoubleAnimation(140, target.x, duration);
-        var moveY = new DoubleAnimation(80, target.y, duration);
-        moveX.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn };
-        moveY.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn };
-
-        Storyboard.SetTarget(moveX, particle);
-        Storyboard.SetTargetProperty(moveX, new PropertyPath(Canvas.LeftProperty));
-        Storyboard.SetTarget(moveY, particle);
-        Storyboard.SetTargetProperty(moveY, new PropertyPath(Canvas.TopProperty));
-
-        // Fade
-        var fadeIn = new DoubleAnimation(0, 0.9, TimeSpan.FromMilliseconds(80));
-        var fadeOut = new DoubleAnimation(0.9, 0, TimeSpan.FromMilliseconds(150));
-        fadeOut.BeginTime = duration - TimeSpan.FromMilliseconds(150);
-
-        Storyboard.SetTarget(fadeIn, particle);
-        Storyboard.SetTargetProperty(fadeIn, new PropertyPath(OpacityProperty));
-        Storyboard.SetTarget(fadeOut, particle);
-        Storyboard.SetTargetProperty(fadeOut, new PropertyPath(OpacityProperty));
-
-        storyboard.Children.Add(moveX);
-        storyboard.Children.Add(moveY);
-        storyboard.Children.Add(fadeIn);
-        storyboard.Children.Add(fadeOut);
-
-        storyboard.Begin();
     }
 
     #endregion
@@ -1680,6 +687,8 @@ public partial class MainWindow : Window
 
     private async Task UpdatePricesAsync()
     {
+        // Note: Price UI updates are now handled by DashboardPage
+        // This method is kept for status bar updates only
         if (_coinDataService == null) return;
 
         try
@@ -1687,27 +696,8 @@ public partial class MainWindow : Window
             var btcPrice = await _coinDataService.GetPriceAsync("bitcoin");
             if (btcPrice > 0)
             {
-                Dispatcher.Invoke(() =>
-                {
-                    if (BinancePrice != null)
-                        BinancePrice.Text = $"${btcPrice:N2}";
-                    if (KuCoinPrice != null)
-                    {
-                        var kucoinPrice = btcPrice * (1 - 0.0015m);
-                        KuCoinPrice.Text = $"${kucoinPrice:N2}";
-
-                        var spread = Math.Abs(btcPrice - kucoinPrice);
-                        var spreadPercent = (spread / btcPrice) * 100;
-                        if (SpreadPercent != null)
-                            SpreadPercent.Text = $"{spreadPercent:F2}%";
-                        if (SpreadAmount != null)
-                            SpreadAmount.Text = $"${spread:N2}";
-                    }
-
-                    if (LastCheckTime != null && !_isBotRunning)
-                        LastCheckTime.Text = $"Price updated: {DateTime.Now:HH:mm:ss}";
-                });
-
+                _lastBinancePrice = btcPrice;
+                _lastKuCoinPrice = btcPrice * (1 - 0.0015m);
                 _logger?.LogInfo("Prices", $"BTC price updated: ${btcPrice:N2}");
             }
         }
@@ -1723,7 +713,7 @@ public partial class MainWindow : Window
         {
             MaximizeButton_Click(sender, e);
         }
-        else
+        else if (e.LeftButton == MouseButtonState.Pressed)
         {
             DragMove();
         }
@@ -1740,28 +730,12 @@ public partial class MainWindow : Window
             // Hide center status bar badges on small screens
             if (StatusBarCenter != null)
                 StatusBarCenter.Visibility = Visibility.Collapsed;
-
-            // Adjust column widths for mobile
-            if (LeftColumn != null) LeftColumn.Width = new GridLength(0);
-            if (RightColumn != null) RightColumn.Width = new GridLength(0);
-        }
-        else if (width < 1100)
-        {
-            // Tablet mode - show essential items
-            if (StatusBarCenter != null)
-                StatusBarCenter.Visibility = Visibility.Visible;
-
-            if (LeftColumn != null) LeftColumn.Width = new GridLength(240);
-            if (RightColumn != null) RightColumn.Width = new GridLength(0);
         }
         else
         {
-            // Desktop mode - show everything
+            // Desktop/tablet mode - show status bar
             if (StatusBarCenter != null)
                 StatusBarCenter.Visibility = Visibility.Visible;
-
-            if (LeftColumn != null) LeftColumn.Width = new GridLength(280);
-            if (RightColumn != null) RightColumn.Width = new GridLength(320);
         }
     }
 
@@ -1782,7 +756,6 @@ public partial class MainWindow : Window
         _priceUpdateTimer?.Stop();
         _aiScannerTimer?.Stop();
         _statusBarTimer?.Stop();
-        HideAnimations();
 
         if (_isBotRunning && _arbEngine != null)
         {
@@ -1827,6 +800,24 @@ public partial class MainWindow : Window
         ShowPage("History");
     }
 
+    private void StrategyTab_Click(object sender, MouseButtonEventArgs e)
+    {
+        SetActiveTab(StrategyTab);
+        ShowPage("Strategy");
+    }
+
+    private void ProjectsTab_Click(object sender, MouseButtonEventArgs e)
+    {
+        SetActiveTab(ProjectsTab);
+        ShowPage("Projects");
+    }
+
+    private void AnalyticsTab_Click(object sender, MouseButtonEventArgs e)
+    {
+        SetActiveTab(AnalyticsTab);
+        ShowPage("Analytics");
+    }
+
     private void SettingsTab_Click(object sender, MouseButtonEventArgs e)
     {
         SetActiveTab(SettingsTab);
@@ -1840,6 +831,9 @@ public partial class MainWindow : Window
         TradingContent.Visibility = Visibility.Collapsed;
         ScannerContent.Visibility = Visibility.Collapsed;
         HistoryContent.Visibility = Visibility.Collapsed;
+        StrategyContent.Visibility = Visibility.Collapsed;
+        ProjectsContent.Visibility = Visibility.Collapsed;
+        AnalyticsContent.Visibility = Visibility.Collapsed;
         SettingsContent.Visibility = Visibility.Collapsed;
 
         // Show the selected page
@@ -1856,6 +850,15 @@ public partial class MainWindow : Window
                 break;
             case "History":
                 HistoryContent.Visibility = Visibility.Visible;
+                break;
+            case "Strategy":
+                StrategyContent.Visibility = Visibility.Visible;
+                break;
+            case "Projects":
+                ProjectsContent.Visibility = Visibility.Visible;
+                break;
+            case "Analytics":
+                AnalyticsContent.Visibility = Visibility.Visible;
                 break;
             case "Settings":
                 SettingsContent.Visibility = Visibility.Visible;
@@ -1886,63 +889,58 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Public method to navigate to a page from other components
+    /// </summary>
+    public void NavigateToPage(string pageName)
+    {
+        // Find and set the corresponding tab
+        Border? tab = pageName switch
+        {
+            "Dashboard" => DashboardTab,
+            "Trading" => TradingTab,
+            "Scanner" => ScannerTab,
+            "History" => HistoryTab,
+            "Strategy" => StrategyTab,
+            "Projects" => ProjectsTab,
+            "Analytics" => AnalyticsTab,
+            "Settings" => SettingsTab,
+            _ => null
+        };
+
+        if (tab != null)
+        {
+            SetActiveTab(tab);
+        }
+
+        ShowPage(pageName);
+    }
+
     #endregion
 
     #region Dashboard Data Methods
 
-    private async void UpdateRecentTradesDisplay()
+    private void UpdateRecentTradesDisplay()
     {
-        // Get recent trades from history service
-        if (_tradeHistory == null) return;
-
-        try
-        {
-            var recentTrades = await _tradeHistory.GetRecentTradesAsync(5);
-
-            // Update the Recent Trades list in Dashboard
-            // Note: In a full implementation, you would bind this to a data template
-            // For now, the static data in XAML serves as placeholder
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError("Dashboard", $"Error loading recent trades: {ex.Message}");
-        }
+        // Note: Recent trades display is now handled by DashboardPage
+        // This method is kept for internal state tracking only
     }
 
     private async void LoadDashboardStats()
     {
+        // Note: Dashboard stats UI updates are now handled by DashboardPage
+        // This method loads stats for internal tracking only
         if (_tradeHistory == null) return;
 
         try
         {
-            // Load today's stats
             var todayStats = await _tradeHistory.GetStatsAsync(DateTime.Today, DateTime.Now);
 
             _todayTradeCount = todayStats.TotalTrades;
             _successfulTrades = todayStats.WinningTrades;
             _todayPnL = todayStats.TotalPnL;
 
-            // Update UI
-            if (TodayPnLDisplay != null)
-            {
-                TodayPnLDisplay.Text = _todayPnL >= 0 ? $"+${_todayPnL:F2}" : $"-${Math.Abs(_todayPnL):F2}";
-                TodayPnLDisplay.Foreground = new SolidColorBrush(
-                    (Color)ColorConverter.ConvertFromString(_todayPnL >= 0 ? "#10B981" : "#EF4444"));
-            }
-
-            if (TradeCountDisplay != null)
-                TradeCountDisplay.Text = $"{_todayTradeCount} trades";
-
-            if (WinRateDisplay != null && _todayTradeCount > 0)
-            {
-                WinRateDisplay.Text = $"{todayStats.WinRate:F1}%";
-            }
-
-            if (WinLossDisplay != null)
-                WinLossDisplay.Text = $"{_successfulTrades}W / {todayStats.LosingTrades}L";
-
-            if (DrawdownDisplay != null)
-                DrawdownDisplay.Text = $"-{todayStats.MaxDrawdown:F2}%";
+            _logger?.LogInfo("Stats", $"Loaded stats - P&L: ${_todayPnL:F2}, Trades: {_todayTradeCount}");
         }
         catch (Exception ex)
         {

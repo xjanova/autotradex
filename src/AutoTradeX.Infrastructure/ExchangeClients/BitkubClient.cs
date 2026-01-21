@@ -21,9 +21,66 @@ public class BitkubClient : BaseExchangeClient
 {
     public override string ExchangeName => "Bitkub";
 
-    public BitkubClient(ExchangeConfig config, ILoggingService logger)
+    private readonly ICurrencyConverterService? _currencyConverter;
+
+    /// <summary>
+    /// Indicates that Bitkub uses THB as base currency
+    /// </summary>
+    public bool UsesThb => true;
+
+    public BitkubClient(ExchangeConfig config, ILoggingService logger, ICurrencyConverterService? currencyConverter = null)
         : base(config, logger)
     {
+        _currencyConverter = currencyConverter;
+    }
+
+    /// <summary>
+    /// Get THB/USDT exchange rate (for display purposes)
+    /// </summary>
+    public async Task<decimal> GetThbUsdtRateAsync(CancellationToken cancellationToken = default)
+    {
+        if (_currencyConverter != null)
+        {
+            return await _currencyConverter.GetThbUsdtRateAsync(cancellationToken);
+        }
+
+        // Fallback: Fetch directly from Bitkub
+        try
+        {
+            var response = await GetAsync<Dictionary<string, BitkubTickerData>>(
+                "/api/market/ticker",
+                cancellationToken);
+
+            if (response != null && response.TryGetValue("THB_USDT", out var usdtTicker))
+            {
+                return usdtTicker.Last;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ExchangeName, $"Failed to get THB/USDT rate: {ex.Message}");
+        }
+
+        return 35.0m; // Default fallback
+    }
+
+    /// <summary>
+    /// Convert THB price to USDT equivalent for comparison with other exchanges
+    /// </summary>
+    public async Task<decimal> ConvertThbToUsdtAsync(decimal thbAmount, CancellationToken cancellationToken = default)
+    {
+        var rate = await GetThbUsdtRateAsync(cancellationToken);
+        if (rate == 0) return 0;
+        return thbAmount / rate;
+    }
+
+    /// <summary>
+    /// Convert USDT price to THB for display
+    /// </summary>
+    public async Task<decimal> ConvertUsdtToThbAsync(decimal usdtAmount, CancellationToken cancellationToken = default)
+    {
+        var rate = await GetThbUsdtRateAsync(cancellationToken);
+        return usdtAmount * rate;
     }
 
     #region Market Data (Public APIs)
@@ -118,8 +175,7 @@ public class BitkubClient : BaseExchangeClient
         {
             if (!HasCredentials())
             {
-                _logger.LogWarning(ExchangeName, "API credentials not configured. Using demo balance.");
-                return GetDemoBalance();
+                throw new InvalidOperationException($"{ExchangeName}: API credentials not configured. Please configure API keys in Settings.");
             }
 
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -484,21 +540,6 @@ public class BitkubClient : BaseExchangeClient
             "filled" => OrderStatus.Filled,
             "cancelled" or "canceled" => OrderStatus.Cancelled,
             _ => OrderStatus.Error
-        };
-    }
-
-    private AccountBalance GetDemoBalance()
-    {
-        return new AccountBalance
-        {
-            Exchange = ExchangeName,
-            Timestamp = DateTime.UtcNow,
-            Assets = new Dictionary<string, AssetBalance>
-            {
-                ["THB"] = new AssetBalance { Asset = "THB", Total = 100000m, Available = 100000m },
-                ["BTC"] = new AssetBalance { Asset = "BTC", Total = 0.1m, Available = 0.1m },
-                ["ETH"] = new AssetBalance { Asset = "ETH", Total = 2m, Available = 2m }
-            }
         };
     }
 

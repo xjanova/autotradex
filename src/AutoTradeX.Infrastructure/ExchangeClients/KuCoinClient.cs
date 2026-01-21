@@ -136,8 +136,7 @@ public class KuCoinClient : BaseExchangeClient
         {
             if (!HasCredentials())
             {
-                _logger.LogWarning(ExchangeName, "API credentials not configured. Using demo balance.");
-                return GetDemoBalance();
+                throw new InvalidOperationException($"{ExchangeName}: API credentials not configured. Please configure API keys in Settings.");
             }
 
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
@@ -274,7 +273,7 @@ public class KuCoinClient : BaseExchangeClient
             return new Order
             {
                 OrderId = result.Data.OrderId,
-                ClientOrderId = orderData["clientOid"].ToString(),
+                ClientOrderId = orderData["clientOid"]?.ToString() ?? "",
                 Exchange = ExchangeName,
                 Symbol = request.Symbol,
                 Side = request.Side,
@@ -366,8 +365,8 @@ public class KuCoinClient : BaseExchangeClient
 
             return new Order
             {
-                OrderId = data.Id,
-                ClientOrderId = data.ClientOid,
+                OrderId = data.Id ?? "",
+                ClientOrderId = data.ClientOid ?? "",
                 Exchange = ExchangeName,
                 Symbol = symbol,
                 Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
@@ -377,7 +376,7 @@ public class KuCoinClient : BaseExchangeClient
                 FilledQuantity = decimal.Parse(data.DealSize ?? "0"),
                 RequestedPrice = !string.IsNullOrEmpty(data.Price) ? decimal.Parse(data.Price) : null,
                 AverageFilledPrice = !string.IsNullOrEmpty(data.DealFunds) && decimal.Parse(data.DealSize ?? "0") > 0
-                    ? decimal.Parse(data.DealFunds) / decimal.Parse(data.DealSize)
+                    ? decimal.Parse(data.DealFunds) / decimal.Parse(data.DealSize ?? "1")
                     : 0,
                 Fee = decimal.Parse(data.Fee ?? "0"),
                 FeeCurrency = data.FeeCurrency ?? "USDT",
@@ -426,10 +425,10 @@ public class KuCoinClient : BaseExchangeClient
 
             return result.Data.Items.Select(data => new Order
             {
-                OrderId = data.Id,
-                ClientOrderId = data.ClientOid,
+                OrderId = data.Id ?? "",
+                ClientOrderId = data.ClientOid ?? "",
                 Exchange = ExchangeName,
-                Symbol = data.Symbol,
+                Symbol = data.Symbol ?? "",
                 Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
                 Type = data.Type == "market" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(data),
@@ -507,21 +506,6 @@ public class KuCoinClient : BaseExchangeClient
         return decimal.Parse(order.DealSize ?? "0") >= decimal.Parse(order.Size ?? "0")
             ? OrderStatus.Filled
             : OrderStatus.Error;
-    }
-
-    private AccountBalance GetDemoBalance()
-    {
-        return new AccountBalance
-        {
-            Exchange = ExchangeName,
-            Timestamp = DateTime.UtcNow,
-            Assets = new Dictionary<string, AssetBalance>
-            {
-                ["USDT"] = new AssetBalance { Asset = "USDT", Total = 5000m, Available = 5000m },
-                ["BTC"] = new AssetBalance { Asset = "BTC", Total = 0.1m, Available = 0.1m },
-                ["ETH"] = new AssetBalance { Asset = "ETH", Total = 2m, Available = 2m }
-            }
-        };
     }
 
     #endregion

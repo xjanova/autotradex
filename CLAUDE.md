@@ -121,6 +121,43 @@ dotnet test
 - Use `PremiumButton` style for primary buttons
 - Keep consistent with existing gradient and glow effects
 
+### Premium ScrollBar (IMPORTANT - Always Use)
+
+**ALWAYS use premium scrollbar styles for any new ScrollViewer or ListView!**
+
+Available styles defined in each page's Resources:
+- `PremiumScrollBarThumb` - Thumb style with gradient and glow effects
+- `PremiumScrollBar` - ScrollBar with purple gradient thumb
+- `PremiumScrollViewer` / `ModernScrollViewerStyle` - ScrollViewer with premium scrollbar
+- `PremiumListView` - ListView with premium scrollbar built-in
+
+**Usage Examples:**
+```xml
+<!-- For ScrollViewer -->
+<ScrollViewer Style="{StaticResource PremiumScrollViewer}">
+    <!-- content -->
+</ScrollViewer>
+
+<!-- In MainWindow.xaml use -->
+<ScrollViewer Style="{StaticResource ModernScrollViewerStyle}">
+    <!-- content -->
+</ScrollViewer>
+
+<!-- For ListView -->
+<ListView Style="{StaticResource PremiumListView}">
+    <!-- items -->
+</ListView>
+```
+
+**ScrollBar Design:**
+- Gradient colors: `#8B5CF6` → `#7C3AED` → `#6D28D9`
+- Hover: Brighter purple with glow effect
+- Dragging: Brightest purple (#C4B5FD) with maximum glow
+- Track: Semi-transparent (#15FFFFFF)
+- Width: 10px with rounded corners
+
+**DO NOT use default WPF scrollbars** - they look out of place with the dark theme.
+
 ### Database Operations
 
 - Use `DatabaseService` for all DB operations

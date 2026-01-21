@@ -1,4 +1,9 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
+using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using AutoTradeX.Core.Interfaces;
 using AutoTradeX.Core.Models;
@@ -22,7 +27,7 @@ public partial class App : Application
         };
     }
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
@@ -30,6 +35,130 @@ public partial class App : Application
         var services = new ServiceCollection();
         ConfigureServices(services);
         Services = services.BuildServiceProvider();
+
+        // Initialize License Service
+        var licenseService = Services.GetRequiredService<ILicenseService>();
+        await licenseService.InitializeAsync();
+
+        // Show license dialog if not licensed or trial
+        if (!licenseService.IsLicensed)
+        {
+            var licenseDialog = new Views.LicenseDialog();
+            var result = licenseDialog.ShowDialog();
+
+            // User closed dialog without activating or continuing trial
+            if (result != true && !licenseDialog.ContinueAsTrial)
+            {
+                Shutdown();
+                return;
+            }
+        }
+
+        // Start periodic license validation
+        licenseService.StartPeriodicValidation();
+
+        // Register toast notification handler with NotificationService
+        var notificationService = Services.GetRequiredService<INotificationService>();
+        notificationService.SetToastHandler(ShowToastNotification);
+    }
+
+    /// <summary>
+    /// Shows a WPF toast notification in the bottom-right corner
+    /// </summary>
+    private void ShowToastNotification(NotificationItem notification)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            try
+            {
+                // Create toast window
+                var toast = new Window
+                {
+                    WindowStyle = WindowStyle.None,
+                    AllowsTransparency = true,
+                    Background = Brushes.Transparent,
+                    Topmost = true,
+                    ShowInTaskbar = false,
+                    Width = 350,
+                    Height = 100,
+                    WindowStartupLocation = WindowStartupLocation.Manual
+                };
+
+                // Position in bottom-right corner
+                var workArea = SystemParameters.WorkArea;
+                toast.Left = workArea.Right - toast.Width - 20;
+                toast.Top = workArea.Bottom - toast.Height - 20;
+
+                // Create content with dark theme styling
+                var border = new Border
+                {
+                    CornerRadius = new CornerRadius(12),
+                    Padding = new Thickness(16),
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1F1F2E")),
+                    BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(notification.TypeColor)),
+                    BorderThickness = new Thickness(1),
+                    Effect = new DropShadowEffect
+                    {
+                        BlurRadius = 20,
+                        ShadowDepth = 5,
+                        Opacity = 0.5
+                    }
+                };
+
+                var grid = new Grid();
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                var titleText = new TextBlock
+                {
+                    Text = notification.Title,
+                    FontWeight = FontWeights.SemiBold,
+                    FontSize = 14,
+                    Foreground = Brushes.White,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                };
+                Grid.SetRow(titleText, 0);
+
+                var messageText = new TextBlock
+                {
+                    Text = notification.Message.Replace("\n", " "),
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A0FFFFFF")),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Margin = new Thickness(0, 4, 0, 0)
+                };
+                Grid.SetRow(messageText, 1);
+
+                grid.Children.Add(titleText);
+                grid.Children.Add(messageText);
+                border.Child = grid;
+                toast.Content = border;
+
+                // Click to dismiss
+                toast.MouseLeftButtonDown += (s, args) => toast.Close();
+
+                // Auto-close after 4 seconds with fade out
+                var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+                timer.Tick += (s, args) =>
+                {
+                    timer.Stop();
+                    var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(300));
+                    fadeOut.Completed += (s2, args2) => toast.Close();
+                    toast.BeginAnimation(Window.OpacityProperty, fadeOut);
+                };
+
+                // Fade in animation
+                toast.Opacity = 0;
+                toast.Show();
+                var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
+                fadeIn.Completed += (s, args) => timer.Start();
+                toast.BeginAnimation(Window.OpacityProperty, fadeIn);
+            }
+            catch
+            {
+                // Ignore toast display errors
+            }
+        }));
     }
 
     private void ConfigureServices(IServiceCollection services)
@@ -39,6 +168,9 @@ public partial class App : Application
 
         // Logging Service (text file logs)
         services.AddSingleton<ILoggingService, FileLoggingService>();
+
+        // License Service - must be early for feature checking
+        services.AddSingleton<ILicenseService, LicenseService>();
 
         // SQLite Database Service - central data storage
         services.AddSingleton<IDatabaseService>(sp =>
@@ -56,11 +188,27 @@ public partial class App : Application
         // CoinGecko Service for real-time prices and coin data
         services.AddSingleton<ICoinDataService, CoinGeckoService>();
 
+        // Currency Converter Service - THB/USDT rates for Bitkub
+        services.AddSingleton<ICurrencyConverterService>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILoggingService>();
+            return new CurrencyConverterService(logger);
+        });
+
         // Demo Wallet Service for paper trading (SQLite backed)
         services.AddSingleton<DemoWalletService>();
 
-        // Exchange Client Factory for creating appropriate clients
-        services.AddSingleton<ExchangeClientFactory>();
+        // Exchange Client Factory for creating appropriate clients (with currency converter for Bitkub)
+        services.AddSingleton<ExchangeClientFactory>(sp =>
+        {
+            var configService = sp.GetRequiredService<IConfigService>();
+            var logger = sp.GetRequiredService<ILoggingService>();
+            var currencyConverter = sp.GetRequiredService<ICurrencyConverterService>();
+            return new ExchangeClientFactory(configService.GetConfig(), logger, currencyConverter);
+        });
+
+        // Register IExchangeClientFactory interface to use the same instance
+        services.AddSingleton<IExchangeClientFactory>(sp => sp.GetRequiredService<ExchangeClientFactory>());
 
         // Exchange clients - register both based on config
         services.AddSingleton<IExchangeClient>(sp =>
@@ -160,12 +308,13 @@ public partial class App : Application
         // Notification Service for alerts and in-app notifications
         services.AddSingleton<INotificationService, NotificationService>();
 
-        // Smart Scanner Service for intelligent coin scanning
+        // Smart Scanner Service for intelligent coin scanning with REAL exchange data
         services.AddSingleton<ISmartScannerService>(sp =>
         {
             var coinDataService = sp.GetRequiredService<ICoinDataService>();
+            var exchangeFactory = sp.GetRequiredService<IExchangeClientFactory>();
             var logger = sp.GetRequiredService<ILoggingService>();
-            return new SmartScannerService(coinDataService, logger);
+            return new SmartScannerService(coinDataService, exchangeFactory, logger);
         });
 
         // Coin Logo Service for fetching coin and exchange logos
@@ -174,6 +323,12 @@ public partial class App : Application
             var logger = sp.GetRequiredService<ILoggingService>();
             return new CoinLogoService(logger);
         });
+
+        // Strategy Service for AI trading strategies
+        services.AddSingleton<IStrategyService, StrategyService>();
+
+        // Project Service for trading projects (max 10 pairs)
+        services.AddSingleton<IProjectService, ProjectService>();
 
         // Initialize database on startup
         Task.Run(async () =>
@@ -195,7 +350,7 @@ public partial class App : Application
     /// <summary>
     /// Creates the appropriate exchange client based on configuration
     /// </summary>
-    private static IExchangeClient CreateExchangeClient(ExchangeConfig config, ILoggingService logger)
+    private static IExchangeClient CreateExchangeClient(ExchangeConfig config, ILoggingService logger, ICurrencyConverterService? currencyConverter = null)
     {
         // Determine exchange type from API URL or name
         var name = config.Name.ToLowerInvariant();
@@ -211,7 +366,7 @@ public partial class App : Application
         }
         else if (name.Contains("bitkub") || url.Contains("bitkub"))
         {
-            return new BitkubClient(config, logger);
+            return new BitkubClient(config, logger, currencyConverter);
         }
         else if (name.Contains("kucoin") || url.Contains("kucoin"))
         {

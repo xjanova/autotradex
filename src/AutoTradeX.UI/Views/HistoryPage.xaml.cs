@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
 using AutoTradeX.Core.Interfaces;
 using AutoTradeX.Core.Models;
+using AutoTradeX.Infrastructure.Services;
 using LiveChartsCore;
 using LiveChartsCore.Defaults;
 using LiveChartsCore.SkiaSharpView;
@@ -22,6 +23,7 @@ namespace AutoTradeX.UI.Views;
 public partial class HistoryPage : UserControl
 {
     private readonly IArbEngine? _arbEngine;
+    private readonly ITradeHistoryService? _tradeHistoryService;
     private readonly ILoggingService? _logger;
 
     public ObservableCollection<TradeHistoryDisplay> TradeHistory { get; } = new();
@@ -60,6 +62,7 @@ public partial class HistoryPage : UserControl
         DataContext = this;
 
         _arbEngine = App.Services?.GetService<IArbEngine>();
+        _tradeHistoryService = App.Services?.GetService<ITradeHistoryService>();
         _logger = App.Services?.GetService<ILoggingService>();
 
         TradeHistoryList.ItemsSource = TradeHistory;
@@ -69,9 +72,9 @@ public partial class HistoryPage : UserControl
         Loaded += HistoryPage_Loaded;
     }
 
-    private void HistoryPage_Loaded(object sender, RoutedEventArgs e)
+    private async void HistoryPage_Loaded(object sender, RoutedEventArgs e)
     {
-        LoadTradeHistory();
+        await LoadTradeHistoryAsync();
 
         if (_arbEngine != null)
         {
@@ -148,21 +151,45 @@ public partial class HistoryPage : UserControl
         });
     }
 
-    private void LoadTradeHistory()
+    /// <summary>
+    /// Load REAL trade history from database
+    /// </summary>
+    private async Task LoadTradeHistoryAsync()
     {
         TradeHistory.Clear();
 
-        if (_arbEngine != null)
+        try
         {
-            var stats = _arbEngine.GetTodayStats();
+            if (_tradeHistoryService != null)
+            {
+                // Load real trade history from database
+                var trades = await _tradeHistoryService.GetRecentTradesAsync(500);
 
-            // Load from trade history if available
-            // For now, add simulated data for demo
-            AddSimulatedTrades();
+                foreach (var trade in trades.OrderByDescending(t => t.Timestamp))
+                {
+                    TradeHistory.Add(new TradeHistoryDisplay
+                    {
+                        Timestamp = trade.Timestamp,
+                        Symbol = trade.Symbol,
+                        BuyExchange = trade.BuyExchange,
+                        SellExchange = trade.SellExchange,
+                        SpreadPercent = trade.SpreadPercent,
+                        PnL = trade.PnL,
+                        IsSuccess = trade.PnL > 0,
+                        ExecutionTimeMs = (int)trade.ExecutionTimeMs
+                    });
+                }
+
+                _logger?.LogInfo("HistoryPage", $"Loaded {trades.Count()} real trades from database");
+            }
+            else
+            {
+                _logger?.LogWarning("HistoryPage", "Trade history service not available");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            AddSimulatedTrades();
+            _logger?.LogError("HistoryPage", $"Error loading trade history: {ex.Message}");
         }
 
         UpdateStatistics();
@@ -172,49 +199,6 @@ public partial class HistoryPage : UserControl
         if (EmptyState != null)
         {
             EmptyState.Visibility = TradeHistory.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
-        }
-    }
-
-    private void AddSimulatedTrades()
-    {
-        var random = new Random();
-        var pairs = new[] { "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT" };
-        var exchanges = new[] { "Binance", "KuCoin", "OKX", "Bybit" };
-
-        for (int i = 0; i < 20; i++)
-        {
-            var isWin = random.NextDouble() > 0.3;
-            var pnl = isWin
-                ? (decimal)(random.NextDouble() * 5 + 0.5)
-                : (decimal)(-random.NextDouble() * 2 - 0.1);
-
-            var trade = new TradeHistoryDisplay
-            {
-                Timestamp = DateTime.UtcNow.AddMinutes(-random.Next(1, 1440)),
-                Symbol = pairs[random.Next(pairs.Length)],
-                BuyExchange = exchanges[random.Next(exchanges.Length)],
-                SellExchange = exchanges[random.Next(exchanges.Length)],
-                SpreadPercent = (decimal)(random.NextDouble() * 0.3 + 0.1),
-                PnL = pnl,
-                IsSuccess = isWin,
-                ExecutionTimeMs = random.Next(50, 500)
-            };
-
-            // Ensure different exchanges
-            while (trade.BuyExchange == trade.SellExchange)
-            {
-                trade.SellExchange = exchanges[random.Next(exchanges.Length)];
-            }
-
-            TradeHistory.Add(trade);
-        }
-
-        // Sort by time
-        var sorted = TradeHistory.OrderByDescending(t => t.Timestamp).ToList();
-        TradeHistory.Clear();
-        foreach (var trade in sorted)
-        {
-            TradeHistory.Add(trade);
         }
     }
 
@@ -450,22 +434,6 @@ public partial class HistoryPage : UserControl
         }
     }
 
-    private void ExpandChart_Click(object sender, RoutedEventArgs e)
-    {
-        if (FullscreenOverlay != null)
-        {
-            FullscreenOverlay.Visibility = Visibility.Visible;
-        }
-    }
-
-    private void CloseFullscreen_Click(object sender, RoutedEventArgs e)
-    {
-        if (FullscreenOverlay != null)
-        {
-            FullscreenOverlay.Visibility = Visibility.Collapsed;
-        }
-    }
-
     private void TimeFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (TimeFilterCombo.SelectedItem is ComboBoxItem item)
@@ -480,11 +448,10 @@ public partial class HistoryPage : UserControl
         ApplyFilters();
     }
 
-    private void ApplyFilters()
+    private async void ApplyFilters()
     {
-        // In a real implementation, this would filter from a backing store
-        // For now, just reload
-        LoadTradeHistory();
+        // Reload with filters applied
+        await LoadTradeHistoryAsync();
     }
 
     private void ExportButton_Click(object sender, RoutedEventArgs e)
