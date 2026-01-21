@@ -1,3 +1,5 @@
+using System.Net.Http;
+using System.Net.NetworkInformation;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -31,6 +33,14 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Check internet connection first - required for license validation
+        if (!await CheckInternetConnectionAsync())
+        {
+            ShowNoInternetDialog();
+            Shutdown();
+            return;
+        }
+
         // Setup DI
         var services = new ServiceCollection();
         ConfigureServices(services);
@@ -60,6 +70,183 @@ public partial class App : Application
         // Register toast notification handler with NotificationService
         var notificationService = Services.GetRequiredService<INotificationService>();
         notificationService.SetToastHandler(ShowToastNotification);
+    }
+
+    /// <summary>
+    /// Checks if there is an active internet connection
+    /// </summary>
+    private async Task<bool> CheckInternetConnectionAsync()
+    {
+        try
+        {
+            // First check if network is available
+            if (!NetworkInterface.GetIsNetworkAvailable())
+            {
+                return false;
+            }
+
+            // Try to reach license server or a reliable endpoint
+            using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(10);
+
+            // Try multiple endpoints for reliability
+            var endpoints = new[]
+            {
+                "https://www.google.com",
+                "https://www.cloudflare.com",
+                "https://www.microsoft.com"
+            };
+
+            foreach (var endpoint in endpoints)
+            {
+                try
+                {
+                    var response = await httpClient.GetAsync(endpoint);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return true;
+                    }
+                }
+                catch
+                {
+                    // Try next endpoint
+                    continue;
+                }
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Shows a dialog indicating no internet connection
+    /// </summary>
+    private void ShowNoInternetDialog()
+    {
+        // Create a custom styled dialog
+        var dialog = new Window
+        {
+            Title = "Internet Connection Required",
+            Width = 450,
+            Height = 250,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            WindowStyle = WindowStyle.None,
+            AllowsTransparency = true,
+            Background = Brushes.Transparent,
+            ResizeMode = ResizeMode.NoResize
+        };
+
+        var border = new Border
+        {
+            CornerRadius = new CornerRadius(16),
+            Background = new LinearGradientBrush(
+                (Color)ColorConverter.ConvertFromString("#1A0A2E"),
+                (Color)ColorConverter.ConvertFromString("#0A0A1A"),
+                45),
+            BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444")),
+            BorderThickness = new Thickness(2),
+            Padding = new Thickness(30),
+            Effect = new DropShadowEffect
+            {
+                BlurRadius = 30,
+                ShadowDepth = 5,
+                Opacity = 0.6,
+                Color = (Color)ColorConverter.ConvertFromString("#EF4444")
+            }
+        };
+
+        var stackPanel = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        // Warning icon using text
+        var iconText = new TextBlock
+        {
+            Text = "⚠",
+            FontSize = 48,
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444")),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 15)
+        };
+
+        var titleText = new TextBlock
+        {
+            Text = "ไม่พบการเชื่อมต่ออินเทอร์เน็ต",
+            FontSize = 20,
+            FontWeight = FontWeights.Bold,
+            Foreground = Brushes.White,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 10)
+        };
+
+        var messageText = new TextBlock
+        {
+            Text = "AutoTrade-X ต้องการการเชื่อมต่ออินเทอร์เน็ต\nเพื่อตรวจสอบใบอนุญาตและทำงาน\n\nกรุณาตรวจสอบการเชื่อมต่อและลองใหม่อีกครั้ง",
+            FontSize = 14,
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A0A0A0")),
+            TextAlignment = TextAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 20)
+        };
+
+        var closeButton = new Button
+        {
+            Content = "ปิดโปรแกรม",
+            Width = 150,
+            Height = 40,
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brushes.White,
+            Background = new LinearGradientBrush(
+                (Color)ColorConverter.ConvertFromString("#EF4444"),
+                (Color)ColorConverter.ConvertFromString("#DC2626"),
+                90),
+            BorderThickness = new Thickness(0),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        // Style the button
+        closeButton.Template = CreateRoundedButtonTemplate();
+        closeButton.Click += (s, e) => dialog.Close();
+
+        stackPanel.Children.Add(iconText);
+        stackPanel.Children.Add(titleText);
+        stackPanel.Children.Add(messageText);
+        stackPanel.Children.Add(closeButton);
+
+        border.Child = stackPanel;
+        dialog.Content = border;
+
+        dialog.ShowDialog();
+    }
+
+    /// <summary>
+    /// Creates a rounded button control template
+    /// </summary>
+    private ControlTemplate CreateRoundedButtonTemplate()
+    {
+        var template = new ControlTemplate(typeof(Button));
+
+        var borderFactory = new FrameworkElementFactory(typeof(Border));
+        borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
+        borderFactory.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));
+        borderFactory.SetValue(Border.PaddingProperty, new Thickness(20, 10, 20, 10));
+
+        var contentPresenterFactory = new FrameworkElementFactory(typeof(ContentPresenter));
+        contentPresenterFactory.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        contentPresenterFactory.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+
+        borderFactory.AppendChild(contentPresenterFactory);
+        template.VisualTree = borderFactory;
+
+        return template;
     }
 
     /// <summary>
@@ -224,20 +411,32 @@ public partial class App : Application
             return new SimulationExchangeClient("ExchangeA", logger, isExchangeA: true);
         });
 
-        // ArbEngine and BalancePoolService - uses config to determine live or simulation mode
+        // ArbEngine and BalancePoolService - uses config and license to determine live or simulation mode
         services.AddSingleton<IArbEngine>(sp =>
         {
             var configService = sp.GetRequiredService<IConfigService>();
+            var licenseService = sp.GetRequiredService<ILicenseService>();
             var logger = sp.GetRequiredService<ILoggingService>();
             var config = configService.GetConfig();
 
             IExchangeClient exchangeA;
             IExchangeClient exchangeB;
 
-            if (config.General.LiveTrading)
+            // Check if licensed - Demo version can only use simulation mode
+            var isLicensed = licenseService.IsLicensed &&
+                             licenseService.CurrentLicense?.Status == Core.Models.LicenseStatus.Valid;
+
+            if (!isLicensed)
             {
-                // Live Trading Mode - Use real exchange clients
-                logger.LogWarning("App", "Starting in LIVE TRADING mode!");
+                // DEMO VERSION - Force simulation mode, no real wallet access
+                logger.LogWarning("App", "DEMO VERSION: Real wallet access is disabled. Using simulation mode only.");
+                exchangeA = new SimulationExchangeClient("ExchangeA", logger, isExchangeA: true);
+                exchangeB = new SimulationExchangeClient("ExchangeB", logger, isExchangeA: false);
+            }
+            else if (config.General.LiveTrading)
+            {
+                // Licensed + Live Trading Mode - Use real exchange clients
+                logger.LogWarning("App", "Starting in LIVE TRADING mode (Licensed)!");
 
                 // Validate credentials before creating clients
                 if (!configService.HasValidCredentials(config.ExchangeA))
@@ -262,7 +461,7 @@ public partial class App : Application
             }
             else
             {
-                // Simulation Mode - Use simulation clients (safe, no real money)
+                // Licensed + Simulation Mode - Use simulation clients (safe, no real money)
                 logger.LogInfo("App", "Starting in SIMULATION mode (paper trading)");
                 exchangeA = new SimulationExchangeClient("ExchangeA", logger, isExchangeA: true);
                 exchangeB = new SimulationExchangeClient("ExchangeB", logger, isExchangeA: false);
@@ -329,6 +528,16 @@ public partial class App : Application
 
         // Project Service for trading projects (max 10 pairs)
         services.AddSingleton<IProjectService, ProjectService>();
+
+        // Connection Status Service for monitoring API connections
+        services.AddSingleton<IConnectionStatusService>(sp =>
+        {
+            var exchangeFactory = sp.GetRequiredService<IExchangeClientFactory>();
+            var configService = sp.GetRequiredService<IConfigService>();
+            var strategyService = sp.GetRequiredService<IStrategyService>();
+            var logger = sp.GetRequiredService<ILoggingService>();
+            return new ConnectionStatusService(exchangeFactory, configService, strategyService, logger);
+        });
 
         // Initialize database on startup
         Task.Run(async () =>

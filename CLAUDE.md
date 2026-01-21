@@ -164,6 +164,24 @@ Available styles defined in each page's Resources:
 - Tables: `Trades`, `Settings`, `ExchangeConfigs`
 - Connection string in `appsettings.json`
 
+### Internet Connection Requirement
+
+The application **requires an active internet connection** to start. This is enforced in `App.xaml.cs`:
+
+- **On startup**, the app checks internet connectivity before initializing any services
+- If no internet is detected, a styled error dialog is shown and the app shuts down
+- This is required because the app needs to validate licenses with the server
+
+**Key methods in `App.xaml.cs`:**
+- `CheckInternetConnectionAsync()` - Tests connectivity to multiple endpoints (Google, Cloudflare, Microsoft)
+- `ShowNoInternetDialog()` - Displays Thai-language error dialog with app theming
+
+**Flow:**
+```
+App Start → Check Internet → No Internet? → Show Dialog → Shutdown
+                          → Has Internet? → Continue to License Check → Main App
+```
+
 ## Warning
 
 This is an **educational project** for learning about:
