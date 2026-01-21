@@ -24,6 +24,7 @@ public partial class AnalyticsPage : UserControl
     private string _currentTimeRange = "1D";
     private string? _selectedSymbol = null;
     private bool _isLoading = false;
+    private bool _pairSummaryExpanded = true;
 
     public AnalyticsPage()
     {
@@ -91,6 +92,7 @@ public partial class AnalyticsPage : UserControl
             UpdateCharts();
             UpdateTradeList();
             UpdateStats();
+            UpdatePairSummary();
 
             // Update header
             CurrentPairText.Text = _selectedSymbol ?? "All Pairs";
@@ -344,6 +346,80 @@ public partial class AnalyticsPage : UserControl
 
         TotalPnLText.Text = FormatPnL(totalPnL);
         TotalPnLText.Foreground = GetPnLBrush(totalPnL);
+    }
+
+    private void UpdatePairSummary()
+    {
+        if (_currentTrades.Count == 0)
+        {
+            PairSummaryList.ItemsSource = null;
+            PairSummaryCount.Text = "(0 pairs)";
+            NoPairsMessage.Visibility = Visibility.Visible;
+            return;
+        }
+
+        NoPairsMessage.Visibility = Visibility.Collapsed;
+
+        // Group trades by symbol and calculate stats for each pair
+        var pairSummaries = _currentTrades
+            .GroupBy(t => t.Symbol)
+            .Select(g => new PairSummaryItem
+            {
+                Symbol = g.Key,
+                Trades = g.ToList(),
+                TradeCount = g.Count(),
+                WinCount = g.Count(t => t.PnL > 0),
+                TotalPnL = g.Sum(t => t.PnL),
+                TotalFees = g.Sum(t => t.Fee),
+                AvgPnL = g.Average(t => t.PnL),
+                BestTrade = g.Max(t => t.PnL),
+                WorstTrade = g.Min(t => t.PnL),
+                Exchanges = g.SelectMany(t => new[] { t.BuyExchange, t.SellExchange }).Distinct().ToList()
+            })
+            .OrderByDescending(p => p.TotalPnL)
+            .ToList();
+
+        PairSummaryList.ItemsSource = pairSummaries;
+        PairSummaryCount.Text = $"({pairSummaries.Count} pairs)";
+    }
+
+    private void TogglePairSummary_Click(object sender, MouseButtonEventArgs e)
+    {
+        _pairSummaryExpanded = !_pairSummaryExpanded;
+
+        if (_pairSummaryExpanded)
+        {
+            PairSummaryPanel.Visibility = Visibility.Visible;
+            TogglePairSummaryIcon.Text = "▼";
+            TogglePairSummaryText.Text = "Collapse";
+        }
+        else
+        {
+            PairSummaryPanel.Visibility = Visibility.Collapsed;
+            TogglePairSummaryIcon.Text = "▶";
+            TogglePairSummaryText.Text = "Expand";
+        }
+    }
+
+    private async void PairSummary_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border border && border.DataContext is PairSummaryItem item)
+        {
+            // Filter to show only this pair's trades
+            _selectedSymbol = item.Symbol;
+
+            // Update combobox selection
+            foreach (ComboBoxItem comboItem in PairComboBox.Items)
+            {
+                if (comboItem.Content?.ToString() == item.Symbol)
+                {
+                    PairComboBox.SelectedItem = comboItem;
+                    break;
+                }
+            }
+
+            await LoadDataAsync();
+        }
     }
 
     private async Task UpdateDatabaseSizeAsync()
@@ -632,6 +708,48 @@ public class TradeDisplayItem
         : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
 
     public Brush PnLBackground => Trade.PnL >= 0
+        ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2010B981"))
+        : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#20EF4444"));
+}
+
+/// <summary>
+/// Summary data for a trading pair
+/// </summary>
+public class PairSummaryItem
+{
+    public string Symbol { get; set; } = "";
+    public List<TradeHistoryEntry> Trades { get; set; } = new();
+    public int TradeCount { get; set; }
+    public int WinCount { get; set; }
+    public decimal TotalPnL { get; set; }
+    public decimal TotalFees { get; set; }
+    public decimal AvgPnL { get; set; }
+    public decimal BestTrade { get; set; }
+    public decimal WorstTrade { get; set; }
+    public List<string> Exchanges { get; set; } = new();
+
+    // Computed properties for display
+    public double WinRate => TradeCount > 0 ? (double)WinCount / TradeCount * 100 : 0;
+    public string WinRateDisplay => $"{WinRate:F1}%";
+    public string TotalPnLDisplay => TotalPnL >= 0 ? $"+${TotalPnL:F2}" : $"-${Math.Abs(TotalPnL):F2}";
+    public string AvgPnLDisplay => AvgPnL >= 0 ? $"+${AvgPnL:F2}" : $"-${Math.Abs(AvgPnL):F2}";
+    public string TotalFeesDisplay => $"${TotalFees:F2}";
+    public string ExchangeRoute => Exchanges.Count > 0 ? string.Join(" ↔ ", Exchanges.Take(3)) : "";
+    public string PnLIcon => TotalPnL >= 0 ? "📈" : "📉";
+
+    public Brush PnLColor => TotalPnL >= 0
+        ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"))
+        : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
+
+    public Brush AvgPnLColor => AvgPnL >= 0
+        ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"))
+        : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
+
+    public Brush WinRateColor => WinRate >= 50
+        ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"))
+        : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
+
+    public Brush PnLBackground => TotalPnL >= 0
         ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2010B981"))
         : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#20EF4444"));
 }

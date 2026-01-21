@@ -7,7 +7,7 @@
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
-        Width="500" Height="550">
+        Width="480" Height="620">
 
     <Window.Resources>
         <!-- Input TextBox Style -->
@@ -116,61 +116,72 @@
                 <TextBlock Text="✕" FontSize="16" Foreground="#80FFFFFF"/>
             </Button>
 
-            <StackPanel Margin="40,30">
+            <Grid Margin="32,24,32,24">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
                 <!-- Logo and Title -->
-                <StackPanel HorizontalAlignment="Center" Margin="0,0,0,24">
-                    <TextBlock Text="⚡" FontSize="48" HorizontalAlignment="Center"/>
-                    <TextBlock Text="AutoTrade-X" FontSize="28" FontWeight="Bold"
-                               Foreground="White" HorizontalAlignment="Center" Margin="0,8,0,0"/>
-                    <TextBlock Text="License Activation" FontSize="14" Foreground="#80FFFFFF"
-                               HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,20">
+                    <TextBlock Text="⚡" FontSize="42" HorizontalAlignment="Center"/>
+                    <TextBlock Text="AutoTrade-X" FontSize="24" FontWeight="Bold"
+                               Foreground="White" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                    <TextBlock Text="License Activation" FontSize="13" Foreground="#80FFFFFF"
+                               HorizontalAlignment="Center" Margin="0,2,0,0"/>
                 </StackPanel>
 
                 <!-- License Status Card -->
-                <Border x:Name="StatusCard" Background="#15FFFFFF" CornerRadius="12"
-                        Padding="20" Margin="0,0,0,24">
+                <Border Grid.Row="1" x:Name="StatusCard" Background="#15FFFFFF" CornerRadius="10"
+                        Padding="16" Margin="0,0,0,20">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <Ellipse x:Name="StatusDot" Width="12" Height="12" Fill="#F59E0B"
+                        <Ellipse x:Name="StatusDot" Width="10" Height="10" Fill="#F59E0B"
                                  VerticalAlignment="Center" Margin="0,0,12,0"/>
 
                         <StackPanel Grid.Column="1">
-                            <TextBlock x:Name="StatusText" Text="Trial Mode" FontSize="15"
+                            <TextBlock x:Name="StatusText" Text="Trial Mode" FontSize="14"
                                        FontWeight="SemiBold" Foreground="White"/>
                             <TextBlock x:Name="StatusDetail" Text="30 days remaining"
-                                       FontSize="12" Foreground="#80FFFFFF" Margin="0,2,0,0"/>
+                                       FontSize="11" Foreground="#80FFFFFF" Margin="0,2,0,0"/>
                         </StackPanel>
                     </Grid>
                 </Border>
 
                 <!-- License Key Input -->
-                <StackPanel Margin="0,0,0,16">
-                    <TextBlock Text="License Key" FontSize="13" Foreground="#80FFFFFF" Margin="0,0,0,8"/>
+                <StackPanel Grid.Row="2" Margin="0,0,0,12">
+                    <TextBlock Text="License Key" FontSize="12" Foreground="#80FFFFFF" Margin="0,0,0,6"/>
                     <TextBox x:Name="LicenseKeyInput" Style="{StaticResource LicenseInput}"
                              MaxLength="32" CharacterCasing="Upper"
                              Text="" ToolTip="Enter your license key (e.g., XXXX-XXXX-XXXX-XXXX)"/>
                 </StackPanel>
 
                 <!-- Email Input -->
-                <StackPanel Margin="0,0,0,24">
-                    <TextBlock Text="Email Address" FontSize="13" Foreground="#80FFFFFF" Margin="0,0,0,8"/>
+                <StackPanel Grid.Row="3" Margin="0,0,0,16">
+                    <TextBlock Text="Email Address" FontSize="12" Foreground="#80FFFFFF" Margin="0,0,0,6"/>
                     <TextBox x:Name="EmailInput" Style="{StaticResource LicenseInput}"
                              Text="" ToolTip="Enter the email used for purchase"/>
                 </StackPanel>
 
                 <!-- Error Message -->
-                <Border x:Name="ErrorBorder" Background="#20EF4444" CornerRadius="8"
-                        Padding="12" Margin="0,0,0,16" Visibility="Collapsed">
-                    <TextBlock x:Name="ErrorText" Text="" FontSize="13"
+                <Border Grid.Row="4" x:Name="ErrorBorder" Background="#20EF4444" CornerRadius="8"
+                        Padding="12" Margin="0,0,0,12" Visibility="Collapsed">
+                    <TextBlock x:Name="ErrorText" Text="" FontSize="12"
                                Foreground="#EF4444" TextWrapping="Wrap"/>
                 </Border>
 
                 <!-- Buttons -->
-                <Grid>
+                <Grid Grid.Row="5" Margin="0,0,0,16">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="12"/>
@@ -179,15 +190,17 @@
 
                     <Button x:Name="ActivateButton" Grid.Column="0"
                             Style="{StaticResource PrimaryButton}"
-                            Content="Activate License" Click="ActivateButton_Click"/>
+                            Content="Activate License" Click="ActivateButton_Click"
+                            Height="44"/>
 
                     <Button x:Name="TrialButton" Grid.Column="2"
                             Style="{StaticResource SecondaryButton}"
-                            Content="Continue Trial" Click="TrialButton_Click"/>
+                            Content="Continue Trial" Click="TrialButton_Click"
+                            Height="44"/>
                 </Grid>
 
                 <!-- Links -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
+                <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
                     <TextBlock>
                         <Hyperlink x:Name="PurchaseLink" Click="PurchaseLink_Click"
                                    Foreground="#7C3AED" TextDecorations="None">
@@ -204,12 +217,13 @@
                 </StackPanel>
 
                 <!-- Device ID -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
-                    <TextBlock Text="Device ID: " FontSize="11" Foreground="#40FFFFFF"/>
-                    <TextBlock x:Name="DeviceIdText" Text="Loading..." FontSize="11"
+                <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom" Margin="0,12,0,0">
+                    <TextBlock Text="Device ID: " FontSize="10" Foreground="#40FFFFFF"/>
+                    <TextBlock x:Name="DeviceIdText" Text="Loading..." FontSize="10"
                                Foreground="#60FFFFFF" FontFamily="Consolas"/>
                 </StackPanel>
-            </StackPanel>
+            </Grid>
 
             <!-- Loading Overlay -->
             <Border x:Name="LoadingOverlay" Background="#E0000000" Visibility="Collapsed">

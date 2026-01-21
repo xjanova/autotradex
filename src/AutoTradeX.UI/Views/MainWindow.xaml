@@ -572,7 +572,7 @@
                                     <TextBlock Text="AutoTrade-X" FontSize="20" FontWeight="Bold" Foreground="White"/>
                                     <TextBlock Text="v0.1.0-beta" FontSize="10" Foreground="#50FFFFFF" VerticalAlignment="Bottom" Margin="6,0,0,3"/>
                                 </StackPanel>
-                                <TextBlock Text="by Xman Studio • PRO EDITION" FontSize="9" Foreground="#F59E0B" Margin="0,-1,0,0"/>
+                                <TextBlock x:Name="EditionText" Text="by Xman Studio • DEMO VERSION" FontSize="9" Foreground="#808080" Margin="0,-1,0,0"/>
                             </StackPanel>
                         </StackPanel>
 

@@ -8,7 +8,9 @@
  */
 
 using System.Management;
+using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -38,6 +40,7 @@ public class LicenseService : ILicenseService, IDisposable
     // File paths
     private readonly string _licensePath;
     private readonly string _devicePath;
+    private readonly string _timeCheckPath; // Anti-tampering: persisted time tracking
 
     // Services
     private readonly ILoggingService _logger;
@@ -48,6 +51,8 @@ public class LicenseService : ILicenseService, IDisposable
     private LicenseInfo? _currentLicense;
     private string? _machineId;
     private bool _isInitialized = false;
+    private DateTime _lastKnownTime = DateTime.MinValue; // Anti-tampering: track highest known time
+    private bool _timeTamperingDetected = false; // Flag for clock manipulation
 
     public LicenseInfo? CurrentLicense => _currentLicense;
     public bool IsLicensed => _currentLicense?.Status == LicenseStatus.Valid;
@@ -73,6 +78,7 @@ public class LicenseService : ILicenseService, IDisposable
 
         _licensePath = Path.Combine(appDataPath, "license.dat");
         _devicePath = Path.Combine(appDataPath, "device.dat");
+        _timeCheckPath = Path.Combine(appDataPath, ".timecheck"); // Hidden file for time tracking
     }
 
     #region Initialization
@@ -89,12 +95,28 @@ public class LicenseService : ILicenseService, IDisposable
             _machineId = GetMachineId();
             _logger.LogInfo("License", $"Device ID: {_machineId[..8]}...");
 
+            // Check for time tampering FIRST (before loading license)
+            var tampering = await CheckTimeTamperingAsync();
+            if (tampering)
+            {
+                _logger.LogCritical("License", "Time tampering detected! Trial features will be restricted.");
+            }
+
             // Load stored license
             await LoadStoredLicenseAsync();
 
             if (_currentLicense != null)
             {
                 _logger.LogInfo("License", $"Loaded license: {_currentLicense.Tier} - {_currentLicense.Status}");
+
+                // If tampering detected and this is a trial, expire it immediately
+                if (_timeTamperingDetected && _currentLicense.Status == LicenseStatus.Trial)
+                {
+                    _logger.LogCritical("License", "Trial expired due to time tampering!");
+                    _currentLicense.Status = LicenseStatus.Expired;
+                    _currentLicense.ExpiresAt = DateTime.UtcNow.AddDays(-1); // Set as expired
+                    await SaveLicenseAsync();
+                }
 
                 // Check offline grace period
                 CheckOfflineGracePeriod();
@@ -440,7 +462,17 @@ public class LicenseService : ILicenseService, IDisposable
     {
         if (_currentLicense == null) return;
 
-        var daysSinceOnline = (DateTime.UtcNow - _currentLicense.LastOnline).TotalDays;
+        // Use secure time to prevent clock manipulation
+        var secureNow = GetSecureCurrentTime();
+        var daysSinceOnline = (secureNow - _currentLicense.LastOnline).TotalDays;
+
+        // If tampering detected, immediately downgrade
+        if (_timeTamperingDetected)
+        {
+            _logger.LogCritical("License", "Forcing offline downgrade due to time tampering");
+            DowngradeToTrial();
+            return;
+        }
 
         if (daysSinceOnline > OfflineGracePeriodDays)
         {
@@ -491,7 +523,15 @@ public class LicenseService : ILicenseService, IDisposable
             return 0;
         }
 
-        var remaining = (_currentLicense.ExpiresAt - DateTime.UtcNow).TotalDays;
+        // If tampering detected, return 0 (expired)
+        if (_timeTamperingDetected)
+        {
+            return 0;
+        }
+
+        // Use secure time to prevent clock manipulation
+        var secureNow = GetSecureCurrentTime();
+        var remaining = (_currentLicense.ExpiresAt - secureNow).TotalDays;
         return Math.Max(0, (int)remaining);
     }
 
@@ -591,6 +631,25 @@ public class LicenseService : ILicenseService, IDisposable
     {
         try
         {
+            // ALWAYS verify time with internet during periodic checks
+            _logger.LogInfo("License", "Periodic time verification...");
+            var tamperingDetected = await VerifyTimeWithInternetAsync();
+
+            if (tamperingDetected)
+            {
+                _logger.LogCritical("License", "Time tampering detected during periodic check!");
+
+                // If trial, expire it
+                if (_currentLicense?.Status == LicenseStatus.Trial)
+                {
+                    _currentLicense.Status = LicenseStatus.Expired;
+                    _currentLicense.ExpiresAt = DateTime.UtcNow.AddDays(-1);
+                    await SaveLicenseAsync();
+                    OnLicenseStatusChanged(LicenseStatus.Trial, LicenseStatus.Expired, "Trial expired due to time tampering");
+                }
+                return;
+            }
+
             var result = await ValidateLicenseAsync();
 
             if (result.Valid && IsOfflineDowngraded)
@@ -696,6 +755,443 @@ public class LicenseService : ILicenseService, IDisposable
         {
             return null;
         }
+    }
+
+    #endregion
+
+    #region Anti-Time-Tampering
+
+    /// <summary>
+    /// Check if system time has been manipulated (rolled back)
+    /// Uses multiple verification methods:
+    /// 1. Internet time (NTP/HTTP) - most reliable
+    /// 2. Persisted last known time - backup check
+    /// </summary>
+    private async Task<bool> CheckTimeTamperingAsync()
+    {
+        var currentTime = DateTime.UtcNow;
+
+        // Load persisted last known time
+        await LoadLastKnownTimeAsync();
+
+        // FIRST: Try to verify with internet time (most reliable)
+        _logger.LogInfo("License", "Verifying time with internet...");
+        var internetTampered = await VerifyTimeWithInternetAsync();
+        if (internetTampered)
+        {
+            _logger.LogCritical("License", "Time tampering confirmed via internet verification!");
+            return true;
+        }
+
+        // SECOND: Check against persisted last known time (backup check)
+        if (_lastKnownTime != DateTime.MinValue)
+        {
+            var timeDiff = (currentTime - _lastKnownTime).TotalHours;
+
+            if (timeDiff < -1) // Time went backwards more than 1 hour
+            {
+                _timeTamperingDetected = true;
+                _logger.LogCritical("License", $"TAMPERING DETECTED: System clock rolled back by {Math.Abs(timeDiff):F1} hours!");
+                _logger.LogWarning("License", $"Last known time: {_lastKnownTime:yyyy-MM-dd HH:mm:ss}, Current time: {currentTime:yyyy-MM-dd HH:mm:ss}");
+                return true;
+            }
+
+            // Check for unrealistic time jump forward (more than 365 days might indicate tampering too)
+            if (timeDiff > 365 * 24)
+            {
+                _logger.LogWarning("License", $"Unusual time jump detected: {timeDiff / 24:F0} days forward");
+                // For large forward jumps, verify with internet to be sure
+                var verifyResult = await VerifyTimeWithInternetAsync();
+                if (verifyResult)
+                {
+                    return true;
+                }
+            }
+        }
+
+        // Update and persist the new highest known time
+        if (currentTime > _lastKnownTime)
+        {
+            _lastKnownTime = currentTime;
+            await SaveLastKnownTimeAsync();
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Get the secure current time (returns last known time if tampering detected)
+    /// </summary>
+    private DateTime GetSecureCurrentTime()
+    {
+        var currentTime = DateTime.UtcNow;
+
+        // If tampering was detected, use the last known time instead
+        // This prevents users from gaining trial time by rolling back clock
+        if (_timeTamperingDetected && _lastKnownTime != DateTime.MinValue)
+        {
+            _logger.LogWarning("License", "Using last known time due to tampering detection");
+            return _lastKnownTime;
+        }
+
+        // Update last known time if current time is higher
+        if (currentTime > _lastKnownTime)
+        {
+            _lastKnownTime = currentTime;
+            _ = SaveLastKnownTimeAsync(); // Fire and forget
+        }
+
+        return currentTime;
+    }
+
+    /// <summary>
+    /// Save the last known time to disk (encrypted)
+    /// </summary>
+    private async Task SaveLastKnownTimeAsync()
+    {
+        try
+        {
+            var timeData = new TimeCheckData
+            {
+                LastKnownTime = _lastKnownTime,
+                LastUpdated = DateTime.UtcNow,
+                MachineId = GetMachineId(),
+                ChecksumSalt = Guid.NewGuid().ToString("N")
+            };
+
+            // Create checksum for integrity verification
+            var dataString = $"{timeData.LastKnownTime:O}|{timeData.MachineId}|{timeData.ChecksumSalt}";
+            using var sha256 = SHA256.Create();
+            var checksumBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(dataString));
+            timeData.Checksum = Convert.ToBase64String(checksumBytes);
+
+            var json = JsonSerializer.Serialize(timeData);
+            var encrypted = EncryptData(json);
+            await File.WriteAllBytesAsync(_timeCheckPath, encrypted);
+
+            // Set file as hidden
+            File.SetAttributes(_timeCheckPath, FileAttributes.Hidden);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("License", $"Failed to save time check: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Load the last known time from disk
+    /// </summary>
+    private async Task LoadLastKnownTimeAsync()
+    {
+        try
+        {
+            if (!File.Exists(_timeCheckPath))
+            {
+                _lastKnownTime = DateTime.MinValue;
+                return;
+            }
+
+            var encrypted = await File.ReadAllBytesAsync(_timeCheckPath);
+            var json = DecryptData(encrypted);
+
+            if (string.IsNullOrEmpty(json))
+            {
+                _lastKnownTime = DateTime.MinValue;
+                return;
+            }
+
+            var timeData = JsonSerializer.Deserialize<TimeCheckData>(json);
+
+            if (timeData == null)
+            {
+                _lastKnownTime = DateTime.MinValue;
+                return;
+            }
+
+            // Verify checksum to detect file tampering
+            var dataString = $"{timeData.LastKnownTime:O}|{timeData.MachineId}|{timeData.ChecksumSalt}";
+            using var sha256 = SHA256.Create();
+            var expectedChecksumBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(dataString));
+            var expectedChecksum = Convert.ToBase64String(expectedChecksumBytes);
+
+            if (timeData.Checksum != expectedChecksum)
+            {
+                _logger.LogCritical("License", "TAMPERING DETECTED: Time check file has been modified!");
+                _timeTamperingDetected = true;
+                // Use the stored time anyway as punishment
+                _lastKnownTime = timeData.LastKnownTime;
+                return;
+            }
+
+            // Verify machine ID matches
+            if (timeData.MachineId != GetMachineId())
+            {
+                _logger.LogWarning("License", "Time check file from different machine - ignoring");
+                _lastKnownTime = DateTime.MinValue;
+                return;
+            }
+
+            _lastKnownTime = timeData.LastKnownTime;
+            _logger.LogInfo("License", $"Loaded last known time: {_lastKnownTime:yyyy-MM-dd HH:mm:ss}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("License", $"Failed to load time check: {ex.Message}");
+            _lastKnownTime = DateTime.MinValue;
+        }
+    }
+
+    /// <summary>
+    /// Data structure for time tracking (serialized to JSON)
+    /// </summary>
+    private class TimeCheckData
+    {
+        public DateTime LastKnownTime { get; set; }
+        public DateTime LastUpdated { get; set; }
+        public string MachineId { get; set; } = "";
+        public string ChecksumSalt { get; set; } = "";
+        public string Checksum { get; set; } = "";
+    }
+
+    #endregion
+
+    #region Internet Time Verification
+
+    /// <summary>
+    /// Get the current time from the internet using multiple methods
+    /// Returns null if unable to get internet time (offline)
+    /// </summary>
+    private async Task<DateTime?> GetInternetTimeAsync()
+    {
+        // Try multiple methods in order of reliability
+        DateTime? internetTime = null;
+
+        // Method 1: Try NTP servers
+        internetTime = await GetNtpTimeAsync();
+        if (internetTime.HasValue)
+        {
+            _logger.LogInfo("License", $"Got time from NTP: {internetTime.Value:yyyy-MM-dd HH:mm:ss} UTC");
+            return internetTime;
+        }
+
+        // Method 2: Try HTTP Date headers from reliable servers
+        internetTime = await GetHttpTimeAsync();
+        if (internetTime.HasValue)
+        {
+            _logger.LogInfo("License", $"Got time from HTTP: {internetTime.Value:yyyy-MM-dd HH:mm:ss} UTC");
+            return internetTime;
+        }
+
+        // Method 3: Try our own license server
+        internetTime = await GetLicenseServerTimeAsync();
+        if (internetTime.HasValue)
+        {
+            _logger.LogInfo("License", $"Got time from license server: {internetTime.Value:yyyy-MM-dd HH:mm:ss} UTC");
+            return internetTime;
+        }
+
+        _logger.LogWarning("License", "Could not get internet time - all methods failed");
+        return null;
+    }
+
+    /// <summary>
+    /// Get time from NTP server
+    /// </summary>
+    private async Task<DateTime?> GetNtpTimeAsync()
+    {
+        // List of public NTP servers to try
+        string[] ntpServers = new[]
+        {
+            "time.google.com",
+            "time.windows.com",
+            "pool.ntp.org",
+            "time.cloudflare.com",
+            "time.apple.com"
+        };
+
+        foreach (var server in ntpServers)
+        {
+            try
+            {
+                var ntpTime = await QueryNtpServerAsync(server);
+                if (ntpTime.HasValue)
+                {
+                    return ntpTime;
+                }
+            }
+            catch
+            {
+                // Try next server
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Query a specific NTP server for current time
+    /// </summary>
+    private async Task<DateTime?> QueryNtpServerAsync(string ntpServer)
+    {
+        try
+        {
+            const int NtpPort = 123;
+            var ntpData = new byte[48];
+            ntpData[0] = 0x1B; // NTP request header
+
+            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            socket.ReceiveTimeout = 3000;
+            socket.SendTimeout = 3000;
+
+            var addresses = await Dns.GetHostAddressesAsync(ntpServer);
+            var endpoint = new IPEndPoint(addresses[0], NtpPort);
+
+            await socket.ConnectAsync(endpoint);
+            await socket.SendAsync(ntpData, SocketFlags.None);
+
+            var receiveBuffer = new byte[48];
+            await socket.ReceiveAsync(receiveBuffer, SocketFlags.None);
+
+            // Extract timestamp from NTP response (bytes 40-47)
+            ulong intPart = (ulong)receiveBuffer[40] << 24 | (ulong)receiveBuffer[41] << 16 |
+                           (ulong)receiveBuffer[42] << 8 | receiveBuffer[43];
+            ulong fractPart = (ulong)receiveBuffer[44] << 24 | (ulong)receiveBuffer[45] << 16 |
+                             (ulong)receiveBuffer[46] << 8 | receiveBuffer[47];
+
+            var milliseconds = (intPart * 1000) + ((fractPart * 1000) / 0x100000000L);
+
+            // NTP timestamp starts from 1900-01-01
+            var ntpEpoch = new DateTime(1900, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var ntpTime = ntpEpoch.AddMilliseconds(milliseconds);
+
+            return ntpTime;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("License", $"NTP query to {ntpServer} failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Get time from HTTP Date header of reliable servers
+    /// </summary>
+    private async Task<DateTime?> GetHttpTimeAsync()
+    {
+        // Reliable servers that always return accurate Date headers
+        string[] httpServers = new[]
+        {
+            "https://www.google.com",
+            "https://www.cloudflare.com",
+            "https://www.microsoft.com",
+            "https://www.apple.com"
+        };
+
+        foreach (var server in httpServers)
+        {
+            try
+            {
+                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Head, server));
+
+                if (response.Headers.Date.HasValue)
+                {
+                    return response.Headers.Date.Value.UtcDateTime;
+                }
+            }
+            catch
+            {
+                // Try next server
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Get time from our license server
+    /// </summary>
+    private async Task<DateTime?> GetLicenseServerTimeAsync()
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"{ApiBaseUrl}/time");
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                var timeResponse = JsonSerializer.Deserialize<ServerTimeResponse>(content);
+                if (timeResponse != null)
+                {
+                    return timeResponse.UtcTime;
+                }
+
+                // Fallback: try to parse Date header
+                if (response.Headers.Date.HasValue)
+                {
+                    return response.Headers.Date.Value.UtcDateTime;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("License", $"License server time query failed: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Verify system time against internet time
+    /// Returns true if system time appears to be tampered with
+    /// </summary>
+    private async Task<bool> VerifyTimeWithInternetAsync()
+    {
+        var internetTime = await GetInternetTimeAsync();
+
+        if (!internetTime.HasValue)
+        {
+            // Can't verify - user might be offline
+            // For trial, we'll be stricter and mark as suspicious
+            _logger.LogWarning("License", "Cannot verify time with internet - offline mode");
+            return false;
+        }
+
+        var systemTime = DateTime.UtcNow;
+        var timeDiff = Math.Abs((systemTime - internetTime.Value).TotalMinutes);
+
+        // Allow 5 minutes tolerance for clock drift
+        if (timeDiff > 5)
+        {
+            _logger.LogCritical("License", $"TAMPERING DETECTED: System time differs from internet by {timeDiff:F0} minutes!");
+            _logger.LogWarning("License", $"System: {systemTime:yyyy-MM-dd HH:mm:ss}, Internet: {internetTime.Value:yyyy-MM-dd HH:mm:ss}");
+
+            // Update last known time to internet time (the real time)
+            _lastKnownTime = internetTime.Value;
+            await SaveLastKnownTimeAsync();
+
+            _timeTamperingDetected = true;
+            return true;
+        }
+
+        _logger.LogInfo("License", $"Time verification passed (diff: {timeDiff:F1} minutes)");
+
+        // Update last known time with verified internet time
+        if (internetTime.Value > _lastKnownTime)
+        {
+            _lastKnownTime = internetTime.Value;
+            await SaveLastKnownTimeAsync();
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Response from license server time endpoint
+    /// </summary>
+    private class ServerTimeResponse
+    {
+        public DateTime UtcTime { get; set; }
+        public long UnixTimestamp { get; set; }
     }
 
     #endregion

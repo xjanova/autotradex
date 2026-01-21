@@ -22,12 +22,15 @@ public partial class MainWindow : Window
     private readonly IBalancePoolService? _balancePool;
     private readonly ITradeHistoryService? _tradeHistory;
     private readonly INotificationService? _notificationService;
+    private readonly IConnectionStatusService? _connectionStatusService;
+    private readonly ILicenseService? _licenseService;
     private System.Windows.Threading.DispatcherTimer? _priceUpdateTimer;
     private System.Windows.Threading.DispatcherTimer? _aiScannerTimer;
     private System.Windows.Threading.DispatcherTimer? _statusBarTimer;
     private readonly Random _hyperRandom = new();  // Used for splash screen animation
     private bool _isBotRunning = false;
     private bool _isBotPaused = false;
+    private bool _canStartTrading = false;
     private CancellationTokenSource? _botCancellationTokenSource;
 
     // Stats tracking
@@ -58,6 +61,14 @@ public partial class MainWindow : Window
         _balancePool = App.Services?.GetService<IBalancePoolService>();
         _tradeHistory = App.Services?.GetService<ITradeHistoryService>();
         _notificationService = App.Services?.GetService<INotificationService>();
+        _connectionStatusService = App.Services?.GetService<IConnectionStatusService>();
+        _licenseService = App.Services?.GetService<ILicenseService>();
+
+        // Subscribe to Connection Status events
+        if (_connectionStatusService != null)
+        {
+            _connectionStatusService.ConnectionStatusChanged += ConnectionStatus_Changed;
+        }
 
         // Subscribe to ArbEngine events
         if (_arbEngine != null)
@@ -270,12 +281,113 @@ public partial class MainWindow : Window
 
     #endregion
 
+    #region Connection Status
+
+    private void ConnectionStatus_Changed(object? sender, ConnectionStatusChangedEventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _canStartTrading = _connectionStatusService?.CanStartTrading ?? false;
+            UpdateConnectionStatusUI(e.Status);
+        });
+    }
+
+    private void UpdateConnectionStatusUI(ConnectionStatusSnapshot status)
+    {
+        // Update status bar connection indicator
+        if (StatusBarConnectionText != null)
+        {
+            var connectedCount = status.ConnectedExchangeCount;
+            var totalExchanges = 2; // Exchange A and B
+
+            StatusBarConnectionText.Text = connectedCount > 0
+                ? $"{connectedCount}/{totalExchanges} Connected"
+                : "Not Connected";
+
+            var color = status.OverallHealth switch
+            {
+                ConnectionHealth.Connected => "#10B981",
+                ConnectionHealth.Partial => "#F59E0B",
+                _ => "#EF4444"
+            };
+            StatusBarConnectionText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+        }
+
+        if (StatusBarConnectionDot != null)
+        {
+            var color = status.OverallHealth switch
+            {
+                ConnectionHealth.Connected => "#10B981",
+                ConnectionHealth.Partial => "#F59E0B",
+                _ => "#EF4444"
+            };
+            StatusBarConnectionDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+        }
+
+        // Update exchange count
+        if (StatusBarExchangeCount != null)
+        {
+            StatusBarExchangeCount.Text = $" • {status.Exchanges.Count} Exchanges";
+        }
+
+        _logger?.LogInfo("Connection", $"Status updated: {status.ConnectedExchangeCount} exchanges connected");
+    }
+
+    private async Task CheckConnectionsAndUpdateUIAsync()
+    {
+        if (_connectionStatusService == null) return;
+
+        var status = await _connectionStatusService.CheckAllConnectionsAsync();
+        _canStartTrading = _connectionStatusService.CanStartTrading;
+        UpdateConnectionStatusUI(status);
+    }
+
+    #endregion
+
     #region Bot Control
 
     private async void StartBot_Click(object sender, RoutedEventArgs e)
     {
         if (_arbEngine == null || _isBotRunning)
             return;
+
+        // Check prerequisites before starting
+        if (_connectionStatusService != null)
+        {
+            var missingPrereqs = _connectionStatusService.GetMissingPrerequisites();
+            if (missingPrereqs.Count > 0)
+            {
+                var message = "ไม่สามารถเริ่มเทรดได้ กรุณาตั้งค่าก่อน:\n\n" +
+                              string.Join("\n", missingPrereqs.Select(p => "• " + p)) +
+                              "\n\nไปที่หน้า Settings เพื่อตั้งค่า API Key";
+
+                MessageBox.Show(message, "กรุณาตั้งค่า Exchange ก่อน",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+
+                _logger?.LogWarning("Bot", $"Start blocked - missing prerequisites: {string.Join(", ", missingPrereqs)}");
+                return;
+            }
+        }
+
+        // Verify API connections are valid (authenticated)
+        var config = _configService?.GetConfig();
+        if (config?.General.LiveTrading == true)
+        {
+            var result = MessageBox.Show(
+                "คุณกำลังจะเริ่ม LIVE TRADING\n\n" +
+                "⚠️ จะใช้เงินจริงในการเทรด\n" +
+                "ตรวจสอบว่า API Key มีสิทธิ์ถูกต้อง\n\n" +
+                "ต้องการดำเนินการต่อหรือไม่?",
+                "ยืนยันการเทรดจริง",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+            {
+                _logger?.LogInfo("Bot", "Live trading start cancelled by user");
+                return;
+            }
+        }
 
         try
         {
@@ -355,18 +467,27 @@ public partial class MainWindow : Window
         }
     }
 
-    private void InitializeMainApp()
+    private async void InitializeMainApp()
     {
         try
         {
             // Set default tab
             SetActiveTab(DashboardTab);
 
+            // Update edition text based on license status
+            UpdateEditionDisplay();
+
             // Update mode indicator based on config
             UpdateModeIndicator();
 
             // Initialize UI state
             UpdateBotStatusUI(EngineStatus.Idle, "Ready to start");
+
+            // Check API connections and show status
+            await CheckConnectionsAndUpdateUIAsync();
+
+            // Start connection monitoring (check every 60 seconds)
+            _connectionStatusService?.StartMonitoring(TimeSpan.FromSeconds(60));
 
             // Load dashboard stats from history
             LoadDashboardStats();
@@ -388,6 +509,20 @@ public partial class MainWindow : Window
 
             // Initial status bar update
             UpdateStatusBar();
+
+            // Log startup status
+            var config = _configService?.GetConfig();
+            var mode = config?.General.LiveTrading == true ? "LIVE" : "DEMO";
+            _logger?.LogInfo("App", $"AutoTrade-X started in {mode} mode");
+
+            if (!_canStartTrading)
+            {
+                var missing = _connectionStatusService?.GetMissingPrerequisites() ?? new List<string>();
+                if (missing.Count > 0)
+                {
+                    _logger?.LogWarning("App", $"Not ready to trade: {string.Join(", ", missing)}");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -401,6 +536,47 @@ public partial class MainWindow : Window
         var isLive = config?.General.LiveTrading ?? false;
         _logger?.LogInfo("UI", $"Trading mode: {(isLive ? "LIVE" : "DEMO")}");
     }
+
+    /// <summary>
+    /// Updates the edition text based on license status
+    /// Demo Version = Not licensed (trial or no license)
+    /// Pro Edition = Licensed
+    /// </summary>
+    private void UpdateEditionDisplay()
+    {
+        if (EditionText == null) return;
+
+        var isLicensed = _licenseService?.IsLicensed ?? false;
+        var license = _licenseService?.CurrentLicense;
+
+        if (isLicensed && license != null && license.Status == LicenseStatus.Valid)
+        {
+            // Licensed - Show Pro Edition with tier
+            var tierText = license.Tier switch
+            {
+                LicenseTier.Pro => "PRO EDITION",
+                LicenseTier.Enterprise => "ENTERPRISE EDITION",
+                _ => "LICENSED"
+            };
+            EditionText.Text = $"by Xman Studio • {tierText}";
+            EditionText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")); // Gold
+            _logger?.LogInfo("License", $"Running with {tierText}");
+        }
+        else
+        {
+            // Not licensed or trial - Show Demo Version
+            EditionText.Text = "by Xman Studio • DEMO VERSION";
+            EditionText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#808080")); // Gray
+            _logger?.LogInfo("License", "Running in DEMO VERSION (trial or unlicensed)");
+        }
+    }
+
+    /// <summary>
+    /// Checks if the app is running in demo mode (not licensed)
+    /// In demo mode, real wallet access is blocked
+    /// </summary>
+    public bool IsDemoMode => !(_licenseService?.IsLicensed ?? false) ||
+                               _licenseService?.CurrentLicense?.Status != LicenseStatus.Valid;
 
     #region Splash Screen Animation
 

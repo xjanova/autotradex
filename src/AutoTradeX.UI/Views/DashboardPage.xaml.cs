@@ -36,6 +36,7 @@ public partial class DashboardPage : UserControl
     private readonly INotificationService? _notificationService;
     private readonly IExchangeClientFactory? _exchangeFactory;
     private readonly IProjectService? _projectService;
+    private readonly IConnectionStatusService? _connectionStatusService;
 
     // Timers
     private DispatcherTimer? _refreshTimer;
@@ -79,6 +80,7 @@ public partial class DashboardPage : UserControl
         _notificationService = App.Services?.GetService<INotificationService>();
         _exchangeFactory = App.Services?.GetService<IExchangeClientFactory>();
         _projectService = App.Services?.GetService<IProjectService>();
+        _connectionStatusService = App.Services?.GetService<IConnectionStatusService>();
 
         // Initialize UI
         InitializeCharts();
@@ -257,61 +259,71 @@ public partial class DashboardPage : UserControl
     }
 
     /// <summary>
-    /// Load REAL exchange connection statuses
+    /// Load REAL exchange connection statuses using ConnectionStatusService
+    /// This checks for actual API credentials, not just public API access
     /// </summary>
     private async Task LoadExchangeStatusesAsync()
     {
         ExchangeStatuses.Clear();
 
-        var exchanges = new[] { "Binance", "KuCoin", "OKX", "Bybit", "Gate.io", "Bitkub" };
-
-        foreach (var exchangeName in exchanges)
+        // Use ConnectionStatusService for proper credential checking
+        if (_connectionStatusService != null)
         {
-            try
-            {
-                if (_exchangeFactory != null)
-                {
-                    var client = _exchangeFactory.CreateClient(exchangeName);
-                    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                    var isConnected = await client.TestConnectionAsync();
-                    stopwatch.Stop();
+            var status = await _connectionStatusService.CheckAllConnectionsAsync();
 
-                    if (isConnected)
-                    {
-                        ExchangeStatuses.Add(new ExchangeStatusItem(
-                            exchangeName,
-                            "Connected",
-                            "#10B981",
-                            $"{stopwatch.ElapsedMilliseconds}ms"
-                        ));
-                    }
-                    else
-                    {
-                        ExchangeStatuses.Add(new ExchangeStatusItem(
-                            exchangeName,
-                            "Disconnected",
-                            "#EF4444",
-                            "-"
-                        ));
-                    }
+            foreach (var (exchangeName, exchangeStatus) in status.Exchanges)
+            {
+                string displayStatus;
+                string statusColor;
+                string latency;
+
+                if (exchangeStatus.IsConnected && exchangeStatus.HasValidCredentials)
+                {
+                    // Fully connected with valid API key
+                    displayStatus = "Connected";
+                    statusColor = "#10B981"; // Green
+                    latency = exchangeStatus.Latency > 0 ? $"{exchangeStatus.Latency}ms" : "-";
+                }
+                else if (exchangeStatus.HasValidCredentials && !exchangeStatus.IsConnected)
+                {
+                    // Has API key but connection failed
+                    displayStatus = "Connection Error";
+                    statusColor = "#EF4444"; // Red
+                    latency = "-";
+                }
+                else if (!string.IsNullOrEmpty(exchangeStatus.ErrorMessage) && exchangeStatus.ErrorMessage.Contains("not configured"))
+                {
+                    // Exchange not configured in settings
+                    displayStatus = "Not Configured";
+                    statusColor = "#60FFFFFF"; // Gray
+                    latency = "-";
                 }
                 else
                 {
-                    ExchangeStatuses.Add(new ExchangeStatusItem(
-                        exchangeName,
-                        "Not Configured",
-                        "#60FFFFFF",
-                        "-"
-                    ));
+                    // No API key configured
+                    displayStatus = "No API Key";
+                    statusColor = "#F59E0B"; // Yellow/Warning
+                    latency = "-";
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning("Dashboard", $"Failed to check {exchangeName} status: {ex.Message}");
+
                 ExchangeStatuses.Add(new ExchangeStatusItem(
                     exchangeName,
-                    "Error",
-                    "#EF4444",
+                    displayStatus,
+                    statusColor,
+                    latency
+                ));
+            }
+        }
+        else
+        {
+            // Fallback if ConnectionStatusService is not available
+            var exchanges = new[] { "Binance", "KuCoin", "OKX", "Bybit", "Gate.io", "Bitkub" };
+            foreach (var exchangeName in exchanges)
+            {
+                ExchangeStatuses.Add(new ExchangeStatusItem(
+                    exchangeName,
+                    "Service Unavailable",
+                    "#60FFFFFF",
                     "-"
                 ));
             }
@@ -319,6 +331,7 @@ public partial class DashboardPage : UserControl
 
         // Log connected count and update UI
         var connectedCount = ExchangeStatuses.Count(e => e.Status == "Connected");
+        var noApiKeyCount = ExchangeStatuses.Count(e => e.Status == "No API Key");
 
         Dispatcher.Invoke(() =>
         {
@@ -333,7 +346,20 @@ public partial class DashboardPage : UserControl
                 SystemHealthText.Text = $"{connectedCount} CONNECTED";
                 SystemHealthText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"));
 
-                AddActivityLog("Info", $"Connected to {connectedCount} exchange(s)", "#10B981");
+                AddActivityLog("Info", $"Connected to {connectedCount} exchange(s) with valid API keys", "#10B981");
+            }
+            else if (noApiKeyCount > 0)
+            {
+                // Show exchange list but with warning
+                NoExchangeConnectedPanel.Visibility = Visibility.Collapsed;
+                ExchangeStatusList.Visibility = Visibility.Visible;
+
+                // Update system health badge to warning
+                SystemHealthBadge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#20F59E0B"));
+                SystemHealthText.Text = "NO API KEYS";
+                SystemHealthText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B"));
+
+                AddActivityLog("Warning", "No API keys configured. Please add your API keys in Settings to start trading.", "#F59E0B");
             }
             else
             {
@@ -341,7 +367,7 @@ public partial class DashboardPage : UserControl
                 NoExchangeConnectedPanel.Visibility = Visibility.Visible;
                 ExchangeStatusList.Visibility = Visibility.Collapsed;
 
-                // Update system health badge to warning
+                // Update system health badge to error
                 SystemHealthBadge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#20EF4444"));
                 SystemHealthText.Text = "NO CONNECTION";
                 SystemHealthText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
@@ -1122,6 +1148,46 @@ public partial class DashboardPage : UserControl
     {
         if (_arbEngine == null) return;
 
+        // Check connection status and prerequisites before starting
+        if (_connectionStatusService != null)
+        {
+            var missingPrereqs = _connectionStatusService.GetMissingPrerequisites();
+            if (missingPrereqs.Count > 0)
+            {
+                // Show warning message with missing prerequisites
+                var message = "ไม่สามารถเริ่มเทรดได้ กรุณาตั้งค่าก่อน:\n\n" +
+                              string.Join("\n", missingPrereqs.Select(p => "• " + p)) +
+                              "\n\nไปที่หน้า Settings เพื่อตั้งค่า API Key";
+
+                MessageBox.Show(message, "กรุณาตั้งค่า Exchange ก่อน",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+
+                AddActivityLog("Warning", "Cannot start - Exchange not configured", "#F59E0B");
+                _logger?.LogWarning("Dashboard", $"Start blocked - missing: {string.Join(", ", missingPrereqs)}");
+                return;
+            }
+        }
+
+        // Check if live trading mode
+        var config = _configService?.GetConfig();
+        if (config?.General.LiveTrading == true)
+        {
+            var result = MessageBox.Show(
+                "คุณกำลังจะเริ่ม LIVE TRADING\n\n" +
+                "⚠️ จะใช้เงินจริงในการเทรด\n" +
+                "ตรวจสอบว่า API Key มีสิทธิ์ถูกต้อง\n\n" +
+                "ต้องการดำเนินการต่อหรือไม่?",
+                "ยืนยันการเทรดจริง",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+            {
+                AddActivityLog("Info", "Live trading cancelled by user", "#7C3AED");
+                return;
+            }
+        }
+
         try
         {
             AddActivityLog("Bot", "Starting arbitrage bot...", "#F59E0B");
@@ -1305,10 +1371,49 @@ public partial class DashboardPage : UserControl
 
     #region Lifecycle
 
-    private void DashboardPage_Loaded(object sender, RoutedEventArgs e)
+    private async void DashboardPage_Loaded(object sender, RoutedEventArgs e)
     {
         _refreshTimer?.Start();
         _chartUpdateTimer?.Start();
+
+        // Update Start button state based on connection status
+        await UpdateStartButtonStateAsync();
+    }
+
+    /// <summary>
+    /// Updates the Start button enabled state based on exchange connection status.
+    /// If no exchanges are connected, the button shows a warning and is still clickable
+    /// but will show a message to configure settings first.
+    /// </summary>
+    private async Task UpdateStartButtonStateAsync()
+    {
+        if (_connectionStatusService == null || StartBotButton == null) return;
+
+        try
+        {
+            var status = await _connectionStatusService.CheckAllConnectionsAsync();
+            var canStart = _connectionStatusService.CanStartTrading;
+
+            if (canStart)
+            {
+                // Connected - enable button with normal style
+                StartBotButton.ToolTip = "Start arbitrage bot";
+                StartBotButton.Opacity = 1.0;
+            }
+            else
+            {
+                // Not connected - show warning state
+                var missingPrereqs = _connectionStatusService.GetMissingPrerequisites();
+                var tooltipText = "กรุณาตั้งค่า Exchange ก่อนเริ่มเทรด:\n" +
+                                  string.Join("\n", missingPrereqs.Select(p => "• " + p));
+                StartBotButton.ToolTip = tooltipText;
+                StartBotButton.Opacity = 0.7; // Slightly dimmed to indicate issue
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("Dashboard", $"Error checking connection status: {ex.Message}");
+        }
     }
 
     private void DashboardPage_Unloaded(object sender, RoutedEventArgs e)

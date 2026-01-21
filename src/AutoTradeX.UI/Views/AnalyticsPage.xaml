@@ -345,14 +345,155 @@
         </Border>
 
         <!-- Main Content -->
-        <Grid Grid.Row="1">
+        <ScrollViewer Grid.Row="1" Style="{StaticResource PremiumScrollViewer}" VerticalScrollBarVisibility="Auto">
+        <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="2*"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Main Price Chart with Trade Markers -->
+            <!-- Per-Pair P&L Summary Section -->
             <Border Grid.Row="0" Style="{StaticResource AnalyticsCard}" Margin="0,0,0,15">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Section Header -->
+                    <Grid Grid.Row="0" Margin="0,0,0,15">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <TextBlock Text="💰 P&amp;L by Trading Pair" Style="{StaticResource SectionHeader}"/>
+                            <TextBlock x:Name="PairSummaryCount" Text="(0 pairs)" FontSize="12" Foreground="#60FFFFFF"
+                                       VerticalAlignment="Bottom" Margin="10,0,0,2"/>
+                        </StackPanel>
+
+                        <!-- Expand/Collapse Button -->
+                        <Border Grid.Column="1" Background="#20FFFFFF" CornerRadius="6" Padding="10,6" Cursor="Hand"
+                                x:Name="TogglePairSummaryBtn" MouseLeftButtonDown="TogglePairSummary_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="TogglePairSummaryIcon" Text="▼" FontSize="10" Foreground="#80FFFFFF" Margin="0,0,6,0"/>
+                                <TextBlock x:Name="TogglePairSummaryText" Text="Collapse" FontSize="11" Foreground="#80FFFFFF"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Pair Summary Grid -->
+                    <Border x:Name="PairSummaryPanel" Grid.Row="1">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Column Headers -->
+                            <Border Grid.Row="0" Background="#10FFFFFF" CornerRadius="8" Padding="12,10" Margin="0,0,0,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="1.5*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Column="0" Text="Trading Pair" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF"/>
+                                    <TextBlock Grid.Column="1" Text="Trades" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="Win Rate" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="3" Text="Avg P&amp;L" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="4" Text="Total Fees" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="5" Text="Net P&amp;L" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF" HorizontalAlignment="Right"/>
+                                </Grid>
+                            </Border>
+
+                            <!-- Pair Summary Items -->
+                            <ItemsControl x:Name="PairSummaryList" Grid.Row="1" MaxHeight="250">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#08FFFFFF" CornerRadius="8" Padding="12,10" Margin="0,0,0,6"
+                                                Cursor="Hand" MouseLeftButtonDown="PairSummary_Click">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#15FFFFFF"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="2*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="1.5*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <!-- Pair Name with Icon -->
+                                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Border Width="28" Height="28" CornerRadius="6" Margin="0,0,10,0"
+                                                            Background="{Binding PnLBackground}">
+                                                        <TextBlock Text="{Binding PnLIcon}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Symbol}" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
+                                                        <TextBlock Text="{Binding ExchangeRoute}" FontSize="10" Foreground="#50FFFFFF"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+
+                                                <!-- Trade Count -->
+                                                <TextBlock Grid.Column="1" Text="{Binding TradeCount}" FontSize="13" FontWeight="Medium"
+                                                           Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                                                <!-- Win Rate -->
+                                                <TextBlock Grid.Column="2" Text="{Binding WinRateDisplay}" FontSize="13" FontWeight="Medium"
+                                                           Foreground="{Binding WinRateColor}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                                                <!-- Avg P&L -->
+                                                <TextBlock Grid.Column="3" Text="{Binding AvgPnLDisplay}" FontSize="13" FontWeight="Medium"
+                                                           Foreground="{Binding AvgPnLColor}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                                                <!-- Total Fees -->
+                                                <TextBlock Grid.Column="4" Text="{Binding TotalFeesDisplay}" FontSize="13" FontWeight="Medium"
+                                                           Foreground="#F59E0B" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                                                <!-- Net P&L -->
+                                                <Border Grid.Column="5" Background="{Binding PnLBackground}" CornerRadius="6" Padding="10,4"
+                                                        HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding TotalPnLDisplay}" FontSize="13" FontWeight="Bold"
+                                                               Foreground="{Binding PnLColor}"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- No pairs message -->
+                            <Border x:Name="NoPairsMessage" Grid.Row="1" Background="#08FFFFFF" CornerRadius="8"
+                                    Padding="20" Visibility="Collapsed">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="📭" FontSize="24" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="No trading pair data available" FontSize="12" Foreground="#60FFFFFF"
+                                               HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Main Price Chart with Trade Markers -->
+            <Border Grid.Row="1" Style="{StaticResource AnalyticsCard}" Margin="0,0,0,15" MinHeight="300">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -417,7 +558,7 @@
             </Border>
 
             <!-- Bottom Section: P&L Chart + Trade List -->
-            <Grid Grid.Row="1">
+            <Grid Grid.Row="2" MinHeight="250">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="350"/>
@@ -499,6 +640,7 @@
                 </Border>
             </Grid>
         </Grid>
+        </ScrollViewer>
 
         <!-- Stats Bar -->
         <Border Grid.Row="2" Background="#10FFFFFF" CornerRadius="12" Padding="20,15" Margin="0,15,0,0">
