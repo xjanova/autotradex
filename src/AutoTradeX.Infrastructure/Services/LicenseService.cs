@@ -27,10 +27,10 @@ namespace AutoTradeX.Infrastructure.Services;
 public class LicenseService : ILicenseService, IDisposable
 {
     // API Configuration
-    private const string ApiBaseUrl = "https://xman4289.com/api/v1/license";
-    private const string PurchaseBaseUrl = "https://xman4289.com/purchase";
+    private const string ApiBaseUrl = "https://xman4289.com/api/v1/autotradex";
+    private const string PurchaseBaseUrl = "https://xman4289.com/autotradex/purchase";
     private const string AppName = "AutoTradeX";
-    private const string AppVersion = "0.1.0";
+    private const string AppVersion = "0.2.0";
 
     // Offline grace period configuration
     private const int OfflineGracePeriodDays = 7;
@@ -401,7 +401,7 @@ public class LicenseService : ILicenseService, IDisposable
                 OsVersion = Environment.OSVersion.ToString()
             };
 
-            var response = await _httpClient.PostAsJsonAsync($"{ApiBaseUrl}/register-device", request);
+            var response = await _httpClient.PostAsJsonAsync($"{ApiBaseUrl}/demo", request);
             var result = await response.Content.ReadFromJsonAsync<DeviceRegistrationResponse>();
 
             if (result?.Success == true)
@@ -681,7 +681,8 @@ public class LicenseService : ILicenseService, IDisposable
     public string GetPurchaseUrl()
     {
         var deviceId = GetMachineId();
-        return $"{PurchaseBaseUrl}?app={AppName}&device={deviceId[..16]}";
+        // Use the API endpoint to get purchase URL
+        return $"{ApiBaseUrl}/purchase-url?machine_id={deviceId[..16]}";
     }
 
     #endregion
@@ -1109,27 +1110,17 @@ public class LicenseService : ILicenseService, IDisposable
     }
 
     /// <summary>
-    /// Get time from our license server
+    /// Get time from our license server (using pricing endpoint for Date header)
     /// </summary>
     private async Task<DateTime?> GetLicenseServerTimeAsync()
     {
         try
         {
-            var response = await _httpClient.GetAsync($"{ApiBaseUrl}/time");
-            if (response.IsSuccessStatusCode)
+            // Use pricing endpoint which is public and always available
+            var response = await _httpClient.GetAsync($"{ApiBaseUrl}/pricing");
+            if (response.Headers.Date.HasValue)
             {
-                var content = await response.Content.ReadAsStringAsync();
-                var timeResponse = JsonSerializer.Deserialize<ServerTimeResponse>(content);
-                if (timeResponse != null)
-                {
-                    return timeResponse.UtcTime;
-                }
-
-                // Fallback: try to parse Date header
-                if (response.Headers.Date.HasValue)
-                {
-                    return response.Headers.Date.Value.UtcDateTime;
-                }
+                return response.Headers.Date.Value.UtcDateTime;
             }
         }
         catch (Exception ex)
