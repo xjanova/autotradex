@@ -182,6 +182,36 @@ App Start → Check Internet → No Internet? → Show Dialog → Shutdown
                           → Has Internet? → Continue to License Check → Main App
 ```
 
+### License System (CRITICAL - Must Read)
+
+> **⚠️ IMPORTANT:** When working on ANY license-related code, you MUST read the complete documentation at:
+> **`D:\Code\APP Thaiprompt\xmanstudio\docs\LICENSE_SYSTEM.md`**
+
+This application uses the Xman Studio License System with the following security features:
+
+**Key Components:**
+- `src/AutoTradeX.Infrastructure/Services/LicenseService.cs` - Main license service
+- `src/AutoTradeX.Core/Models/LicenseModels.cs` - License data models
+
+**Security Features (DO NOT modify without reading docs):**
+1. **Device Registration** - Auto-registers device on app startup
+2. **Trial Abuse Detection** - Hardware hash, IP tracking, attempt counting
+3. **Fake Server Protection** - DNS verification, hosts file check, challenge-response
+4. **License Lock** - License is locked to specific device
+
+**API Endpoints (Server: xman4289.com):**
+- `POST /api/v1/autotradex/register-device` - Register device
+- `POST /api/v1/autotradex/activate` - Activate license
+- `POST /api/v1/autotradex/validate` - Validate license
+- `POST /api/v1/autotradex/demo` - Start trial
+- `POST /api/v1/autotradex/verify-server` - Anti-fake server verification
+
+**Before making ANY changes to license code:**
+1. Read `xmanstudio/docs/LICENSE_SYSTEM.md` completely
+2. Understand the abuse detection flow
+3. Understand the fake server protection
+4. Test changes against the actual server
+
 ## Warning
 
 This is an **educational project** for learning about:
