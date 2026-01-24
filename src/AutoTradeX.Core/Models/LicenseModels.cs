@@ -19,7 +19,8 @@ public enum LicenseStatus
     Expired,
     Trial,
     Suspended,
-    DeviceLimitReached
+    DeviceLimitReached,
+    DemoMode  // Trial expired - limited functionality, no real trading
 }
 
 /// <summary>
@@ -53,6 +54,37 @@ public class LicenseInfo
     public int MaxExchanges { get; set; } = 2;
     public bool IsOfflineMode { get; set; } = false;
     public int OfflineDaysRemaining { get; set; } = 7;
+
+    // Demo mode properties
+    public bool IsDemoMode { get; set; } = false;
+    public DateTime? DemoModeStartedAt { get; set; }
+    public string? PurchaseUrl { get; set; }
+
+    /// <summary>
+    /// Check if real trading is allowed
+    /// </summary>
+    public bool CanTrade => Status == LicenseStatus.Valid || Status == LicenseStatus.Trial;
+
+    /// <summary>
+    /// Check if auto-trading is allowed
+    /// </summary>
+    public bool CanAutoTrade => Status == LicenseStatus.Valid && Features.Contains("auto_trading");
+
+    /// <summary>
+    /// Get demo mode configuration
+    /// </summary>
+    public DemoModeConfig GetDemoConfig()
+    {
+        return new DemoModeConfig
+        {
+            CanViewOpportunities = true,
+            CanExecuteTrades = false,
+            CanUseAutoTrading = false,
+            MaxExchanges = 2,
+            ReminderIntervalMinutes = 15,
+            PurchaseUrl = PurchaseUrl
+        };
+    }
 }
 
 /// <summary>
@@ -143,7 +175,52 @@ public class DeviceRegistrationResponse
     // New fields for enhanced device registration
     public bool CanStartTrial { get; set; } = true;
     public bool HasLicense { get; set; } = false;
-    public string DeviceStatus { get; set; } = "pending"; // pending, trial, licensed, blocked, expired
+    public string DeviceStatus { get; set; } = "pending"; // pending, trial, licensed, blocked, expired, demo
+    public string? PurchaseUrl { get; set; }
+
+    // Demo mode info (when trial expired)
+    public bool IsDemoMode { get; set; } = false;
+    public string? DemoModeReason { get; set; }
+}
+
+/// <summary>
+/// Demo mode configuration - what features are available/restricted
+/// </summary>
+public class DemoModeConfig
+{
+    /// <summary>
+    /// Can view arbitrage opportunities but cannot execute trades
+    /// </summary>
+    public bool CanViewOpportunities { get; set; } = true;
+
+    /// <summary>
+    /// Can execute real trades
+    /// </summary>
+    public bool CanExecuteTrades { get; set; } = false;
+
+    /// <summary>
+    /// Can use auto-trading feature
+    /// </summary>
+    public bool CanUseAutoTrading { get; set; } = false;
+
+    /// <summary>
+    /// Maximum number of exchanges to connect
+    /// </summary>
+    public int MaxExchanges { get; set; } = 2;
+
+    /// <summary>
+    /// Show activation reminder every N minutes
+    /// </summary>
+    public int ReminderIntervalMinutes { get; set; } = 15;
+
+    /// <summary>
+    /// Message to show in demo mode
+    /// </summary>
+    public string DemoMessage { get; set; } = "คุณกำลังใช้งาน Demo Mode - ไม่สามารถเทรดจริงได้ กรุณา Activate License เพื่อใช้งานเต็มรูปแบบ";
+
+    /// <summary>
+    /// URL to purchase license
+    /// </summary>
     public string? PurchaseUrl { get; set; }
 }
 

@@ -93,9 +93,191 @@ public partial class MainWindow : Window
             _notificationService.NotificationReceived += NotificationService_NotificationReceived;
         }
 
+        // Subscribe to License events (for Demo Mode reminders)
+        if (_licenseService is LicenseService licenseServiceImpl)
+        {
+            licenseServiceImpl.DemoModeReminder += LicenseService_DemoModeReminder;
+        }
+
         // Set Dashboard as default active tab
         Loaded += MainWindow_Loaded;
     }
+
+    #region Demo Mode Warning
+
+    private void LicenseService_DemoModeReminder(object? sender, DemoModeReminderEventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            ShowDemoModeWarning(e.Config);
+        });
+    }
+
+    private void ShowDemoModeWarning(DemoModeConfig config)
+    {
+        _logger?.LogInfo("License", "Showing Demo Mode warning dialog");
+
+        // Create custom styled dialog
+        var dialog = new Window
+        {
+            Title = "Demo Mode",
+            Width = 450,
+            Height = 280,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStyle = WindowStyle.None,
+            AllowsTransparency = true,
+            Background = new SolidColorBrush(Colors.Transparent)
+        };
+
+        // Create dialog content with dark theme
+        var border = new Border
+        {
+            Background = new LinearGradientBrush(
+                (Color)ColorConverter.ConvertFromString("#FF1A0A2E"),
+                (Color)ColorConverter.ConvertFromString("#FF0A0A1A"),
+                45),
+            BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#40F59E0B")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                BlurRadius = 30,
+                Opacity = 0.5
+            }
+        };
+
+        var mainGrid = new Grid();
+        mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        // Header
+        var headerBorder = new Border
+        {
+            Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#20F59E0B")),
+            Padding = new Thickness(20, 15, 20, 15)
+        };
+        var headerStack = new StackPanel { Orientation = Orientation.Horizontal };
+        headerStack.Children.Add(new TextBlock
+        {
+            Text = "⚠️",
+            FontSize = 24,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0)
+        });
+        headerStack.Children.Add(new TextBlock
+        {
+            Text = "Demo Mode Active",
+            FontSize = 18,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        headerBorder.Child = headerStack;
+        Grid.SetRow(headerBorder, 0);
+        mainGrid.Children.Add(headerBorder);
+
+        // Content
+        var contentStack = new StackPanel { Margin = new Thickness(24) };
+        contentStack.Children.Add(new TextBlock
+        {
+            Text = config.DemoMessage,
+            FontSize = 14,
+            Foreground = Brushes.White,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 16)
+        });
+
+        contentStack.Children.Add(new TextBlock
+        {
+            Text = "ในโหมด Demo คุณสามารถ:",
+            FontSize = 13,
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#B0B0B0")),
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+
+        var features = new[]
+        {
+            "✓ ดูโอกาสในการเทรด Arbitrage",
+            "✓ เชื่อมต่อกับ Exchange",
+            "✗ ไม่สามารถเทรดจริงได้",
+            "✗ ไม่สามารถใช้ Auto-Trading ได้"
+        };
+
+        foreach (var feature in features)
+        {
+            var isEnabled = feature.StartsWith("✓");
+            contentStack.Children.Add(new TextBlock
+            {
+                Text = feature,
+                FontSize = 12,
+                Foreground = new SolidColorBrush(isEnabled
+                    ? (Color)ColorConverter.ConvertFromString("#10B981")
+                    : (Color)ColorConverter.ConvertFromString("#EF4444")),
+                Margin = new Thickness(12, 2, 0, 2)
+            });
+        }
+
+        Grid.SetRow(contentStack, 1);
+        mainGrid.Children.Add(contentStack);
+
+        // Buttons
+        var buttonStack = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(24, 0, 24, 20)
+        };
+
+        var activateButton = new Button
+        {
+            Content = "🔑 Activate License",
+            Padding = new Thickness(20, 10, 20, 10),
+            Margin = new Thickness(0, 0, 10, 0),
+            Background = new LinearGradientBrush(
+                (Color)ColorConverter.ConvertFromString("#8B5CF6"),
+                (Color)ColorConverter.ConvertFromString("#7C3AED"),
+                90),
+            Foreground = Brushes.White,
+            BorderThickness = new Thickness(0),
+            Cursor = Cursors.Hand
+        };
+        activateButton.Click += (s, e) =>
+        {
+            dialog.Close();
+            // Navigate to Settings page for activation
+            NavigateToPage("Settings");
+        };
+
+        var laterButton = new Button
+        {
+            Content = "Later",
+            Padding = new Thickness(20, 10, 20, 10),
+            Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#20FFFFFF")),
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#B0B0B0")),
+            BorderThickness = new Thickness(0),
+            Cursor = Cursors.Hand
+        };
+        laterButton.Click += (s, e) => dialog.Close();
+
+        buttonStack.Children.Add(activateButton);
+        buttonStack.Children.Add(laterButton);
+        Grid.SetRow(buttonStack, 2);
+        mainGrid.Children.Add(buttonStack);
+
+        border.Child = mainGrid;
+        dialog.Content = border;
+
+        // Allow dragging the dialog
+        border.MouseLeftButtonDown += (s, e) => dialog.DragMove();
+
+        dialog.ShowDialog();
+    }
+
+    #endregion
 
     private void NotificationService_NotificationReceived(object? sender, NotificationEventArgs e)
     {
@@ -350,6 +532,44 @@ public partial class MainWindow : Window
     {
         if (_arbEngine == null || _isBotRunning)
             return;
+
+        // Check Demo Mode - Block real trading
+        if (_licenseService is LicenseService licenseService && licenseService.IsDemoMode)
+        {
+            var config = licenseService.GetDemoModeConfig();
+
+            var result = MessageBox.Show(
+                "คุณกำลังใช้งาน Demo Mode\n\n" +
+                "⚠️ ไม่สามารถเทรดจริงได้ในโหมดนี้\n" +
+                "กรุณา Activate License เพื่อใช้งานการเทรด\n\n" +
+                "ต้องการไป Activate License หรือไม่?",
+                "Demo Mode - ไม่สามารถเทรดได้",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                NavigateToPage("Settings");
+            }
+
+            _logger?.LogWarning("Bot", "Start blocked - Demo Mode active, real trading not allowed");
+            return;
+        }
+
+        // Check if licensed and action is allowed
+        if (_licenseService is LicenseService ls && !ls.IsActionAllowed("execute_trade"))
+        {
+            MessageBox.Show(
+                "ไม่สามารถเริ่มเทรดได้\n\n" +
+                "License ของคุณไม่อนุญาตให้ทำการเทรด\n" +
+                "กรุณาตรวจสอบสถานะ License",
+                "License Required",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+
+            _logger?.LogWarning("Bot", "Start blocked - License does not allow trading");
+            return;
+        }
 
         // Check prerequisites before starting
         if (_connectionStatusService != null)

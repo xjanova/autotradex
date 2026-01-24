@@ -78,7 +78,20 @@ public class LicenseService : ILicenseService, IDisposable
     public bool IsTrial => _currentLicense?.Status == LicenseStatus.Trial || _currentLicense?.Tier == LicenseTier.Trial;
     public bool IsOfflineDowngraded { get; private set; } = false;
 
+    // Demo Mode properties
+    public bool IsDemoMode => _currentLicense?.Status == LicenseStatus.DemoMode ||
+                              _currentLicense?.Status == LicenseStatus.Expired ||
+                              (_currentLicense?.Status == LicenseStatus.Trial && GetTrialDaysRemaining() <= 0);
+    public bool CanTrade => _currentLicense?.CanTrade ?? false;
+    public bool CanAutoTrade => _currentLicense?.CanAutoTrade ?? false;
+
+    // Demo mode reminder timer
+    private System.Timers.Timer? _demoReminderTimer;
+    private DateTime _lastDemoReminder = DateTime.MinValue;
+    private const int DemoReminderIntervalMinutes = 15;
+
     public event EventHandler<LicenseStatusChangedEventArgs>? LicenseStatusChanged;
+    public event EventHandler<DemoModeReminderEventArgs>? DemoModeReminder;
 
     public LicenseService(ILoggingService logger)
     {
@@ -153,11 +166,25 @@ public class LicenseService : ILicenseService, IDisposable
                 {
                     await ValidateLicenseAsync();
                 }
+
+                // Check if should switch to demo mode (trial expired)
+                CheckAndSwitchToDemoMode();
+
+                // If in demo mode, start reminder timer and trigger initial reminder
+                if (IsDemoMode)
+                {
+                    StartDemoReminderTimer();
+                    // Give UI time to initialize before first reminder
+                    _ = Task.Delay(3000).ContinueWith(_ => TriggerDemoReminder());
+                }
             }
             else
             {
                 // No license - check for device registration (trial)
                 await CheckTrialStatusAsync();
+
+                // Check if new trial should be demo mode
+                CheckAndSwitchToDemoMode();
             }
 
             _isInitialized = true;
@@ -1880,13 +1907,203 @@ public class LicenseService : ILicenseService, IDisposable
 
     #endregion
 
+    #region Demo Mode
+
+    /// <summary>
+    /// Switch to demo mode when trial expires
+    /// Demo mode allows viewing but not real trading
+    /// </summary>
+    public void SwitchToDemoMode(string reason = "Trial expired")
+    {
+        if (_currentLicense == null)
+        {
+            _currentLicense = new LicenseInfo();
+        }
+
+        var oldStatus = _currentLicense.Status;
+        _currentLicense.Status = LicenseStatus.DemoMode;
+        _currentLicense.IsDemoMode = true;
+        _currentLicense.DemoModeStartedAt = DateTime.UtcNow;
+
+        // Demo mode features - view only, no trading
+        _currentLicense.Features = new[] { "basic_scan", "view_opportunities" };
+        _currentLicense.MaxTradingPairs = 1;
+        _currentLicense.MaxExchanges = 2;
+
+        _ = SaveLicenseAsync();
+
+        _logger.LogWarning("License", $"Switched to Demo Mode: {reason}");
+        OnLicenseStatusChanged(oldStatus, LicenseStatus.DemoMode, reason);
+
+        // Start demo reminder timer
+        StartDemoReminderTimer();
+    }
+
+    /// <summary>
+    /// Check if trial has expired and switch to demo mode if needed
+    /// </summary>
+    public void CheckAndSwitchToDemoMode()
+    {
+        if (_currentLicense == null) return;
+
+        // Already in demo mode
+        if (_currentLicense.Status == LicenseStatus.DemoMode) return;
+
+        // Check if trial expired
+        if (_currentLicense.Status == LicenseStatus.Trial && GetTrialDaysRemaining() <= 0)
+        {
+            SwitchToDemoMode("Trial period ended");
+        }
+        else if (_currentLicense.Status == LicenseStatus.Expired)
+        {
+            SwitchToDemoMode("License expired");
+        }
+    }
+
+    /// <summary>
+    /// Get demo mode configuration
+    /// </summary>
+    public DemoModeConfig GetDemoModeConfig()
+    {
+        return new DemoModeConfig
+        {
+            CanViewOpportunities = true,
+            CanExecuteTrades = false,
+            CanUseAutoTrading = false,
+            MaxExchanges = 2,
+            ReminderIntervalMinutes = DemoReminderIntervalMinutes,
+            DemoMessage = "คุณกำลังใช้งาน Demo Mode - ไม่สามารถเทรดจริงได้ กรุณา Activate License เพื่อใช้งานเต็มรูปแบบ",
+            PurchaseUrl = _currentLicense?.PurchaseUrl ?? GetPurchaseUrl()
+        };
+    }
+
+    /// <summary>
+    /// Check if a specific action is allowed in current mode
+    /// </summary>
+    public bool IsActionAllowed(string action)
+    {
+        if (IsLicensed) return true;
+
+        if (IsDemoMode)
+        {
+            // Demo mode: only viewing is allowed
+            return action switch
+            {
+                "view_opportunities" => true,
+                "view_prices" => true,
+                "connect_exchange" => true, // Can connect but not trade
+                "execute_trade" => false,
+                "auto_trade" => false,
+                "manual_trade" => false,
+                "place_order" => false,
+                _ => false
+            };
+        }
+
+        if (IsTrial)
+        {
+            // Trial mode: limited trading allowed
+            return action switch
+            {
+                "view_opportunities" => true,
+                "view_prices" => true,
+                "connect_exchange" => true,
+                "execute_trade" => true,
+                "manual_trade" => true,
+                "auto_trade" => HasFeature("auto_trading"),
+                "place_order" => true,
+                _ => true
+            };
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Start the demo mode reminder timer
+    /// </summary>
+    private void StartDemoReminderTimer()
+    {
+        StopDemoReminderTimer();
+
+        if (!IsDemoMode) return;
+
+        _demoReminderTimer = new System.Timers.Timer(DemoReminderIntervalMinutes * 60 * 1000);
+        _demoReminderTimer.Elapsed += OnDemoReminderTimerElapsed;
+        _demoReminderTimer.AutoReset = true;
+        _demoReminderTimer.Start();
+
+        _logger.LogInfo("License", $"Demo reminder timer started (every {DemoReminderIntervalMinutes} minutes)");
+    }
+
+    /// <summary>
+    /// Stop the demo mode reminder timer
+    /// </summary>
+    private void StopDemoReminderTimer()
+    {
+        if (_demoReminderTimer != null)
+        {
+            _demoReminderTimer.Stop();
+            _demoReminderTimer.Dispose();
+            _demoReminderTimer = null;
+        }
+    }
+
+    /// <summary>
+    /// Called when demo reminder timer elapses
+    /// </summary>
+    private void OnDemoReminderTimerElapsed(object? sender, ElapsedEventArgs e)
+    {
+        if (!IsDemoMode)
+        {
+            StopDemoReminderTimer();
+            return;
+        }
+
+        _lastDemoReminder = DateTime.UtcNow;
+
+        var config = GetDemoModeConfig();
+        DemoModeReminder?.Invoke(this, new DemoModeReminderEventArgs(config));
+
+        _logger.LogInfo("License", "Demo mode reminder triggered");
+    }
+
+    /// <summary>
+    /// Trigger immediate demo reminder (for UI to show on startup or specific events)
+    /// </summary>
+    public void TriggerDemoReminder()
+    {
+        if (!IsDemoMode) return;
+
+        var config = GetDemoModeConfig();
+        DemoModeReminder?.Invoke(this, new DemoModeReminderEventArgs(config));
+    }
+
+    #endregion
+
     #region IDisposable
 
     public void Dispose()
     {
         StopPeriodicValidation();
+        StopDemoReminderTimer();
         _httpClient.Dispose();
     }
 
     #endregion
+}
+
+/// <summary>
+/// Event args for demo mode reminder
+/// </summary>
+public class DemoModeReminderEventArgs : EventArgs
+{
+    public DemoModeConfig Config { get; }
+    public DateTime ReminderTime { get; }
+
+    public DemoModeReminderEventArgs(DemoModeConfig config)
+    {
+        Config = config;
+        ReminderTime = DateTime.UtcNow;
+    }
 }
