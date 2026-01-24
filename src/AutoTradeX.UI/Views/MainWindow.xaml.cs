@@ -117,12 +117,16 @@ public partial class MainWindow : Window
     {
         _logger?.LogInfo("License", "Showing Demo Mode warning dialog");
 
+        // Check if early bird discount is available
+        var earlyBirdInfo = (_licenseService as LicenseService)?.EarlyBirdInfo;
+        var hasEarlyBird = earlyBirdInfo?.Eligible ?? false;
+
         // Create custom styled dialog
         var dialog = new Window
         {
             Title = "Demo Mode",
             Width = 450,
-            Height = 280,
+            Height = hasEarlyBird ? 380 : 280,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Owner = this,
             ResizeMode = ResizeMode.NoResize,
@@ -152,6 +156,8 @@ public partial class MainWindow : Window
         var mainGrid = new Grid();
         mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        if (hasEarlyBird)
+            mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // For discount banner
         mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         // Header
@@ -181,14 +187,14 @@ public partial class MainWindow : Window
         mainGrid.Children.Add(headerBorder);
 
         // Content
-        var contentStack = new StackPanel { Margin = new Thickness(24) };
+        var contentStack = new StackPanel { Margin = new Thickness(24, 16, 24, 8) };
         contentStack.Children.Add(new TextBlock
         {
             Text = config.DemoMessage,
             FontSize = 14,
             Foreground = Brushes.White,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 16)
+            Margin = new Thickness(0, 0, 0, 12)
         });
 
         contentStack.Children.Add(new TextBlock
@@ -224,32 +230,56 @@ public partial class MainWindow : Window
         Grid.SetRow(contentStack, 1);
         mainGrid.Children.Add(contentStack);
 
+        // Early Bird Discount Banner (if eligible)
+        if (hasEarlyBird && earlyBirdInfo != null)
+        {
+            var discountBanner = CreateEarlyBirdBanner(earlyBirdInfo, () =>
+            {
+                dialog.Close();
+                OpenPurchaseUrl();
+            });
+            Grid.SetRow(discountBanner, 2);
+            mainGrid.Children.Add(discountBanner);
+        }
+
         // Buttons
         var buttonStack = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(24, 0, 24, 20)
+            Margin = new Thickness(24, 8, 24, 20)
         };
 
-        var activateButton = new Button
+        var buyButton = new Button
         {
-            Content = "🔑 Activate License",
+            Content = hasEarlyBird ? "🎁 ซื้อตอนนี้ ลด 20%!" : "🔑 Activate License",
             Padding = new Thickness(20, 10, 20, 10),
             Margin = new Thickness(0, 0, 10, 0),
-            Background = new LinearGradientBrush(
-                (Color)ColorConverter.ConvertFromString("#8B5CF6"),
-                (Color)ColorConverter.ConvertFromString("#7C3AED"),
-                90),
+            Background = hasEarlyBird
+                ? new LinearGradientBrush(
+                    (Color)ColorConverter.ConvertFromString("#F59E0B"),
+                    (Color)ColorConverter.ConvertFromString("#D97706"),
+                    90)
+                : new LinearGradientBrush(
+                    (Color)ColorConverter.ConvertFromString("#8B5CF6"),
+                    (Color)ColorConverter.ConvertFromString("#7C3AED"),
+                    90),
             Foreground = Brushes.White,
+            FontWeight = FontWeights.SemiBold,
             BorderThickness = new Thickness(0),
             Cursor = Cursors.Hand
         };
-        activateButton.Click += (s, e) =>
+        buyButton.Click += (s, e) =>
         {
             dialog.Close();
-            // Navigate to Settings page for activation
-            NavigateToPage("Settings");
+            if (hasEarlyBird)
+            {
+                OpenPurchaseUrl();
+            }
+            else
+            {
+                NavigateToPage("Settings");
+            }
         };
 
         var laterButton = new Button
@@ -263,9 +293,9 @@ public partial class MainWindow : Window
         };
         laterButton.Click += (s, e) => dialog.Close();
 
-        buttonStack.Children.Add(activateButton);
+        buttonStack.Children.Add(buyButton);
         buttonStack.Children.Add(laterButton);
-        Grid.SetRow(buttonStack, 2);
+        Grid.SetRow(buttonStack, hasEarlyBird ? 3 : 2);
         mainGrid.Children.Add(buttonStack);
 
         border.Child = mainGrid;
@@ -275,6 +305,132 @@ public partial class MainWindow : Window
         border.MouseLeftButtonDown += (s, e) => dialog.DragMove();
 
         dialog.ShowDialog();
+    }
+
+    /// <summary>
+    /// Creates an attractive early bird discount banner
+    /// </summary>
+    private Border CreateEarlyBirdBanner(EarlyBirdInfo earlyBird, Action onBuyClick)
+    {
+        var banner = new Border
+        {
+            Margin = new Thickness(16, 0, 16, 8),
+            Padding = new Thickness(16, 12, 16, 12),
+            CornerRadius = new CornerRadius(12),
+            Background = new LinearGradientBrush(
+                (Color)ColorConverter.ConvertFromString("#302563EB"),
+                (Color)ColorConverter.ConvertFromString("#307C3AED"),
+                135),
+            BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#507C3AED")),
+            BorderThickness = new Thickness(1)
+        };
+
+        var stack = new StackPanel();
+
+        // Title row with emoji and discount
+        var titleRow = new StackPanel { Orientation = Orientation.Horizontal };
+        titleRow.Children.Add(new TextBlock
+        {
+            Text = "🎉",
+            FontSize = 20,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0)
+        });
+        titleRow.Children.Add(new TextBlock
+        {
+            Text = $"Early Bird Discount: ลด {earlyBird.DiscountPercent}%!",
+            FontSize = 16,
+            FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        stack.Children.Add(titleRow);
+
+        // Message
+        stack.Children.Add(new TextBlock
+        {
+            Text = earlyBird.Message,
+            FontSize = 12,
+            Foreground = Brushes.White,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 6, 0, 8)
+        });
+
+        // Countdown / Days remaining
+        var daysText = new TextBlock
+        {
+            Text = $"⏰ เหลือเวลาอีก {earlyBird.DaysRemaining} วัน เท่านั้น!",
+            FontSize = 11,
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444")),
+            FontWeight = FontWeights.SemiBold
+        };
+        stack.Children.Add(daysText);
+
+        // Savings highlight
+        var savingsStack = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+        savingsStack.Children.Add(new TextBlock
+        {
+            Text = "💰 Lifetime License: ",
+            FontSize = 12,
+            Foreground = Brushes.White
+        });
+        savingsStack.Children.Add(new TextBlock
+        {
+            Text = "฿4,990",
+            FontSize = 12,
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#808080")),
+            TextDecorations = TextDecorations.Strikethrough
+        });
+        savingsStack.Children.Add(new TextBlock
+        {
+            Text = " → ฿3,992 (ประหยัด ฿998!)",
+            FontSize = 12,
+            FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"))
+        });
+        stack.Children.Add(savingsStack);
+
+        banner.Child = stack;
+        banner.MouseLeftButtonUp += (s, e) => onBuyClick();
+        banner.Cursor = Cursors.Hand;
+
+        return banner;
+    }
+
+    /// <summary>
+    /// Opens the purchase URL in the default browser
+    /// </summary>
+    private void OpenPurchaseUrl()
+    {
+        try
+        {
+            var purchaseUrl = (_licenseService as LicenseService)?.CurrentLicense?.PurchaseUrl;
+
+            if (string.IsNullOrEmpty(purchaseUrl))
+            {
+                purchaseUrl = (_licenseService as LicenseService)?.GetPurchaseUrl();
+            }
+
+            if (!string.IsNullOrEmpty(purchaseUrl))
+            {
+                _logger?.LogInfo("License", $"Opening purchase URL: {purchaseUrl}");
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = purchaseUrl,
+                    UseShellExecute = true
+                });
+            }
+            else
+            {
+                _logger?.LogWarning("License", "No purchase URL available");
+                NavigateToPage("Settings");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("License", $"Error opening purchase URL: {ex.Message}");
+            NavigateToPage("Settings");
+        }
     }
 
     #endregion
@@ -536,7 +692,9 @@ public partial class MainWindow : Window
         // Check Demo Mode - Block real trading
         if (_licenseService is LicenseService licenseService && licenseService.IsDemoMode)
         {
-            var config = licenseService.GetDemoModeConfig();
+            // Fetch demo mode config but don't use it directly here (for logging only)
+            var demoConfig = licenseService.GetDemoModeConfig();
+            _ = demoConfig; // Suppress unused warning
 
             var result = MessageBox.Show(
                 "คุณกำลังใช้งาน Demo Mode\n\n" +

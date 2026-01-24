@@ -60,6 +60,10 @@ public class LicenseInfo
     public DateTime? DemoModeStartedAt { get; set; }
     public string? PurchaseUrl { get; set; }
 
+    // Early bird discount info (20% off during trial)
+    public EarlyBirdInfo? EarlyBird { get; set; }
+    public PricingInfo? Pricing { get; set; }
+
     /// <summary>
     /// Check if real trading is allowed
     /// </summary>
@@ -181,6 +185,75 @@ public class DeviceRegistrationResponse
     // Demo mode info (when trial expired)
     public bool IsDemoMode { get; set; } = false;
     public string? DemoModeReason { get; set; }
+
+    // Early bird discount info (20% off during trial)
+    public EarlyBirdInfo? EarlyBird { get; set; }
+    public PricingInfo? Pricing { get; set; }
+}
+
+/// <summary>
+/// Early bird discount information (20% off during trial)
+/// </summary>
+public class EarlyBirdInfo
+{
+    /// <summary>
+    /// Is the device eligible for early bird discount
+    /// </summary>
+    public bool Eligible { get; set; } = false;
+
+    /// <summary>
+    /// Discount percentage (typically 20%)
+    /// </summary>
+    public int DiscountPercent { get; set; } = 20;
+
+    /// <summary>
+    /// Days remaining in trial (discount expires when trial ends)
+    /// </summary>
+    public int DaysRemaining { get; set; } = 0;
+
+    /// <summary>
+    /// Unique discount code for this device
+    /// </summary>
+    public string? DiscountCode { get; set; }
+
+    /// <summary>
+    /// When the discount expires (same as trial expiry)
+    /// </summary>
+    public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>
+    /// Message to show to user about the discount
+    /// </summary>
+    public string Message { get; set; } = "";
+
+    /// <summary>
+    /// Reason why discount is not eligible (if applicable)
+    /// </summary>
+    public string? NotEligibleReason { get; set; }
+}
+
+/// <summary>
+/// Pricing information for a plan
+/// </summary>
+public class PlanPricing
+{
+    public string PlanName { get; set; } = "";
+    public decimal OriginalPrice { get; set; }
+    public decimal FinalPrice { get; set; }
+    public string Currency { get; set; } = "THB";
+    public int? DiscountPercent { get; set; }
+    public decimal? DiscountAmount { get; set; }
+    public string[]? Features { get; set; }
+    public string[]? Exchanges { get; set; }
+}
+
+/// <summary>
+/// Complete pricing response with all plans
+/// </summary>
+public class PricingInfo
+{
+    public Dictionary<string, PlanPricing> Plans { get; set; } = new();
+    public EarlyBirdInfo? EarlyBird { get; set; }
 }
 
 /// <summary>

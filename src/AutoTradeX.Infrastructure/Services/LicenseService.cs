@@ -85,6 +85,11 @@ public class LicenseService : ILicenseService, IDisposable
     public bool CanTrade => _currentLicense?.CanTrade ?? false;
     public bool CanAutoTrade => _currentLicense?.CanAutoTrade ?? false;
 
+    // Early Bird Discount properties
+    public bool IsEarlyBirdEligible => _currentLicense?.EarlyBird?.Eligible ?? false;
+    public EarlyBirdInfo? EarlyBirdInfo => _currentLicense?.EarlyBird;
+    public PricingInfo? PricingInfo => _currentLicense?.Pricing;
+
     // Demo mode reminder timer
     private System.Timers.Timer? _demoReminderTimer;
     private DateTime _lastDemoReminder = DateTime.MinValue;
@@ -877,6 +882,62 @@ public class LicenseService : ILicenseService, IDisposable
                         _logger.LogWarning("License", "Device flagged as suspicious by server");
                     }
 
+                    // Convert early bird info from API response
+                    EarlyBirdInfo? earlyBird = null;
+                    if (result.Data?.EarlyBird != null)
+                    {
+                        earlyBird = new EarlyBirdInfo
+                        {
+                            Eligible = result.Data.EarlyBird.Eligible,
+                            DiscountPercent = result.Data.EarlyBird.DiscountPercent,
+                            DaysRemaining = result.Data.EarlyBird.DaysRemaining,
+                            DiscountCode = result.Data.EarlyBird.Code,
+                            Message = result.Data.EarlyBird.Message ?? "",
+                            NotEligibleReason = result.Data.EarlyBird.Reason
+                        };
+
+                        if (!string.IsNullOrEmpty(result.Data.EarlyBird.ExpiresAt) &&
+                            DateTime.TryParse(result.Data.EarlyBird.ExpiresAt, out var expiresAt))
+                        {
+                            earlyBird.ExpiresAt = expiresAt;
+                        }
+                    }
+
+                    // Convert pricing info from API response
+                    PricingInfo? pricing = null;
+                    if (result.Data?.Pricing?.Plans != null)
+                    {
+                        pricing = new PricingInfo
+                        {
+                            Plans = new Dictionary<string, PlanPricing>(),
+                            EarlyBird = earlyBird
+                        };
+
+                        foreach (var (planName, planInfo) in result.Data.Pricing.Plans)
+                        {
+                            pricing.Plans[planName] = new PlanPricing
+                            {
+                                PlanName = planName,
+                                OriginalPrice = planInfo.OriginalPrice,
+                                FinalPrice = planInfo.FinalPrice,
+                                Currency = planInfo.Currency ?? "THB",
+                                DiscountPercent = planInfo.Discount?.Percent,
+                                DiscountAmount = planInfo.Discount?.Amount,
+                                Features = planInfo.Features,
+                                Exchanges = planInfo.Exchanges
+                            };
+                        }
+                    }
+
+                    // Store early bird info in current license for UI access
+                    if (_currentLicense != null && earlyBird != null)
+                    {
+                        _currentLicense.EarlyBird = earlyBird;
+                        _currentLicense.Pricing = pricing;
+                        _currentLicense.PurchaseUrl = result.Data?.PurchaseUrl;
+                        _ = SaveLicenseAsync();
+                    }
+
                     return new DeviceRegistrationResponse
                     {
                         Success = true,
@@ -885,7 +946,10 @@ public class LicenseService : ILicenseService, IDisposable
                         CanStartTrial = result.Data?.CanStartTrial ?? false,
                         HasLicense = result.Data?.HasLicense ?? false,
                         DeviceStatus = result.Data?.DeviceStatus ?? "pending",
-                        PurchaseUrl = result.Data?.PurchaseUrl
+                        PurchaseUrl = result.Data?.PurchaseUrl,
+                        IsDemoMode = result.Data?.IsDemoMode ?? false,
+                        EarlyBird = earlyBird,
+                        Pricing = pricing
                     };
                 }
             }
@@ -1032,6 +1096,12 @@ public class LicenseService : ILicenseService, IDisposable
         public bool CanStartTrial { get; set; }
         public bool IsSuspicious { get; set; }
         public string? PurchaseUrl { get; set; }
+        // Demo mode info
+        public bool IsDemoMode { get; set; }
+        public DemoModeApiInfo? DemoMode { get; set; }
+        // Early bird discount info
+        public EarlyBirdApiInfo? EarlyBird { get; set; }
+        public PricingApiInfo? Pricing { get; set; }
     }
 
     private class TrialInfo
@@ -1039,6 +1109,51 @@ public class LicenseService : ILicenseService, IDisposable
         public bool IsActive { get; set; }
         public int DaysRemaining { get; set; }
         public string? ExpiresAt { get; set; }
+    }
+
+    private class DemoModeApiInfo
+    {
+        public bool CanViewOpportunities { get; set; }
+        public bool CanExecuteTrades { get; set; }
+        public bool CanUseAutoTrading { get; set; }
+        public int MaxExchanges { get; set; }
+        public int ReminderIntervalMinutes { get; set; }
+        public string? DemoMessage { get; set; }
+        public string? PurchaseUrl { get; set; }
+    }
+
+    private class EarlyBirdApiInfo
+    {
+        public bool Eligible { get; set; }
+        public int DiscountPercent { get; set; }
+        public int DaysRemaining { get; set; }
+        public string? Code { get; set; }
+        public string? ExpiresAt { get; set; }
+        public string? Message { get; set; }
+        public string? Reason { get; set; }
+    }
+
+    private class PricingApiInfo
+    {
+        public Dictionary<string, PlanApiInfo>? Plans { get; set; }
+        public EarlyBirdApiInfo? EarlyBird { get; set; }
+    }
+
+    private class PlanApiInfo
+    {
+        public decimal OriginalPrice { get; set; }
+        public decimal FinalPrice { get; set; }
+        public string? Currency { get; set; }
+        public DiscountApiInfo? Discount { get; set; }
+        public string[]? Features { get; set; }
+        public string[]? Exchanges { get; set; }
+    }
+
+    private class DiscountApiInfo
+    {
+        public int Percent { get; set; }
+        public decimal Amount { get; set; }
+        public string? Code { get; set; }
     }
 
     /// <summary>
