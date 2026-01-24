@@ -95,7 +95,15 @@ public class LicenseService : ILicenseService, IDisposable
             _machineId = GetMachineId();
             _logger.LogInfo("License", $"Device ID: {_machineId[..8]}...");
 
-            // Check for time tampering FIRST (before loading license)
+            // FIRST: Register device with server immediately
+            // This ensures server knows about this device before any license checks
+            var deviceRegistration = await RegisterDeviceOnStartupAsync();
+            if (deviceRegistration.Success)
+            {
+                _logger.LogInfo("License", $"Device status: {deviceRegistration.DeviceStatus}");
+            }
+
+            // Check for time tampering (before loading license)
             var tampering = await CheckTimeTamperingAsync();
             if (tampering)
             {
@@ -387,7 +395,124 @@ public class LicenseService : ILicenseService, IDisposable
 
     #endregion
 
-    #region Device Registration (Trial)
+    #region Device Registration
+
+    /// <summary>
+    /// Register device with server immediately on app startup
+    /// This happens before any license check to ensure server knows about this device
+    /// </summary>
+    public async Task<DeviceRegistrationResponse> RegisterDeviceOnStartupAsync()
+    {
+        try
+        {
+            _logger.LogInfo("License", "Registering device with server...");
+
+            var request = new
+            {
+                machine_id = GetMachineId(),
+                machine_name = Environment.MachineName,
+                app_version = AppVersion,
+                os_version = Environment.OSVersion.ToString(),
+                hardware_hash = GetHardwareHash()
+            };
+
+            var response = await _httpClient.PostAsJsonAsync($"{ApiBaseUrl}/register-device", request);
+            var json = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = JsonSerializer.Deserialize<DeviceRegistrationApiResponse>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (result?.Success == true)
+                {
+                    _logger.LogInfo("License", $"Device registered: {result.Message}");
+
+                    // Check if device already has a license
+                    if (result.Data?.HasLicense == true)
+                    {
+                        _logger.LogInfo("License", $"Device has active license: {result.Data.LicenseType}");
+                    }
+
+                    // Check trial status
+                    if (result.Data?.Trial != null && result.Data.Trial.IsActive)
+                    {
+                        _logger.LogInfo("License", $"Device has active trial: {result.Data.Trial.DaysRemaining} days remaining");
+                    }
+
+                    // Check if suspicious
+                    if (result.Data?.IsSuspicious == true)
+                    {
+                        _logger.LogWarning("License", "Device flagged as suspicious by server");
+                    }
+
+                    return new DeviceRegistrationResponse
+                    {
+                        Success = true,
+                        Message = result.Message,
+                        TrialDaysRemaining = result.Data?.Trial?.DaysRemaining ?? 0,
+                        CanStartTrial = result.Data?.CanStartTrial ?? false,
+                        HasLicense = result.Data?.HasLicense ?? false,
+                        DeviceStatus = result.Data?.DeviceStatus ?? "pending",
+                        PurchaseUrl = result.Data?.PurchaseUrl
+                    };
+                }
+            }
+
+            _logger.LogWarning("License", $"Device registration failed: {json}");
+            return new DeviceRegistrationResponse
+            {
+                Success = false,
+                Message = "Failed to register device"
+            };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning("License", $"Cannot register device (network): {ex.Message}");
+            return new DeviceRegistrationResponse
+            {
+                Success = false,
+                Message = "Cannot connect to license server"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("License", $"Device registration error: {ex.Message}");
+            return new DeviceRegistrationResponse
+            {
+                Success = false,
+                Message = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    /// Get hardware hash for abuse detection
+    /// </summary>
+    private string GetHardwareHash()
+    {
+        try
+        {
+            var sb = new StringBuilder();
+
+            // CPU ID
+            sb.Append(GetWmiProperty("Win32_Processor", "ProcessorId"));
+
+            // Motherboard serial
+            sb.Append(GetWmiProperty("Win32_BaseBoard", "SerialNumber"));
+
+            // Hash it
+            using var sha256 = SHA256.Create();
+            var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()));
+            return Convert.ToHexString(hashBytes)[..32]; // First 32 chars
+        }
+        catch
+        {
+            return "";
+        }
+    }
 
     public async Task<DeviceRegistrationResponse> RegisterDeviceAsync()
     {
@@ -452,6 +577,39 @@ public class LicenseService : ILicenseService, IDisposable
             // Existing trial - validate
             SetTrialMode();
         }
+    }
+
+    #endregion
+
+    #region API Response Models
+
+    /// <summary>
+    /// Response from /register-device API
+    /// </summary>
+    private class DeviceRegistrationApiResponse
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = "";
+        public DeviceRegistrationData? Data { get; set; }
+    }
+
+    private class DeviceRegistrationData
+    {
+        public string DeviceStatus { get; set; } = "";
+        public bool IsNew { get; set; }
+        public bool HasLicense { get; set; }
+        public string? LicenseType { get; set; }
+        public TrialInfo? Trial { get; set; }
+        public bool CanStartTrial { get; set; }
+        public bool IsSuspicious { get; set; }
+        public string? PurchaseUrl { get; set; }
+    }
+
+    private class TrialInfo
+    {
+        public bool IsActive { get; set; }
+        public int DaysRemaining { get; set; }
+        public string? ExpiresAt { get; set; }
     }
 
     #endregion

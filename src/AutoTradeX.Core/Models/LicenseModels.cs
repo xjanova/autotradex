@@ -138,7 +138,13 @@ public class DeviceRegistrationResponse
     public bool Success { get; set; }
     public string DeviceToken { get; set; } = "";
     public string Message { get; set; } = "";
-    public int TrialDaysRemaining { get; set; } = 30;
+    public int TrialDaysRemaining { get; set; } = 0;
+
+    // New fields for enhanced device registration
+    public bool CanStartTrial { get; set; } = true;
+    public bool HasLicense { get; set; } = false;
+    public string DeviceStatus { get; set; } = "pending"; // pending, trial, licensed, blocked, expired
+    public string? PurchaseUrl { get; set; }
 }
 
 /// <summary>
