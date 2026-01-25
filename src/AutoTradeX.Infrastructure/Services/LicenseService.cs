@@ -1265,31 +1265,65 @@ public class LicenseService : ILicenseService, IDisposable
             var sb = new StringBuilder();
 
             // CPU ID
-            sb.Append(GetWmiProperty("Win32_Processor", "ProcessorId"));
+            var cpuId = GetWmiProperty("Win32_Processor", "ProcessorId");
+            sb.Append(cpuId);
+            _logger.LogInfo("License", $"CPU ID: {(string.IsNullOrEmpty(cpuId) ? "(empty)" : cpuId[..Math.Min(8, cpuId.Length)])}...");
 
             // Motherboard serial
-            sb.Append(GetWmiProperty("Win32_BaseBoard", "SerialNumber"));
+            var mbSerial = GetWmiProperty("Win32_BaseBoard", "SerialNumber");
+            sb.Append(mbSerial);
+            _logger.LogInfo("License", $"MB Serial: {(string.IsNullOrEmpty(mbSerial) ? "(empty)" : mbSerial[..Math.Min(8, mbSerial.Length)])}...");
 
             // BIOS serial
-            sb.Append(GetWmiProperty("Win32_BIOS", "SerialNumber"));
+            var biosSerial = GetWmiProperty("Win32_BIOS", "SerialNumber");
+            sb.Append(biosSerial);
+            _logger.LogInfo("License", $"BIOS Serial: {(string.IsNullOrEmpty(biosSerial) ? "(empty)" : biosSerial[..Math.Min(8, biosSerial.Length)])}...");
+
+            var combinedData = sb.ToString();
+
+            // If WMI returned all empty, use fallback
+            if (string.IsNullOrEmpty(combinedData))
+            {
+                _logger.LogWarning("License", "WMI returned empty for all hardware IDs, using fallback");
+                return GenerateFallbackMachineId();
+            }
 
             // Hash the combined string
             using var sha256 = SHA256.Create();
-            var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()));
+            var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(combinedData));
             _machineId = Convert.ToHexString(hashBytes);
 
+            _logger.LogInfo("License", $"Generated Machine ID: {_machineId[..16]}...");
             return _machineId;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning("License", $"Could not generate machine ID: {ex.Message}");
+            _logger.LogWarning("License", $"Could not generate machine ID via WMI: {ex.Message}");
+            return GenerateFallbackMachineId();
+        }
+    }
 
-            // Fallback: use machine name + username hash
-            var fallback = $"{Environment.MachineName}-{Environment.UserName}-AutoTradeX";
+    /// <summary>
+    /// Generate a fallback machine ID using environment variables
+    /// </summary>
+    private string GenerateFallbackMachineId()
+    {
+        try
+        {
+            // Use multiple environment properties for uniqueness
+            var fallback = $"{Environment.MachineName}-{Environment.UserName}-{Environment.OSVersion}-AutoTradeX";
             using var sha256 = SHA256.Create();
             var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(fallback));
             _machineId = Convert.ToHexString(hashBytes);
 
+            _logger.LogInfo("License", $"Generated Fallback Machine ID: {_machineId[..16]}...");
+            return _machineId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("License", $"Failed to generate fallback machine ID: {ex.Message}");
+            // Last resort: use a hash of machine name only
+            _machineId = "FALLBACK-" + Environment.MachineName.GetHashCode().ToString("X8");
             return _machineId;
         }
     }
@@ -2008,6 +2042,7 @@ public class LicenseService : ILicenseService, IDisposable
             DeviceName = Environment.MachineName,
             Status = status,
             Tier = tier,
+            LicenseType = data.LicenseType ?? "", // monthly, yearly, lifetime
             ActivatedAt = data.ActivatedAt,
             ExpiresAt = data.ExpiresAt,
             Features = data.Features.Length > 0 ? data.Features : LicenseFeatures.GetFeaturesForTier(tier),

@@ -45,6 +45,7 @@ public class LicenseInfo
     public string DeviceName { get; set; } = "";
     public LicenseStatus Status { get; set; } = LicenseStatus.Unknown;
     public LicenseTier Tier { get; set; } = LicenseTier.Trial;
+    public string LicenseType { get; set; } = ""; // monthly, yearly, lifetime (from server)
     public DateTime ActivatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }
     public DateTime LastValidated { get; set; }
@@ -63,6 +64,11 @@ public class LicenseInfo
     // Early bird discount info (20% off during trial)
     public EarlyBirdInfo? EarlyBird { get; set; }
     public PricingInfo? Pricing { get; set; }
+
+    /// <summary>
+    /// Check if this is a lifetime license (never expires)
+    /// </summary>
+    public bool IsLifetime => LicenseType?.Equals("lifetime", StringComparison.OrdinalIgnoreCase) == true;
 
     /// <summary>
     /// Check if real trading is allowed
@@ -124,6 +130,7 @@ public class LicenseData
     public string Email { get; set; } = "";
     public string Tier { get; set; } = "trial";
     public string Status { get; set; } = "valid";
+    public string LicenseType { get; set; } = ""; // monthly, yearly, lifetime
     public DateTime ActivatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }
     public string[] Features { get; set; } = Array.Empty<string>();
