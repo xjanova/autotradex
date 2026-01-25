@@ -612,19 +612,40 @@
                             </Border>
                         </StackPanel>
 
-                        <!-- Mode Indicator -->
-                        <Border Grid.Column="2" CornerRadius="20" Padding="15,6" Margin="0,0,20,0" VerticalAlignment="Center">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                    <GradientStop Color="#F59E0B" Offset="0"/>
-                                    <GradientStop Color="#D97706" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="DEMO MODE" FontSize="11" FontWeight="Bold" Foreground="White"/>
-                                <TextBlock Text=" • $10,000" FontSize="11" FontWeight="SemiBold" Foreground="#FFFFFF"/>
-                            </StackPanel>
-                        </Border>
+                        <!-- Mode Indicator & Buy Button -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,20,0">
+                            <!-- Buy License Button (shown when not licensed) -->
+                            <Border x:Name="BuyLicenseButton" CornerRadius="20" Padding="15,6" Margin="0,0,10,0"
+                                    Cursor="Hand" MouseLeftButtonDown="BuyLicenseButton_Click">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#10B981" Offset="0"/>
+                                        <GradientStop Color="#059669" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="10" ShadowDepth="0" Opacity="0.4" Color="#10B981"/>
+                                </Border.Effect>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🛒" FontSize="12" Margin="0,0,6,0"/>
+                                    <TextBlock Text="ซื้อ License" FontSize="11" FontWeight="Bold" Foreground="White"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Mode Indicator -->
+                            <Border x:Name="ModeIndicator" CornerRadius="20" Padding="15,6">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#F59E0B" Offset="0"/>
+                                        <GradientStop Color="#D97706" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="ModeText" Text="DEMO MODE" FontSize="11" FontWeight="Bold" Foreground="White"/>
+                                    <TextBlock x:Name="ModeDetail" Text=" • $10,000" FontSize="11" FontWeight="SemiBold" Foreground="#FFFFFF"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
 
                         <!-- Window Controls -->
                         <StackPanel Grid.Column="3" Orientation="Horizontal">

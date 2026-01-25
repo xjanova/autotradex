@@ -433,6 +433,35 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Buy License button click handler
+    /// </summary>
+    private void BuyLicenseButton_Click(object sender, MouseButtonEventArgs e)
+    {
+        OpenPurchaseUrl();
+    }
+
+    /// <summary>
+    /// Update the visibility of Buy License button based on license status
+    /// </summary>
+    private void UpdateBuyButtonVisibility()
+    {
+        try
+        {
+            if (BuyLicenseButton != null)
+            {
+                // Hide buy button if licensed
+                BuyLicenseButton.Visibility = _licenseService.IsLicensed
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("UI", $"Error updating buy button: {ex.Message}");
+        }
+    }
+
     #endregion
 
     private void NotificationService_NotificationReceived(object? sender, NotificationEventArgs e)
@@ -947,6 +976,9 @@ public partial class MainWindow : Window
             EditionText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#808080")); // Gray
             _logger?.LogInfo("License", "Running in DEMO VERSION (trial or unlicensed)");
         }
+
+        // Update Buy License button visibility
+        UpdateBuyButtonVisibility();
     }
 
     /// <summary>
