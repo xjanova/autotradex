@@ -1395,8 +1395,9 @@ public class LicenseService : ILicenseService, IDisposable
     public string GetPurchaseUrl()
     {
         var deviceId = GetMachineId();
-        // Use the API endpoint to get purchase URL
-        return $"{ApiBaseUrl}/purchase-url?machine_id={deviceId[..16]}";
+        // Direct web URL (not API endpoint)
+        var baseWebUrl = ApiBaseUrl.Replace("/api/v1/autotradex", "");
+        return $"{baseWebUrl}/autotradex/buy?plan=yearly&machine_id={deviceId[..16]}";
     }
 
     #endregion
