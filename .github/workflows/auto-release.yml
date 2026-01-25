@@ -1,0 +1,223 @@
+# Auto Release on Push to Main
+# Automatically bumps version and creates release when pushing to main
+
+name: Auto Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - '.github/workflows/ci.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  check-release:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      bump_type: ${{ steps.check.outputs.bump_type }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if should release
+        id: check
+        run: |
+          # Get the commit message
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+
+          # Skip if commit message contains [skip ci] or [skip release]
+          if [[ "$COMMIT_MSG" == *"[skip ci]"* ]] || [[ "$COMMIT_MSG" == *"[skip release]"* ]]; then
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "Skipping release due to commit message"
+            exit 0
+          fi
+
+          # Determine bump type from commit message
+          BUMP_TYPE="patch"
+
+          if [[ "$COMMIT_MSG" == *"BREAKING"* ]] || [[ "$COMMIT_MSG" == *"!"* ]]; then
+            BUMP_TYPE="major"
+          elif [[ "$COMMIT_MSG" == feat:* ]] || [[ "$COMMIT_MSG" == *"feature"* ]]; then
+            BUMP_TYPE="minor"
+          elif [[ "$COMMIT_MSG" == fix:* ]] || [[ "$COMMIT_MSG" == *"bugfix"* ]]; then
+            BUMP_TYPE="patch"
+          fi
+
+          echo "should_release=true" >> $GITHUB_OUTPUT
+          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+          echo "Will release with bump type: $BUMP_TYPE"
+
+  bump-and-release:
+    needs: check-release
+    if: needs.check-release.outputs.should_release == 'true'
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Get current version
+        id: current
+        shell: bash
+        run: |
+          VERSION=$(grep -oP '(?<=<Version>)[^<]+' src/AutoTradeX.UI/AutoTradeX.UI.csproj | head -1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+
+      - name: Calculate new version
+        id: bump
+        shell: bash
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          BUMP_TYPE="${{ needs.check-release.outputs.bump_type }}"
+
+          # Remove -beta or other suffixes for calculation
+          BASE_VERSION=$(echo "$CURRENT" | sed 's/-.*$//')
+
+          # Split version
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+
+          # Bump based on type
+          case $BUMP_TYPE in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      - name: Update version in project files
+        shell: bash
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+
+          # Update UI project
+          sed -i "s|<Version>.*</Version>|<Version>$NEW_VERSION</Version>|g" src/AutoTradeX.UI/AutoTradeX.UI.csproj
+          sed -i "s|<AssemblyVersion>.*</AssemblyVersion>|<AssemblyVersion>$NEW_VERSION.0</AssemblyVersion>|g" src/AutoTradeX.UI/AutoTradeX.UI.csproj
+          sed -i "s|<FileVersion>.*</FileVersion>|<FileVersion>$NEW_VERSION.0</FileVersion>|g" src/AutoTradeX.UI/AutoTradeX.UI.csproj
+
+          # Update version in MainWindow.xaml
+          sed -i "s|v[0-9]*\.[0-9]*\.[0-9]*-beta|v$NEW_VERSION|g" src/AutoTradeX.UI/Views/MainWindow.xaml 2>/dev/null || true
+          sed -i "s|v[0-9]*\.[0-9]*\.[0-9]*|v$NEW_VERSION|g" src/AutoTradeX.UI/Views/MainWindow.xaml 2>/dev/null || true
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build Release
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test --no-build --configuration Release --verbosity normal
+        continue-on-error: true
+
+      - name: Publish Windows x64 (Portable)
+        run: |
+          dotnet publish src/AutoTradeX.UI/AutoTradeX.UI.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o publish/win-x64
+
+      - name: Publish Windows x64 (Framework-dependent)
+        run: |
+          dotnet publish src/AutoTradeX.UI/AutoTradeX.UI.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -o publish/win-x64-fd
+
+      - name: Create ZIP archives
+        shell: pwsh
+        run: |
+          $version = "${{ steps.bump.outputs.new_version }}"
+
+          # Self-contained (portable)
+          Compress-Archive -Path "publish/win-x64/*" -DestinationPath "AutoTradeX-v$version-win-x64-portable.zip"
+
+          # Framework-dependent (smaller, requires .NET runtime)
+          Compress-Archive -Path "publish/win-x64-fd/*" -DestinationPath "AutoTradeX-v$version-win-x64.zip"
+
+      - name: Commit version bump
+        shell: bash
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+
+          git add -A
+          git commit -m "chore: bump version to $NEW_VERSION [skip ci]" || echo "No changes to commit"
+          git push
+
+      - name: Create version tag
+        shell: bash
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+          git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
+          git push origin "v$NEW_VERSION"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: AutoTrade-X v${{ steps.bump.outputs.new_version }}
+          tag_name: v${{ steps.bump.outputs.new_version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## AutoTrade-X v${{ steps.bump.outputs.new_version }}
+
+            ### 📦 Downloads
+
+            | File | Description |
+            |------|-------------|
+            | `AutoTradeX-v${{ steps.bump.outputs.new_version }}-win-x64-portable.zip` | Portable version (no .NET required) |
+            | `AutoTradeX-v${{ steps.bump.outputs.new_version }}-win-x64.zip` | Requires .NET 8 Runtime |
+
+            ### ⚙️ Requirements
+
+            - **Portable**: Windows 10/11 x64 (self-contained)
+            - **Standard**: Windows 10/11 x64 + [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+
+            ### ⚠️ Disclaimer
+
+            This software is for **educational purposes only**. Use at your own risk.
+
+            ---
+
+            *Developed by Xman Studio*
+          files: |
+            AutoTradeX-v${{ steps.bump.outputs.new_version }}-win-x64-portable.zip
+            AutoTradeX-v${{ steps.bump.outputs.new_version }}-win-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
