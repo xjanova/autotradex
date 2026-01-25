@@ -236,7 +236,7 @@ public partial class MainWindow : Window
             var discountBanner = CreateEarlyBirdBanner(earlyBirdInfo, () =>
             {
                 dialog.Close();
-                OpenPurchaseUrl();
+                ShowLicenseDialog();
             });
             Grid.SetRow(discountBanner, 2);
             mainGrid.Children.Add(discountBanner);
@@ -272,14 +272,7 @@ public partial class MainWindow : Window
         buyButton.Click += (s, e) =>
         {
             dialog.Close();
-            if (hasEarlyBird)
-            {
-                OpenPurchaseUrl();
-            }
-            else
-            {
-                NavigateToPage("Settings");
-            }
+            ShowLicenseDialog();
         };
 
         var laterButton = new Button
@@ -398,47 +391,39 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Opens the purchase URL in the default browser
+    /// Buy License button click handler - Opens LicenseDialog
     /// </summary>
-    private void OpenPurchaseUrl()
+    private void BuyLicenseButton_Click(object sender, MouseButtonEventArgs e)
+    {
+        ShowLicenseDialog();
+    }
+
+    /// <summary>
+    /// Show the License Dialog for activation/purchase
+    /// </summary>
+    private void ShowLicenseDialog()
     {
         try
         {
-            var purchaseUrl = (_licenseService as LicenseService)?.CurrentLicense?.PurchaseUrl;
+            _logger?.LogInfo("UI", "Opening License Dialog");
+            var licenseDialog = new LicenseDialog
+            {
+                Owner = this
+            };
+            var result = licenseDialog.ShowDialog();
 
-            if (string.IsNullOrEmpty(purchaseUrl))
+            // Refresh UI after dialog closes
+            if (result == true || licenseDialog.LicenseActivated)
             {
-                purchaseUrl = (_licenseService as LicenseService)?.GetPurchaseUrl();
-            }
-
-            if (!string.IsNullOrEmpty(purchaseUrl))
-            {
-                _logger?.LogInfo("License", $"Opening purchase URL: {purchaseUrl}");
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = purchaseUrl,
-                    UseShellExecute = true
-                });
-            }
-            else
-            {
-                _logger?.LogWarning("License", "No purchase URL available");
-                NavigateToPage("Settings");
+                _logger?.LogInfo("UI", "License activated, refreshing UI");
+                UpdateModeIndicator();
+                UpdateEditionDisplay();
             }
         }
         catch (Exception ex)
         {
-            _logger?.LogError("License", $"Error opening purchase URL: {ex.Message}");
-            NavigateToPage("Settings");
+            _logger?.LogError("UI", $"Error showing license dialog: {ex.Message}");
         }
-    }
-
-    /// <summary>
-    /// Buy License button click handler
-    /// </summary>
-    private void BuyLicenseButton_Click(object sender, MouseButtonEventArgs e)
-    {
-        OpenPurchaseUrl();
     }
 
     /// <summary>
@@ -451,9 +436,36 @@ public partial class MainWindow : Window
             if (BuyLicenseButton != null)
             {
                 // Hide buy button if licensed
-                BuyLicenseButton.Visibility = _licenseService.IsLicensed
+                var isLicensed = _licenseService?.IsLicensed ?? false;
+                BuyLicenseButton.Visibility = isLicensed
                     ? Visibility.Collapsed
                     : Visibility.Visible;
+
+                // Show Early Bird discount text if not licensed (trial or demo)
+                if (!isLicensed && EarlyBirdText != null)
+                {
+                    var license = _licenseService?.CurrentLicense;
+                    var earlyBird = license?.EarlyBird;
+                    var trialDays = _licenseService?.GetTrialDaysRemaining() ?? 0;
+
+                    // Show Early Bird if:
+                    // 1. Server sent EarlyBird info and eligible, OR
+                    // 2. User is in trial period (all trial users get Early Bird by default)
+                    if ((earlyBird != null && earlyBird.Eligible) ||
+                        (license?.Status == LicenseStatus.Trial && trialDays > 0))
+                    {
+                        var discountPercent = earlyBird?.DiscountPercent ?? 20; // Default 20%
+                        EarlyBirdText.Text = trialDays > 0
+                            ? $"ลด {discountPercent}%! เหลือ {trialDays} วัน"
+                            : $"ลด {discountPercent}%!";
+                        EarlyBirdText.Visibility = Visibility.Visible;
+                        _logger?.LogInfo("UI", $"Early Bird displayed: {discountPercent}% off, {trialDays} days remaining");
+                    }
+                    else
+                    {
+                        EarlyBirdText.Visibility = Visibility.Collapsed;
+                    }
+                }
             }
         }
         catch (Exception ex)
@@ -939,9 +951,105 @@ public partial class MainWindow : Window
 
     private void UpdateModeIndicator()
     {
-        var config = _configService?.GetConfig();
-        var isLive = config?.General.LiveTrading ?? false;
-        _logger?.LogInfo("UI", $"Trading mode: {(isLive ? "LIVE" : "DEMO")}");
+        try
+        {
+            var config = _configService?.GetConfig();
+            var isLive = config?.General.LiveTrading ?? false;
+            var isLicensed = _licenseService?.IsLicensed ?? false;
+            var license = _licenseService?.CurrentLicense;
+
+            // Check if licensed with lifetime
+            if (isLicensed && license != null && license.IsLifetime)
+            {
+                // Show golden LIFETIME badge
+                if (ModeIndicator != null)
+                {
+                    ModeIndicator.Background = new LinearGradientBrush(
+                        (Color)ColorConverter.ConvertFromString("#FFD700"), // Gold
+                        (Color)ColorConverter.ConvertFromString("#DAA520"), // GoldenRod
+                        0);
+                }
+
+                if (ModeText != null)
+                {
+                    ModeText.Text = "LIFETIME";
+                    ModeText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1A0A2E")); // Dark text
+                }
+
+                if (ModeDetail != null)
+                {
+                    ModeDetail.Text = " • PRO";
+                    ModeDetail.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1A0A2E"));
+                }
+
+                _logger?.LogInfo("UI", "License mode: LIFETIME (golden badge)");
+            }
+            // Check if licensed (monthly/yearly)
+            else if (isLicensed && license != null)
+            {
+                // Show licensed badge (purple/blue)
+                var licenseTypeText = license.LicenseType?.ToUpperInvariant() switch
+                {
+                    "YEARLY" => "YEARLY",
+                    "MONTHLY" => "MONTHLY",
+                    _ => "LICENSED"
+                };
+
+                if (ModeIndicator != null)
+                {
+                    ModeIndicator.Background = new LinearGradientBrush(
+                        (Color)ColorConverter.ConvertFromString("#7C3AED"),
+                        (Color)ColorConverter.ConvertFromString("#2563EB"),
+                        0);
+                }
+
+                if (ModeText != null)
+                {
+                    ModeText.Text = licenseTypeText;
+                    ModeText.Foreground = Brushes.White;
+                }
+
+                if (ModeDetail != null)
+                {
+                    ModeDetail.Text = " • PRO";
+                    ModeDetail.Foreground = Brushes.White;
+                }
+
+                _logger?.LogInfo("UI", $"License mode: {licenseTypeText}");
+            }
+            else
+            {
+                // Demo/Trial mode - show orange badge
+                if (ModeIndicator != null)
+                {
+                    ModeIndicator.Background = new LinearGradientBrush(
+                        (Color)ColorConverter.ConvertFromString("#F59E0B"),
+                        (Color)ColorConverter.ConvertFromString("#D97706"),
+                        0);
+                }
+
+                if (ModeText != null)
+                {
+                    ModeText.Text = "DEMO MODE";
+                    ModeText.Foreground = Brushes.White;
+                }
+
+                if (ModeDetail != null)
+                {
+                    ModeDetail.Text = " • $10,000";
+                    ModeDetail.Foreground = Brushes.White;
+                }
+
+                _logger?.LogInfo("UI", $"Trading mode: {(isLive ? "LIVE" : "DEMO")} (not licensed)");
+            }
+
+            // Update Buy License button visibility
+            UpdateBuyButtonVisibility();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("UI", $"Error updating mode indicator: {ex.Message}");
+        }
     }
 
     /// <summary>

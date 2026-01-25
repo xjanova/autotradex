@@ -199,21 +199,130 @@
                             Height="44"/>
                 </Grid>
 
-                <!-- Links -->
-                <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
-                    <TextBlock>
-                        <Hyperlink x:Name="PurchaseLink" Click="PurchaseLink_Click"
-                                   Foreground="#7C3AED" TextDecorations="None">
-                            Purchase License
-                        </Hyperlink>
-                    </TextBlock>
-                    <TextBlock x:Name="DeactivateSeparator" Text="  |  " Foreground="#40FFFFFF"/>
-                    <TextBlock x:Name="DeactivateTextBlock">
-                        <Hyperlink x:Name="DeactivateLink" Click="DeactivateLink_Click"
-                                   Foreground="#80FFFFFF" TextDecorations="None">
-                            Deactivate
-                        </Hyperlink>
-                    </TextBlock>
+                <!-- Early Bird Purchase Banner (shown during trial) -->
+                <Border Grid.Row="6" x:Name="EarlyBirdBanner"
+                        CornerRadius="10" Margin="0,4,0,12"
+                        Visibility="Collapsed">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#F59E0B" Offset="0"/>
+                            <GradientStop Color="#D97706" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Discount Badge -->
+                        <Border Grid.Row="0" Background="#20000000" CornerRadius="10,10,0,0" Padding="12,8">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="🔥" FontSize="14" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="EARLY BIRD DISCOUNT" FontSize="12" FontWeight="Bold"
+                                           Foreground="#1A0A2E" VerticalAlignment="Center"/>
+                                <Border Background="#1A0A2E" CornerRadius="4" Margin="8,0,0,0" Padding="6,2">
+                                    <TextBlock x:Name="DiscountPercentText" Text="20% OFF" FontSize="11"
+                                               FontWeight="Bold" Foreground="#F59E0B"/>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Purchase Button -->
+                        <Button Grid.Row="1" x:Name="EarlyBirdPurchaseButton" Click="PurchaseLink_Click"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="16,10">
+                            <StackPanel>
+                                <TextBlock x:Name="EarlyBirdMessageText"
+                                           Text="รีบซื้อเลย! เหลือเวลาอีก 7 วัน"
+                                           FontSize="13" FontWeight="SemiBold" Foreground="#1A0A2E"
+                                           HorizontalAlignment="Center"/>
+                                <TextBlock Text="คลิกเพื่อดูราคาพิเศษ →" FontSize="11"
+                                           Foreground="#40000000" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <!-- Normal Purchase Panel (shown after trial ends or when not eligible for Early Bird) -->
+                <StackPanel Grid.Row="6" x:Name="NormalPurchasePanel" Margin="0,4,0,0">
+                    <!-- Big Purchase Button with Marquee -->
+                    <Border x:Name="PurchaseButton" CornerRadius="10" Margin="0,0,0,8"
+                            Cursor="Hand" MouseLeftButtonDown="PurchaseLink_Click">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#7C3AED" Offset="0"/>
+                                <GradientStop Color="#6D28D9" Offset="0.5"/>
+                                <GradientStop Color="#2563EB" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="15" ShadowDepth="2" Opacity="0.5" Color="#7C3AED"/>
+                        </Border.Effect>
+                        <Border.Triggers>
+                            <EventTrigger RoutedEvent="Border.Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard RepeatBehavior="Forever">
+                                        <DoubleAnimation Storyboard.TargetProperty="(Border.Effect).(DropShadowEffect.BlurRadius)"
+                                                         From="10" To="20" Duration="0:0:0.8" AutoReverse="True"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Border.Triggers>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Marquee Discount Banner -->
+                            <Border Grid.Row="0" Background="#20000000" CornerRadius="10,10,0,0" Padding="0,6"
+                                    ClipToBounds="True">
+                                <Canvas Height="16" ClipToBounds="True">
+                                    <TextBlock x:Name="MarqueeText" Canvas.Top="0" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="#FFD700">
+                                        <TextBlock.Text>🔥 ซื้อก่อนหมด Trial ลดทันที 20%!  •  🔥 ซื้อก่อนหมด Trial ลดทันที 20%!  •  🔥 ซื้อก่อนหมด Trial ลดทันที 20%!  •  </TextBlock.Text>
+                                        <TextBlock.RenderTransform>
+                                            <TranslateTransform x:Name="MarqueeTransform"/>
+                                        </TextBlock.RenderTransform>
+                                        <TextBlock.Triggers>
+                                            <EventTrigger RoutedEvent="TextBlock.Loaded">
+                                                <BeginStoryboard>
+                                                    <Storyboard RepeatBehavior="Forever">
+                                                        <DoubleAnimation Storyboard.TargetName="MarqueeTransform"
+                                                                         Storyboard.TargetProperty="X"
+                                                                         From="0" To="-600"
+                                                                         Duration="0:0:12"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </EventTrigger>
+                                        </TextBlock.Triggers>
+                                    </TextBlock>
+                                </Canvas>
+                            </Border>
+
+                            <!-- Button Content -->
+                            <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="16,10,16,12">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="🛒" FontSize="18" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="ซื้อ License ตอนนี้!" FontSize="16" FontWeight="Bold"
+                                               Foreground="White" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Text="ปลดล็อคทุกฟีเจอร์ เริ่มต้น ฿792/เดือน" FontSize="11"
+                                           Foreground="#FFFFFFCC" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Deactivate Link -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBlock x:Name="DeactivateSeparator" Visibility="Collapsed"/>
+                        <TextBlock x:Name="DeactivateTextBlock">
+                            <Hyperlink x:Name="DeactivateLink" Click="DeactivateLink_Click"
+                                       Foreground="#80FFFFFF" TextDecorations="None">
+                                Deactivate License
+                            </Hyperlink>
+                        </TextBlock>
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- Device ID -->

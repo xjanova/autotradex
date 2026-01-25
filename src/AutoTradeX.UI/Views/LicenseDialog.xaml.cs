@@ -63,6 +63,8 @@ public partial class LicenseDialog : Window
             StatusDetail.Text = "Start your 30-day trial";
             TrialButton.Content = "Start Trial";
             SetDeactivateLinkVisibility(false);
+            // Show normal purchase link (no early bird for brand new)
+            UpdateEarlyBirdDisplay(null, 0);
             return;
         }
 
@@ -71,10 +73,22 @@ public partial class LicenseDialog : Window
             case LicenseStatus.Valid:
                 StatusDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"));
                 StatusText.Text = $"{license.Tier} License";
-                StatusDetail.Text = $"Valid until {license.ExpiresAt:MMM dd, yyyy}";
+
+                // Show lifetime or expiry date
+                if (license.IsLifetime)
+                {
+                    StatusDetail.Text = "Lifetime License - Never expires";
+                }
+                else
+                {
+                    StatusDetail.Text = $"Valid until {license.ExpiresAt:MMM dd, yyyy}";
+                }
+
                 TrialButton.Content = "Continue";
                 LicenseActivated = true;
                 SetDeactivateLinkVisibility(true);
+                // Hide purchase options when licensed
+                UpdateEarlyBirdDisplay(null, 0);
                 break;
 
             case LicenseStatus.Trial:
@@ -87,14 +101,21 @@ public partial class LicenseDialog : Window
                 TrialButton.Content = daysRemaining > 0 ? "Continue Trial" : "Trial Expired";
                 TrialButton.IsEnabled = daysRemaining > 0;
                 SetDeactivateLinkVisibility(false);
+                // Show Early Bird discount if in trial and eligible
+                UpdateEarlyBirdDisplay(license.EarlyBird, daysRemaining);
                 break;
 
             case LicenseStatus.Expired:
+            case LicenseStatus.DemoMode:
                 StatusDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
-                StatusText.Text = "License Expired";
-                StatusDetail.Text = $"Expired on {license.ExpiresAt:MMM dd, yyyy}";
+                StatusText.Text = license.Status == LicenseStatus.DemoMode ? "Demo Mode" : "License Expired";
+                StatusDetail.Text = license.Status == LicenseStatus.DemoMode
+                    ? "Trial หมดอายุ - ไม่สามารถเทรดจริงได้"
+                    : $"Expired on {license.ExpiresAt:MMM dd, yyyy}";
                 TrialButton.Content = "Continue (Limited)";
                 SetDeactivateLinkVisibility(true);
+                // Show normal purchase link (no early bird after trial expires)
+                UpdateEarlyBirdDisplay(null, 0);
                 break;
 
             case LicenseStatus.Invalid:
@@ -104,6 +125,7 @@ public partial class LicenseDialog : Window
                 StatusDetail.Text = "Please contact support";
                 TrialButton.IsEnabled = false;
                 SetDeactivateLinkVisibility(true);
+                UpdateEarlyBirdDisplay(null, 0);
                 break;
 
             case LicenseStatus.DeviceLimitReached:
@@ -112,6 +134,12 @@ public partial class LicenseDialog : Window
                 StatusDetail.Text = "Please deactivate another device";
                 TrialButton.IsEnabled = false;
                 SetDeactivateLinkVisibility(true);
+                UpdateEarlyBirdDisplay(null, 0);
+                break;
+
+            default:
+                // Unknown status - show normal purchase link
+                UpdateEarlyBirdDisplay(null, 0);
                 break;
         }
 
@@ -119,6 +147,34 @@ public partial class LicenseDialog : Window
         if (!string.IsNullOrEmpty(license.Email))
         {
             EmailInput.Text = license.Email;
+        }
+    }
+
+    /// <summary>
+    /// Update the Early Bird discount banner display
+    /// </summary>
+    private void UpdateEarlyBirdDisplay(EarlyBirdInfo? earlyBird, int trialDaysRemaining)
+    {
+        // If eligible for Early Bird discount (during trial period)
+        if (earlyBird != null && earlyBird.Eligible && trialDaysRemaining > 0)
+        {
+            // Show Early Bird banner
+            EarlyBirdBanner.Visibility = Visibility.Visible;
+            NormalPurchasePanel.Visibility = Visibility.Collapsed;
+
+            // Update discount percentage
+            DiscountPercentText.Text = $"{earlyBird.DiscountPercent}% OFF";
+
+            // Update message with days remaining
+            EarlyBirdMessageText.Text = trialDaysRemaining == 1
+                ? "รีบซื้อเลย! เหลือเวลาอีกแค่ 1 วัน!"
+                : $"รีบซื้อเลย! เหลือเวลาอีก {trialDaysRemaining} วัน";
+        }
+        else
+        {
+            // Show normal purchase link
+            EarlyBirdBanner.Visibility = Visibility.Collapsed;
+            NormalPurchasePanel.Visibility = Visibility.Visible;
         }
     }
 

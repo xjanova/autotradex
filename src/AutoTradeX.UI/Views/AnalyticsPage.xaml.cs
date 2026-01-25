@@ -34,8 +34,8 @@ public partial class AnalyticsPage : UserControl
 
     private async void AnalyticsPage_Loaded(object sender, RoutedEventArgs e)
     {
-        // Get service from App
-        _tradeHistoryService = App.Services.GetService<ITradeHistoryService>();
+        // Get service from App (with null check)
+        _tradeHistoryService = App.Services?.GetService<ITradeHistoryService>();
 
         _selectedTimeButton = Time1D;
 
