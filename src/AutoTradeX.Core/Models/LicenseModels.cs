@@ -404,3 +404,18 @@ public static class LicenseFeatures
         _ => 2
     };
 }
+
+/// <summary>
+/// Event args for demo mode reminder
+/// </summary>
+public class DemoModeReminderEventArgs : EventArgs
+{
+    public DemoModeConfig Config { get; }
+    public DateTime ReminderTime { get; }
+
+    public DemoModeReminderEventArgs(DemoModeConfig config)
+    {
+        Config = config;
+        ReminderTime = DateTime.UtcNow;
+    }
+}

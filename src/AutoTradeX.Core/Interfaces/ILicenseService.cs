@@ -94,6 +94,36 @@ public interface ILicenseService
     /// Get purchase URL with device ID
     /// </summary>
     string GetPurchaseUrl();
+
+    /// <summary>
+    /// Whether running in demo mode (trial expired, can view but not trade)
+    /// </summary>
+    bool IsDemoMode { get; }
+
+    /// <summary>
+    /// Whether trading is allowed in current license state
+    /// </summary>
+    bool CanTrade { get; }
+
+    /// <summary>
+    /// Whether auto-trading is allowed
+    /// </summary>
+    bool CanAutoTrade { get; }
+
+    /// <summary>
+    /// Check if a specific action is allowed in current mode
+    /// </summary>
+    bool IsActionAllowed(string action);
+
+    /// <summary>
+    /// Get demo mode configuration
+    /// </summary>
+    DemoModeConfig GetDemoModeConfig();
+
+    /// <summary>
+    /// Event raised when demo mode reminder should be shown
+    /// </summary>
+    event EventHandler<DemoModeReminderEventArgs>? DemoModeReminder;
 }
 
 /// <summary>
