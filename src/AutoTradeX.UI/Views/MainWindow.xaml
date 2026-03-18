@@ -874,7 +874,7 @@
                                 <Border CornerRadius="4" Padding="6,2" Margin="0,0,10,0" Background="#107C3AED">
                                     <TextBlock Text="Xman Studio" FontSize="9" Foreground="#7C3AED" FontWeight="Medium"/>
                                 </Border>
-                                <TextBlock Text="v0.1.0-beta" FontSize="9" Foreground="#40FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Text="v0.2.1" FontSize="9" Foreground="#40FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Text="|" FontSize="9" Foreground="#20FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock x:Name="StatusBarTime" Text="--:--:--" FontSize="11" Foreground="#80FFFFFF" VerticalAlignment="Center" FontFamily="Consolas"/>
                                 <TextBlock Text=" UTC" FontSize="9" Foreground="#40FFFFFF" VerticalAlignment="Center"/>
@@ -1090,7 +1090,7 @@
 
                         <!-- Version & License Info -->
                         <StackPanel HorizontalAlignment="Center" Margin="0,25,0,0">
-                            <TextBlock Text="v0.1.0-beta" FontSize="13" FontWeight="SemiBold" Foreground="#60FFFFFF"
+                            <TextBlock Text="v0.2.1" FontSize="13" FontWeight="SemiBold" Foreground="#60FFFFFF"
                                        HorizontalAlignment="Center"/>
                             <TextBlock Text="Developed by Xman Studio" FontSize="11" Foreground="#50FFFFFF"
                                        HorizontalAlignment="Center" Margin="0,5,0,0"/>
