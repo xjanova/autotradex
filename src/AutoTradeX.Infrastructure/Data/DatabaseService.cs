@@ -117,6 +117,11 @@ public class DatabaseService : IDatabaseService
 
     private async Task CreateTablesAsync(SqliteConnection connection)
     {
+        // Wrap all DDL in a transaction to ensure atomic schema creation
+        // ถ้า crash ระหว่างสร้างตาราง จะ rollback ทั้งหมดแทนที่จะได้ schema ไม่ครบ
+        using var transaction = connection.BeginTransaction();
+        try
+        {
         // ตาราง Trades - เก็บประวัติการเทรด
         await connection.ExecuteAsync(@"
             CREATE TABLE IF NOT EXISTS Trades (
@@ -262,13 +267,47 @@ public class DatabaseService : IDatabaseService
             )
         ");
 
+        // ตาราง ApiCredentials - เก็บ API Keys แบบเข้ารหัส (AES-256)
+        await connection.ExecuteAsync(@"
+            CREATE TABLE IF NOT EXISTS ApiCredentials (
+                ExchangeName TEXT PRIMARY KEY,
+                ApiKeyEncrypted TEXT NOT NULL,
+                ApiSecretEncrypted TEXT NOT NULL,
+                PassphraseEncrypted TEXT,
+                IsVerified INTEGER NOT NULL DEFAULT 0,
+                LastVerifiedAt TEXT,
+                CreatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+                UpdatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+
+        // ตาราง CoinMetadata - เก็บข้อมูล coin icon และข้อมูลเหรียญ
+        await connection.ExecuteAsync(@"
+            CREATE TABLE IF NOT EXISTS CoinMetadata (
+                Symbol TEXT PRIMARY KEY,
+                Name TEXT,
+                IconUrl TEXT,
+                IconData BLOB,
+                CoinGeckoId TEXT,
+                MarketCapRank INTEGER,
+                LastUpdated TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+
         // สร้าง Indexes
         await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS idx_trades_timestamp ON Trades(Timestamp)");
         await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS idx_trades_symbol ON Trades(Symbol)");
         await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS idx_balances_timestamp ON Balances(Timestamp)");
         await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS idx_opportunities_timestamp ON Opportunities(Timestamp)");
 
-        _logger.LogInfo("Database", "All tables created/verified");
+            transaction.Commit();
+            _logger.LogInfo("Database", "All tables created/verified");
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
     }
 
     public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null)

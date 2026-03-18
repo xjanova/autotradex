@@ -30,7 +30,7 @@ public partial class LicenseDialog : Window
         _licenseService = App.Services?.GetService<ILicenseService>();
 
         Loaded += LicenseDialog_Loaded;
-        MouseLeftButtonDown += (s, e) => DragMove();
+        MouseLeftButtonDown += (s, e) => { if (e.ButtonState == MouseButtonState.Pressed) DragMove(); };
     }
 
     private async void LicenseDialog_Loaded(object sender, RoutedEventArgs e)

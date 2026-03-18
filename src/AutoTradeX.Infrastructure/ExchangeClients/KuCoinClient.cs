@@ -9,6 +9,7 @@
 
 using AutoTradeX.Core.Interfaces;
 using AutoTradeX.Core.Models;
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -55,12 +56,12 @@ public class KuCoinClient : BaseExchangeClient
             {
                 Symbol = symbol,
                 Exchange = ExchangeName,
-                BidPrice = decimal.Parse(data.BestBid ?? "0"),
-                AskPrice = decimal.Parse(data.BestAsk ?? "0"),
-                BidQuantity = decimal.Parse(data.BestBidSize ?? "0"),
-                AskQuantity = decimal.Parse(data.BestAskSize ?? "0"),
-                LastPrice = decimal.Parse(data.Price ?? "0"),
-                Volume24h = stats?.Data != null ? decimal.Parse(stats.Data.Vol ?? "0") : 0,
+                BidPrice = decimal.Parse(data.BestBid ?? "0", CultureInfo.InvariantCulture),
+                AskPrice = decimal.Parse(data.BestAsk ?? "0", CultureInfo.InvariantCulture),
+                BidQuantity = decimal.Parse(data.BestBidSize ?? "0", CultureInfo.InvariantCulture),
+                AskQuantity = decimal.Parse(data.BestAskSize ?? "0", CultureInfo.InvariantCulture),
+                LastPrice = decimal.Parse(data.Price ?? "0", CultureInfo.InvariantCulture),
+                Volume24h = stats?.Data != null ? decimal.Parse(stats.Data.Vol ?? "0", CultureInfo.InvariantCulture) : 0,
                 Timestamp = DateTime.UtcNow
             };
         }
@@ -100,8 +101,8 @@ public class KuCoinClient : BaseExchangeClient
                 if (bid.Length >= 2)
                 {
                     orderBook.Bids.Add(new OrderBookEntry(
-                        decimal.Parse(bid[0]),
-                        decimal.Parse(bid[1])
+                        decimal.Parse(bid[0], CultureInfo.InvariantCulture),
+                        decimal.Parse(bid[1], CultureInfo.InvariantCulture)
                     ));
                 }
             }
@@ -111,8 +112,8 @@ public class KuCoinClient : BaseExchangeClient
                 if (ask.Length >= 2)
                 {
                     orderBook.Asks.Add(new OrderBookEntry(
-                        decimal.Parse(ask[0]),
-                        decimal.Parse(ask[1])
+                        decimal.Parse(ask[0], CultureInfo.InvariantCulture),
+                        decimal.Parse(ask[1], CultureInfo.InvariantCulture)
                     ));
                 }
             }
@@ -126,7 +127,289 @@ public class KuCoinClient : BaseExchangeClient
         }
     }
 
+    /// <summary>
+    /// Get ALL tickers from KuCoin in one API call
+    /// Endpoint: GET /api/v1/market/allTickers
+    /// </summary>
+    public override async Task<Dictionary<string, Ticker>> GetAllTickersAsync(
+        string? quoteAsset = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<string, Ticker>();
+
+        try
+        {
+            _logger.LogInfo(ExchangeName, "GetAllTickersAsync: Fetching all tickers...");
+
+            var response = await GetAsync<KuCoinResponse<KuCoinAllTickersResponse>>(
+                "/api/v1/market/allTickers",
+                cancellationToken);
+
+            if (response?.Data?.Ticker == null || response.Data.Ticker.Count == 0)
+            {
+                _logger.LogWarning(ExchangeName, "GetAllTickersAsync: No data returned from API");
+                return result;
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Got {response.Data.Ticker.Count} tickers from API");
+
+            foreach (var data in response.Data.Ticker)
+            {
+                var symbol = data.Symbol ?? "";
+
+                // Filter by quote asset if specified (e.g., "USDT")
+                // KuCoin format: BASE-QUOTE (e.g., BTC-USDT)
+                if (!string.IsNullOrEmpty(quoteAsset))
+                {
+                    if (!symbol.EndsWith($"-{quoteAsset}", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
+
+                // Skip pairs with zero volume (inactive)
+                var volume = decimal.TryParse(data.Vol, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0;
+                var lastPrice = decimal.TryParse(data.Last, NumberStyles.Any, CultureInfo.InvariantCulture, out var p) ? p : 0;
+
+                if (volume <= 0 && lastPrice <= 0)
+                    continue;
+
+                result[symbol] = new Ticker
+                {
+                    Symbol = symbol,
+                    Exchange = ExchangeName,
+                    BidPrice = decimal.TryParse(data.Buy, NumberStyles.Any, CultureInfo.InvariantCulture, out var bid) ? bid : 0,
+                    AskPrice = decimal.TryParse(data.Sell, NumberStyles.Any, CultureInfo.InvariantCulture, out var ask) ? ask : 0,
+                    BidQuantity = 0,
+                    AskQuantity = 0,
+                    LastPrice = lastPrice,
+                    Volume24h = volume,
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Returning {result.Count} active tickers");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetAllTickersAsync error: {ex.Message}");
+        }
+
+        return result;
+    }
+
     #endregion
+
+    #region Connection Test
+
+    /// <summary>
+    /// Test connection to KuCoin API with proper validation
+    /// </summary>
+    public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInfo(ExchangeName, "Testing KuCoin API connection...");
+
+            // Step 1: Test public API - get server time
+            var serverTimeResponse = await GetAsync<KuCoinResponse<long>>(
+                "/api/v1/timestamp",
+                cancellationToken);
+
+            if (serverTimeResponse?.Data == null)
+            {
+                _logger.LogWarning(ExchangeName, "Failed to get KuCoin server time");
+                return false;
+            }
+
+            _logger.LogInfo(ExchangeName, "KuCoin public API reachable");
+
+            // Step 2: Test ticker API with BTC-USDT
+            var ticker = await GetTickerAsync("BTC-USDT", cancellationToken);
+            if (ticker == null)
+            {
+                _logger.LogWarning(ExchangeName, "Failed to get BTC-USDT ticker");
+                return false;
+            }
+
+            _logger.LogInfo(ExchangeName, $"BTC-USDT: ${ticker.LastPrice:N2}");
+
+            // Step 3: If API credentials are configured, test private API
+            if (HasCredentials())
+            {
+                try
+                {
+                    var balance = await GetBalanceAsync(cancellationToken);
+                    if (balance != null)
+                    {
+                        _logger.LogInfo(ExchangeName, "API credentials verified successfully");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ExchangeName, $"API credential test failed: {ex.Message}");
+                    // Still return true if public API works
+                }
+            }
+
+            IsConnected = true;
+            _logger.LogInfo(ExchangeName, "KuCoin connection test successful");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"Connection test failed: {ex.Message}");
+            IsConnected = false;
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region API Permissions
+
+    /// <summary>
+    /// Get API key permissions from KuCoin
+    /// KuCoin ต้องใช้ API เพื่อตรวจสอบ sub-account info หรือลองเรียก API ดู
+    /// </summary>
+    public override async Task<ApiPermissionInfo> GetApiPermissionsAsync(CancellationToken cancellationToken = default)
+    {
+        var permissions = new ApiPermissionInfo();
+
+        try
+        {
+            if (!HasCredentials())
+            {
+                permissions.AdditionalInfo = "ไม่ได้ตั้งค่า API Key";
+                return permissions;
+            }
+
+            // ลองดึง balance - ถ้าได้แสดงว่ามี Read permission
+            try
+            {
+                var balance = await GetBalanceAsync(cancellationToken);
+                permissions.CanRead = balance != null;
+                _logger.LogInfo(ExchangeName, "API Read permission verified");
+            }
+            catch
+            {
+                permissions.CanRead = false;
+            }
+
+            // ถ้า Read ได้ ลอง check trade permission โดยดู API key info
+            if (permissions.CanRead)
+            {
+                try
+                {
+                    // KuCoin /api/v1/user/api-key endpoint ดึงข้อมูล API key
+                    var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
+                    var endpoint = "/api/v1/user/api-key";
+                    var headers = CreateAuthHeaders("GET", endpoint, "", timestamp);
+
+                    using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+                    foreach (var header in headers)
+                    {
+                        request.Headers.Add(header.Key, header.Value);
+                    }
+
+                    var response = await _httpClient.SendAsync(request, cancellationToken);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var result = await response.Content.ReadFromJsonAsync<KuCoinResponse<KuCoinApiKeyInfo>>(_jsonOptions, cancellationToken);
+                        if (result?.Data != null)
+                        {
+                            permissions.CanTrade = result.Data.Permission?.Contains("Trade") ?? false;
+                            permissions.CanWithdraw = result.Data.Permission?.Contains("Withdraw") ?? false;
+                            permissions.IpRestriction = result.Data.IpWhitelist;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ExchangeName, $"Failed to get API key info: {ex.Message}");
+                    // สมมติว่ามี Trade ถ้า Read ได้
+                    permissions.CanTrade = true;
+                    permissions.AdditionalInfo = "กรุณาตรวจสอบสิทธิ์ที่ kucoin.com";
+                }
+            }
+
+            _logger.LogInfo(ExchangeName, $"API Permissions - Read: {permissions.CanRead}, Trade: {permissions.CanTrade}, Withdraw: {permissions.CanWithdraw}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ExchangeName, $"Failed to get API permissions: {ex.Message}");
+            permissions.AdditionalInfo = $"ไม่สามารถตรวจสอบสิทธิ์: {ex.Message}";
+        }
+
+        return permissions;
+    }
+
+    #endregion
+
+    public override async Task<List<PriceCandle>> GetKlinesAsync(string symbol, string interval = "1m", int limit = 100, CancellationToken cancellationToken = default)
+    {
+        var candles = new List<PriceCandle>();
+        try
+        {
+            var normalizedSymbol = NormalizeSymbol(symbol);
+
+            // KuCoin uses different interval format: 1min, 5min, 15min, 1hour, 4hour, 1day
+            var kucoinInterval = interval switch
+            {
+                "1m" => "1min",
+                "5m" => "5min",
+                "15m" => "15min",
+                "30m" => "30min",
+                "1h" => "1hour",
+                "4h" => "4hour",
+                "1d" => "1day",
+                _ => "1min"
+            };
+
+            var clampedLimit = Math.Min(limit, 1500);
+
+            // KuCoin requires startAt and endAt as Unix timestamps in seconds
+            var endAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var intervalSeconds = interval switch
+            {
+                "1m" => 60L,
+                "5m" => 300L,
+                "15m" => 900L,
+                "30m" => 1800L,
+                "1h" => 3600L,
+                "4h" => 14400L,
+                "1d" => 86400L,
+                _ => 60L
+            };
+            var startAt = endAt - (clampedLimit * intervalSeconds);
+
+            var response = await GetAsync<KuCoinResponse<List<List<string>>>>(
+                $"/api/v1/market/candles?type={kucoinInterval}&symbol={normalizedSymbol}&startAt={startAt}&endAt={endAt}",
+                cancellationToken);
+
+            if (response?.Data == null || response.Data.Count == 0) return candles;
+
+            foreach (var kline in response.Data)
+            {
+                if (kline.Count < 7) continue;
+                candles.Add(new PriceCandle
+                {
+                    Time = DateTimeOffset.FromUnixTimeSeconds(long.Parse(kline[0], CultureInfo.InvariantCulture)).UtcDateTime,
+                    Open = decimal.Parse(kline[1], CultureInfo.InvariantCulture),
+                    Close = decimal.Parse(kline[2], CultureInfo.InvariantCulture),
+                    High = decimal.Parse(kline[3], CultureInfo.InvariantCulture),
+                    Low = decimal.Parse(kline[4], CultureInfo.InvariantCulture),
+                    Volume = decimal.Parse(kline[6], CultureInfo.InvariantCulture)
+                });
+            }
+
+            // KuCoin returns newest first, reverse to chronological order
+            candles.Reverse();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetKlinesAsync error for {symbol}: {ex.Message}");
+        }
+        return candles;
+    }
 
     #region Account Data (Private APIs)
 
@@ -173,8 +456,8 @@ public class KuCoinClient : BaseExchangeClient
 
             foreach (var group in grouped)
             {
-                var available = group.Sum(a => decimal.Parse(a.Available ?? "0"));
-                var holds = group.Sum(a => decimal.Parse(a.Holds ?? "0"));
+                var available = group.Sum(a => decimal.Parse(a.Available ?? "0", CultureInfo.InvariantCulture));
+                var holds = group.Sum(a => decimal.Parse(a.Holds ?? "0", CultureInfo.InvariantCulture));
 
                 if (available > 0 || holds > 0)
                 {
@@ -265,6 +548,11 @@ public class KuCoinClient : BaseExchangeClient
 
             var result = JsonSerializer.Deserialize<KuCoinResponse<KuCoinOrderResponse>>(responseContent, _jsonOptions);
 
+            if (result?.Code != "200000")
+            {
+                throw new Exception($"KuCoin order failed (code {result?.Code}): {result?.Msg}. Response: {responseContent}");
+            }
+
             if (result?.Data == null)
             {
                 throw new Exception("Failed to place order");
@@ -278,7 +566,7 @@ public class KuCoinClient : BaseExchangeClient
                 Symbol = request.Symbol,
                 Side = request.Side,
                 Type = request.Type,
-                Status = OrderStatus.Pending, // KuCoin returns only order ID, need to query for status
+                Status = OrderStatus.Open, // KuCoin returns only order ID; Open is more accurate than Pending
                 RequestedQuantity = request.Quantity,
                 FilledQuantity = 0,
                 RequestedPrice = request.Price,
@@ -372,13 +660,13 @@ public class KuCoinClient : BaseExchangeClient
                 Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
                 Type = data.Type == "market" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(data),
-                RequestedQuantity = decimal.Parse(data.Size ?? "0"),
-                FilledQuantity = decimal.Parse(data.DealSize ?? "0"),
-                RequestedPrice = !string.IsNullOrEmpty(data.Price) ? decimal.Parse(data.Price) : null,
-                AverageFilledPrice = !string.IsNullOrEmpty(data.DealFunds) && decimal.Parse(data.DealSize ?? "0") > 0
-                    ? decimal.Parse(data.DealFunds) / decimal.Parse(data.DealSize ?? "1")
+                RequestedQuantity = decimal.Parse(data.Size ?? "0", CultureInfo.InvariantCulture),
+                FilledQuantity = decimal.Parse(data.DealSize ?? "0", CultureInfo.InvariantCulture),
+                RequestedPrice = !string.IsNullOrEmpty(data.Price) ? decimal.Parse(data.Price, CultureInfo.InvariantCulture) : null,
+                AverageFilledPrice = !string.IsNullOrEmpty(data.DealFunds) && decimal.Parse(data.DealSize ?? "0", CultureInfo.InvariantCulture) > 0
+                    ? decimal.Parse(data.DealFunds, CultureInfo.InvariantCulture) / decimal.Parse(data.DealSize ?? "1", CultureInfo.InvariantCulture)
                     : 0,
-                Fee = decimal.Parse(data.Fee ?? "0"),
+                Fee = decimal.Parse(data.Fee ?? "0", CultureInfo.InvariantCulture),
                 FeeCurrency = data.FeeCurrency ?? "USDT",
                 CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(data.CreatedAt).UtcDateTime,
                 UpdatedAt = DateTime.UtcNow
@@ -432,8 +720,8 @@ public class KuCoinClient : BaseExchangeClient
                 Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
                 Type = data.Type == "market" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(data),
-                RequestedQuantity = decimal.Parse(data.Size ?? "0"),
-                FilledQuantity = decimal.Parse(data.DealSize ?? "0"),
+                RequestedQuantity = decimal.Parse(data.Size ?? "0", CultureInfo.InvariantCulture),
+                FilledQuantity = decimal.Parse(data.DealSize ?? "0", CultureInfo.InvariantCulture),
                 CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(data.CreatedAt).UtcDateTime
             }).ToList();
         }
@@ -493,7 +781,7 @@ public class KuCoinClient : BaseExchangeClient
     {
         if (order.IsActive)
         {
-            return decimal.Parse(order.DealSize ?? "0") > 0
+            return decimal.Parse(order.DealSize ?? "0", CultureInfo.InvariantCulture) > 0
                 ? OrderStatus.PartiallyFilled
                 : OrderStatus.Pending;
         }
@@ -503,7 +791,7 @@ public class KuCoinClient : BaseExchangeClient
             return OrderStatus.Cancelled;
         }
 
-        return decimal.Parse(order.DealSize ?? "0") >= decimal.Parse(order.Size ?? "0")
+        return decimal.Parse(order.DealSize ?? "0", CultureInfo.InvariantCulture) >= decimal.Parse(order.Size ?? "0", CultureInfo.InvariantCulture)
             ? OrderStatus.Filled
             : OrderStatus.Error;
     }
@@ -544,6 +832,32 @@ internal class KuCoin24hStats
     public string? Vol { get; set; }
     public string? VolValue { get; set; }
     public string? Last { get; set; }
+}
+
+internal class KuCoinAllTickersResponse
+{
+    public long Time { get; set; }
+    public List<KuCoinAllTickerItem> Ticker { get; set; } = new();
+}
+
+internal class KuCoinAllTickerItem
+{
+    public string? Symbol { get; set; }
+    public string? SymbolName { get; set; }
+    public string? Buy { get; set; }
+    public string? Sell { get; set; }
+    public string? ChangeRate { get; set; }
+    public string? ChangePrice { get; set; }
+    public string? High { get; set; }
+    public string? Low { get; set; }
+    public string? Vol { get; set; }
+    public string? VolValue { get; set; }
+    public string? Last { get; set; }
+    public string? AveragePrice { get; set; }
+    public string? TakerFeeRate { get; set; }
+    public string? MakerFeeRate { get; set; }
+    public string? TakerCoefficient { get; set; }
+    public string? MakerCoefficient { get; set; }
 }
 
 internal class KuCoinOrderBookData
@@ -593,6 +907,13 @@ internal class KuCoinOrderListResponse
     public int PageSize { get; set; }
     public int TotalNum { get; set; }
     public int TotalPage { get; set; }
+}
+
+internal class KuCoinApiKeyInfo
+{
+    public string? Permission { get; set; }
+    public string? IpWhitelist { get; set; }
+    public string? Remark { get; set; }
 }
 
 #endregion

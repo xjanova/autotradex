@@ -64,6 +64,120 @@ public class ExchangeClientFactory : IExchangeClientFactory
     }
 
     /// <summary>
+    /// สร้าง Real Exchange Client สำหรับทดสอบการเชื่อมต่อ (ไม่ขึ้นกับ LiveTrading flag)
+    /// Create real exchange client for connection testing (ignores LiveTrading flag)
+    /// </summary>
+    public IExchangeClient CreateRealClient(string exchangeName)
+    {
+        return exchangeName.ToLowerInvariant() switch
+        {
+            "binance" => CreateRealBinanceClientDirect(),
+            "kucoin" => CreateRealKuCoinClientDirect(),
+            "bybit" => CreateRealBybitClientDirect(),
+            "okx" => CreateRealOKXClientDirect(),
+            "gate.io" or "gateio" or "gate" => CreateRealGateIOClientDirect(),
+            "bitkub" => CreateRealBitkubClientDirect(),
+            _ => throw new ArgumentException($"Unknown exchange: {exchangeName}")
+        };
+    }
+
+    private IExchangeClient CreateRealBinanceClientDirect()
+    {
+        var config = new ExchangeConfig
+        {
+            Name = "Binance",
+            ApiBaseUrl = "https://api.binance.com",
+            ApiKeyEnvVar = "AUTOTRADEX_BINANCE_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_BINANCE_API_SECRET",
+            TradingFeePercent = 0.1m,
+            TimeoutMs = 10000,
+            RateLimitPerSecond = 10,
+            MaxRetries = 3
+        };
+        return new BinanceClient(config, _logger);
+    }
+
+    private IExchangeClient CreateRealKuCoinClientDirect()
+    {
+        var config = new ExchangeConfig
+        {
+            Name = "KuCoin",
+            ApiBaseUrl = "https://api.kucoin.com",
+            ApiKeyEnvVar = "AUTOTRADEX_KUCOIN_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_KUCOIN_API_SECRET",
+            TradingFeePercent = 0.1m,
+            TimeoutMs = 10000,
+            RateLimitPerSecond = 10,
+            MaxRetries = 3
+        };
+        return new KuCoinClient(config, _logger);
+    }
+
+    private IExchangeClient CreateRealBybitClientDirect()
+    {
+        var config = new ExchangeConfig
+        {
+            Name = "Bybit",
+            ApiBaseUrl = "https://api.bybit.com",
+            ApiKeyEnvVar = "AUTOTRADEX_BYBIT_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_BYBIT_API_SECRET",
+            TradingFeePercent = 0.1m,
+            TimeoutMs = 10000,
+            RateLimitPerSecond = 10,
+            MaxRetries = 3
+        };
+        return new BybitClient(config, _logger);
+    }
+
+    private IExchangeClient CreateRealOKXClientDirect()
+    {
+        var config = new ExchangeConfig
+        {
+            Name = "OKX",
+            ApiBaseUrl = "https://www.okx.com",
+            ApiKeyEnvVar = "AUTOTRADEX_OKX_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_OKX_API_SECRET",
+            TradingFeePercent = 0.1m,
+            TimeoutMs = 10000,
+            RateLimitPerSecond = 10,
+            MaxRetries = 3
+        };
+        return new OKXClient(config, _logger);
+    }
+
+    private IExchangeClient CreateRealGateIOClientDirect()
+    {
+        var config = new ExchangeConfig
+        {
+            Name = "Gate.io",
+            ApiBaseUrl = "https://api.gateio.ws",
+            ApiKeyEnvVar = "AUTOTRADEX_GATEIO_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_GATEIO_API_SECRET",
+            TradingFeePercent = 0.2m,
+            TimeoutMs = 10000,
+            RateLimitPerSecond = 10,
+            MaxRetries = 3
+        };
+        return new GateIOClient(config, _logger);
+    }
+
+    private IExchangeClient CreateRealBitkubClientDirect()
+    {
+        var config = new ExchangeConfig
+        {
+            Name = "Bitkub",
+            ApiBaseUrl = "https://api.bitkub.com",
+            ApiKeyEnvVar = "AUTOTRADEX_BITKUB_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_BITKUB_API_SECRET",
+            TradingFeePercent = 0.25m,
+            TimeoutMs = 10000,
+            RateLimitPerSecond = 5,
+            MaxRetries = 3
+        };
+        return new BitkubClient(config, _logger, _currencyConverter);
+    }
+
+    /// <summary>
     /// สร้าง Binance Client
     /// </summary>
     public IExchangeClient CreateBinanceClient()
@@ -158,16 +272,21 @@ public class ExchangeClientFactory : IExchangeClientFactory
             return CreateSimulationClient(false);
         }
 
+        // Detect which config slot has OKX (ExchangeA or ExchangeB)
+        var exchangeConfig = _config.ExchangeA.Name?.Contains("OKX", StringComparison.OrdinalIgnoreCase) == true
+            ? _config.ExchangeA
+            : _config.ExchangeB;
+
         var config = new ExchangeConfig
         {
             Name = "OKX",
             ApiBaseUrl = "https://www.okx.com",
-            ApiKeyEnvVar = "AUTOTRADEX_OKX_API_KEY",
-            ApiSecretEnvVar = "AUTOTRADEX_OKX_API_SECRET",
-            TradingFeePercent = 0.1m,
-            TimeoutMs = _config.ExchangeB.TimeoutMs,
-            RateLimitPerSecond = 10,
-            MaxRetries = _config.ExchangeB.MaxRetries
+            ApiKeyEnvVar = !string.IsNullOrEmpty(exchangeConfig.ApiKeyEnvVar) ? exchangeConfig.ApiKeyEnvVar : "AUTOTRADEX_OKX_API_KEY",
+            ApiSecretEnvVar = !string.IsNullOrEmpty(exchangeConfig.ApiSecretEnvVar) ? exchangeConfig.ApiSecretEnvVar : "AUTOTRADEX_OKX_API_SECRET",
+            TradingFeePercent = exchangeConfig.TradingFeePercent > 0 ? exchangeConfig.TradingFeePercent : 0.1m,
+            TimeoutMs = exchangeConfig.TimeoutMs,
+            RateLimitPerSecond = exchangeConfig.RateLimitPerSecond > 0 ? exchangeConfig.RateLimitPerSecond : 10,
+            MaxRetries = exchangeConfig.MaxRetries
         };
 
         _logger.LogInfo("Factory", "Creating OKX Client");
@@ -237,7 +356,8 @@ public class ExchangeClientFactory : IExchangeClientFactory
         {
             return await _currencyConverter.GetThbUsdtRateAsync(cancellationToken);
         }
-        return 35.0m; // Default fallback
+        _logger.LogWarning("Factory", "CurrencyConverter not available, using fallback THB/USDT rate");
+        return 35.0m; // Default fallback — only used when CurrencyConverter is not injected
     }
 
     /// <summary>
@@ -245,6 +365,10 @@ public class ExchangeClientFactory : IExchangeClientFactory
     /// </summary>
     public decimal GetCachedThbUsdtRate()
     {
+        if (_currencyConverter == null)
+        {
+            _logger.LogWarning("Factory", "CurrencyConverter not available, using fallback THB/USDT rate");
+        }
         return _currencyConverter?.GetCachedThbUsdtRate() ?? 35.0m;
     }
 
@@ -387,6 +511,12 @@ public class ExchangeClientFactory : IExchangeClientFactory
 
         if (lowerName.Contains("kucoin"))
             return "kucoin";
+
+        if (lowerName.Contains("gate"))
+            return "gateio";
+
+        if (lowerName.Contains("bitkub"))
+            return "bitkub";
 
         return "unknown";
     }

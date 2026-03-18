@@ -437,15 +437,15 @@
             </Grid>
         </Border>
 
-        <!-- Main Scanner Content -->
+        <!-- Main Scanner Content - Responsive -->
         <Grid x:Name="MainScannerContent">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="320"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto" MinWidth="280" MaxWidth="360"/>
+                <ColumnDefinition Width="*" MinWidth="400"/>
             </Grid.ColumnDefinitions>
 
         <!-- Left Panel - Scanner Controls -->
-        <ScrollViewer Grid.Column="0" Style="{StaticResource PremiumScrollViewer}" Margin="0,0,15,0">
+        <ScrollViewer Grid.Column="0" Style="{StaticResource PremiumScrollViewer}" Margin="0,0,15,0" MaxWidth="360">
             <StackPanel>
                 <!-- Scanner Status -->
                 <Border Style="{StaticResource GlassCard}" Margin="0,0,0,15">

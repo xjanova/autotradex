@@ -9,6 +9,7 @@
 
 using AutoTradeX.Core.Interfaces;
 using AutoTradeX.Core.Models;
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -24,8 +25,12 @@ public class OKXClient : BaseExchangeClient
     public OKXClient(ExchangeConfig config, ILoggingService logger)
         : base(config, logger)
     {
-        // OKX requires additional passphrase
+        // OKX requires additional passphrase — try config-based env var first, then fallback
         _passphrase = Environment.GetEnvironmentVariable("AUTOTRADEX_OKX_PASSPHRASE");
+        if (string.IsNullOrEmpty(_passphrase))
+        {
+            _passphrase = Environment.GetEnvironmentVariable("AUTOTRADEX_OKX_API_KEY_PASSPHRASE");
+        }
     }
 
     #region Market Data (Public APIs)
@@ -50,12 +55,12 @@ public class OKXClient : BaseExchangeClient
             {
                 Symbol = symbol,
                 Exchange = ExchangeName,
-                BidPrice = decimal.Parse(data.BidPx ?? "0"),
-                AskPrice = decimal.Parse(data.AskPx ?? "0"),
-                BidQuantity = decimal.Parse(data.BidSz ?? "0"),
-                AskQuantity = decimal.Parse(data.AskSz ?? "0"),
-                LastPrice = decimal.Parse(data.Last ?? "0"),
-                Volume24h = decimal.Parse(data.Vol24h ?? "0"),
+                BidPrice = decimal.Parse(data.BidPx ?? "0", CultureInfo.InvariantCulture),
+                AskPrice = decimal.Parse(data.AskPx ?? "0", CultureInfo.InvariantCulture),
+                BidQuantity = decimal.Parse(data.BidSz ?? "0", CultureInfo.InvariantCulture),
+                AskQuantity = decimal.Parse(data.AskSz ?? "0", CultureInfo.InvariantCulture),
+                LastPrice = decimal.Parse(data.Last ?? "0", CultureInfo.InvariantCulture),
+                Volume24h = decimal.Parse(data.Vol24h ?? "0", CultureInfo.InvariantCulture),
                 Timestamp = DateTime.UtcNow
             };
         }
@@ -93,8 +98,8 @@ public class OKXClient : BaseExchangeClient
                 if (bid.Length >= 2)
                 {
                     orderBook.Bids.Add(new OrderBookEntry(
-                        decimal.Parse(bid[0]),
-                        decimal.Parse(bid[1])
+                        decimal.Parse(bid[0], CultureInfo.InvariantCulture),
+                        decimal.Parse(bid[1], CultureInfo.InvariantCulture)
                     ));
                 }
             }
@@ -104,8 +109,8 @@ public class OKXClient : BaseExchangeClient
                 if (ask.Length >= 2)
                 {
                     orderBook.Asks.Add(new OrderBookEntry(
-                        decimal.Parse(ask[0]),
-                        decimal.Parse(ask[1])
+                        decimal.Parse(ask[0], CultureInfo.InvariantCulture),
+                        decimal.Parse(ask[1], CultureInfo.InvariantCulture)
                     ));
                 }
             }
@@ -119,7 +124,266 @@ public class OKXClient : BaseExchangeClient
         }
     }
 
+    /// <summary>
+    /// Get ALL tickers from OKX in one API call
+    /// Endpoint: GET /api/v5/market/tickers?instType=SPOT
+    /// </summary>
+    public override async Task<Dictionary<string, Ticker>> GetAllTickersAsync(
+        string? quoteAsset = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<string, Ticker>();
+
+        try
+        {
+            _logger.LogInfo(ExchangeName, "GetAllTickersAsync: Fetching all tickers...");
+
+            var response = await GetAsync<OKXResponse<List<OKXTickerData>>>(
+                "/api/v5/market/tickers?instType=SPOT",
+                cancellationToken);
+
+            if (response?.Data == null || response.Data.Count == 0)
+            {
+                _logger.LogWarning(ExchangeName, "GetAllTickersAsync: No data returned from API");
+                return result;
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Got {response.Data.Count} tickers from API");
+
+            foreach (var data in response.Data)
+            {
+                var symbol = data.InstId ?? "";
+
+                // Filter by quote asset if specified (e.g., "USDT")
+                // OKX format: BASE-QUOTE (e.g., BTC-USDT)
+                if (!string.IsNullOrEmpty(quoteAsset))
+                {
+                    if (!symbol.EndsWith($"-{quoteAsset}", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
+
+                // Skip pairs with zero volume (inactive)
+                var volume = decimal.TryParse(data.Vol24h, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0;
+                var lastPrice = decimal.TryParse(data.Last, NumberStyles.Any, CultureInfo.InvariantCulture, out var p) ? p : 0;
+
+                if (volume <= 0 && lastPrice <= 0)
+                    continue;
+
+                result[symbol] = new Ticker
+                {
+                    Symbol = symbol,
+                    Exchange = ExchangeName,
+                    BidPrice = decimal.TryParse(data.BidPx, NumberStyles.Any, CultureInfo.InvariantCulture, out var bid) ? bid : 0,
+                    AskPrice = decimal.TryParse(data.AskPx, NumberStyles.Any, CultureInfo.InvariantCulture, out var ask) ? ask : 0,
+                    BidQuantity = decimal.TryParse(data.BidSz, NumberStyles.Any, CultureInfo.InvariantCulture, out var bidSz) ? bidSz : 0,
+                    AskQuantity = decimal.TryParse(data.AskSz, NumberStyles.Any, CultureInfo.InvariantCulture, out var askSz) ? askSz : 0,
+                    LastPrice = lastPrice,
+                    Volume24h = volume,
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Returning {result.Count} active tickers");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetAllTickersAsync error: {ex.Message}");
+        }
+
+        return result;
+    }
+
     #endregion
+
+    #region Connection Test
+
+    /// <summary>
+    /// Test connection to OKX API with proper validation
+    /// </summary>
+    public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInfo(ExchangeName, "Testing OKX API connection...");
+
+            // Step 1: Test public API - get server time
+            var serverTimeResponse = await GetAsync<OKXResponse<List<OKXServerTime>>>(
+                "/api/v5/public/time",
+                cancellationToken);
+
+            if (serverTimeResponse?.Data == null || serverTimeResponse.Data.Count == 0)
+            {
+                _logger.LogWarning(ExchangeName, "Failed to get OKX server time");
+                return false;
+            }
+
+            _logger.LogInfo(ExchangeName, "OKX public API reachable");
+
+            // Step 2: Test ticker API with BTC-USDT
+            var ticker = await GetTickerAsync("BTC-USDT", cancellationToken);
+            if (ticker == null)
+            {
+                _logger.LogWarning(ExchangeName, "Failed to get BTC-USDT ticker");
+                return false;
+            }
+
+            _logger.LogInfo(ExchangeName, $"BTC-USDT: ${ticker.LastPrice:N2}");
+
+            // Step 3: If API credentials are configured, test private API
+            if (HasCredentials())
+            {
+                try
+                {
+                    var balance = await GetBalanceAsync(cancellationToken);
+                    if (balance != null)
+                    {
+                        _logger.LogInfo(ExchangeName, "API credentials verified successfully");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ExchangeName, $"API credential test failed: {ex.Message}");
+                    // Still return true if public API works
+                }
+            }
+
+            IsConnected = true;
+            _logger.LogInfo(ExchangeName, "OKX connection test successful");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"Connection test failed: {ex.Message}");
+            IsConnected = false;
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region API Permissions
+
+    /// <summary>
+    /// Get API key permissions from OKX
+    /// OKX /api/v5/account/config returns permission info
+    /// </summary>
+    public override async Task<ApiPermissionInfo> GetApiPermissionsAsync(CancellationToken cancellationToken = default)
+    {
+        var permissions = new ApiPermissionInfo();
+
+        try
+        {
+            if (!HasCredentials())
+            {
+                permissions.AdditionalInfo = "ไม่ได้ตั้งค่า API Key";
+                return permissions;
+            }
+
+            // OKX API config endpoint returns permissions
+            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            var endpoint = "/api/v5/account/config";
+            var headers = CreateAuthHeaders("GET", endpoint, "", timestamp);
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            foreach (var header in headers)
+            {
+                request.Headers.Add(header.Key, header.Value);
+            }
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<OKXResponse<List<OKXConfigData>>>(_jsonOptions, cancellationToken);
+                if (result?.Data != null && result.Data.Count > 0)
+                {
+                    var config = result.Data[0];
+                    permissions.CanRead = true;
+                    // OKX permission values: read_only, trade, withdraw
+                    permissions.CanTrade = config.Perm?.Contains("trade") ?? false;
+                    permissions.CanWithdraw = config.Perm?.Contains("withdraw") ?? false;
+                    permissions.IpRestriction = config.Ip;
+                }
+            }
+            else
+            {
+                // ลองดึง balance - ถ้าได้แสดงว่ามี Read permission
+                try
+                {
+                    var balance = await GetBalanceAsync(cancellationToken);
+                    permissions.CanRead = balance != null;
+                    permissions.CanTrade = true; // assume if can read
+                }
+                catch
+                {
+                    permissions.CanRead = false;
+                }
+                permissions.AdditionalInfo = "กรุณาตรวจสอบสิทธิ์ที่ okx.com";
+            }
+
+            _logger.LogInfo(ExchangeName, $"API Permissions - Read: {permissions.CanRead}, Trade: {permissions.CanTrade}, Withdraw: {permissions.CanWithdraw}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ExchangeName, $"Failed to get API permissions: {ex.Message}");
+            permissions.AdditionalInfo = $"ไม่สามารถตรวจสอบสิทธิ์: {ex.Message}";
+        }
+
+        return permissions;
+    }
+
+    #endregion
+
+    public override async Task<List<PriceCandle>> GetKlinesAsync(string symbol, string interval = "1m", int limit = 100, CancellationToken cancellationToken = default)
+    {
+        var candles = new List<PriceCandle>();
+        try
+        {
+            var normalizedSymbol = NormalizeSymbol(symbol);
+
+            // OKX uses: 1m, 5m, 15m, 30m, 1H, 4H, 1D
+            var okxInterval = interval switch
+            {
+                "1m" => "1m",
+                "5m" => "5m",
+                "15m" => "15m",
+                "30m" => "30m",
+                "1h" => "1H",
+                "4h" => "4H",
+                "1d" => "1D",
+                _ => "1m"
+            };
+
+            var clampedLimit = Math.Min(limit, 300); // OKX max 300
+
+            var response = await GetAsync<OKXResponse<List<List<string>>>>(
+                $"/api/v5/market/candles?instId={normalizedSymbol}&bar={okxInterval}&limit={clampedLimit}",
+                cancellationToken);
+
+            if (response?.Data == null || response.Data.Count == 0) return candles;
+
+            foreach (var kline in response.Data)
+            {
+                if (kline.Count < 6) continue;
+                candles.Add(new PriceCandle
+                {
+                    Time = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(kline[0], CultureInfo.InvariantCulture)).UtcDateTime,
+                    Open = decimal.Parse(kline[1], CultureInfo.InvariantCulture),
+                    High = decimal.Parse(kline[2], CultureInfo.InvariantCulture),
+                    Low = decimal.Parse(kline[3], CultureInfo.InvariantCulture),
+                    Close = decimal.Parse(kline[4], CultureInfo.InvariantCulture),
+                    Volume = decimal.Parse(kline[5], CultureInfo.InvariantCulture)
+                });
+            }
+
+            // OKX returns newest first, reverse to chronological order
+            candles.Reverse();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetKlinesAsync error for {symbol}: {ex.Message}");
+        }
+        return candles;
+    }
 
     #region Account Data (Private APIs)
 
@@ -161,8 +425,8 @@ public class OKXClient : BaseExchangeClient
 
             foreach (var detail in result.Data[0].Details ?? new List<OKXBalanceDetail>())
             {
-                var available = decimal.Parse(detail.AvailBal ?? "0");
-                var frozen = decimal.Parse(detail.FrozenBal ?? "0");
+                var available = decimal.Parse(detail.AvailBal ?? "0", CultureInfo.InvariantCulture);
+                var frozen = decimal.Parse(detail.FrozenBal ?? "0", CultureInfo.InvariantCulture);
 
                 if (available > 0 || frozen > 0)
                 {
@@ -370,13 +634,13 @@ public class OKXClient : BaseExchangeClient
                 Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
                 Type = data.OrdType == "market" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(data.State),
-                RequestedQuantity = decimal.Parse(data.Sz ?? "0"),
-                FilledQuantity = decimal.Parse(data.AccFillSz ?? "0"),
-                RequestedPrice = !string.IsNullOrEmpty(data.Px) ? decimal.Parse(data.Px) : null,
-                AverageFilledPrice = !string.IsNullOrEmpty(data.AvgPx) ? decimal.Parse(data.AvgPx) : 0,
-                Fee = decimal.Parse(data.Fee ?? "0"),
+                RequestedQuantity = decimal.Parse(data.Sz ?? "0", CultureInfo.InvariantCulture),
+                FilledQuantity = decimal.Parse(data.AccFillSz ?? "0", CultureInfo.InvariantCulture),
+                RequestedPrice = !string.IsNullOrEmpty(data.Px) ? decimal.Parse(data.Px, CultureInfo.InvariantCulture) : null,
+                AverageFilledPrice = !string.IsNullOrEmpty(data.AvgPx) ? decimal.Parse(data.AvgPx, CultureInfo.InvariantCulture) : 0,
+                Fee = decimal.Parse(data.Fee ?? "0", CultureInfo.InvariantCulture),
                 FeeCurrency = data.FeeCcy ?? "USDT",
-                CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(data.CTime ?? "0")).UtcDateTime,
+                CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(data.CTime ?? "0", CultureInfo.InvariantCulture)).UtcDateTime,
                 UpdatedAt = DateTime.UtcNow
             };
         }
@@ -428,9 +692,9 @@ public class OKXClient : BaseExchangeClient
                 Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
                 Type = data.OrdType == "market" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(data.State),
-                RequestedQuantity = decimal.Parse(data.Sz ?? "0"),
-                FilledQuantity = decimal.Parse(data.AccFillSz ?? "0"),
-                CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(data.CTime ?? "0")).UtcDateTime
+                RequestedQuantity = decimal.Parse(data.Sz ?? "0", CultureInfo.InvariantCulture),
+                FilledQuantity = decimal.Parse(data.AccFillSz ?? "0", CultureInfo.InvariantCulture),
+                CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(data.CTime ?? "0", CultureInfo.InvariantCulture)).UtcDateTime
             }).ToList();
         }
         catch (Exception ex)
@@ -501,6 +765,11 @@ internal class OKXResponse<T>
     public T? Data { get; set; }
 }
 
+internal class OKXServerTime
+{
+    public string? Ts { get; set; }
+}
+
 internal class OKXTickerData
 {
     public string? InstId { get; set; }
@@ -558,6 +827,15 @@ internal class OKXOrderDetail
     public string? Fee { get; set; }
     public string? FeeCcy { get; set; }
     public string? CTime { get; set; }
+}
+
+internal class OKXConfigData
+{
+    public string? Uid { get; set; }
+    public string? AcctLv { get; set; }
+    public string? PosMode { get; set; }
+    public string? Perm { get; set; }  // read_only, trade, withdraw
+    public string? Ip { get; set; }    // IP whitelist
 }
 
 #endregion

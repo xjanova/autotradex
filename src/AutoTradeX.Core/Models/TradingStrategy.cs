@@ -421,4 +421,47 @@ public class ProjectSettings
     /// Rebalance threshold percentage
     /// </summary>
     public decimal RebalanceThreshold { get; set; } = 20m;
+
+    /// <summary>
+    /// Preferred arbitrage execution mode (DualBalance, Transfer, etc.)
+    /// โหมดการทำ arbitrage ที่ต้องการ
+    /// </summary>
+    public string PreferredArbitrageMode { get; set; } = "DualBalance";
+
+    /// <summary>
+    /// Last selected Exchange A name
+    /// ชื่อกระดาน A ที่เลือกล่าสุด
+    /// </summary>
+    public string LastExchangeA { get; set; } = "";
+
+    /// <summary>
+    /// Last selected Exchange B name
+    /// ชื่อกระดาน B ที่เลือกล่าสุด
+    /// </summary>
+    public string LastExchangeB { get; set; } = "";
+}
+
+/// <summary>
+/// Event args for project change notifications
+/// อาร์กิวเมนต์สำหรับการแจ้งเตือนการเปลี่ยนแปลงโปรเจค
+/// </summary>
+public class ProjectChangedEventArgs : EventArgs
+{
+    public string ProjectId { get; set; } = "";
+    public ProjectChangeType ChangeType { get; set; }
+    public ProjectTradingPair? AffectedPair { get; set; }
+}
+
+/// <summary>
+/// Types of project changes
+/// ประเภทการเปลี่ยนแปลงโปรเจค
+/// </summary>
+public enum ProjectChangeType
+{
+    ActiveProjectSwitched,
+    PairAdded,
+    PairRemoved,
+    PairUpdated,
+    ProjectSettingsChanged,
+    ProjectSaved
 }

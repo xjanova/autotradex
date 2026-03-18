@@ -222,6 +222,101 @@ This is an **educational project** for learning about:
 
 **DO NOT use this for real trading without proper testing and understanding of the risks involved.**
 
+## AI Trading System (IMPORTANT)
+
+> **Full Documentation:** `docs/AI_TRADING_SYSTEM.md`
+> **API Integration Guide:** `docs/API_INTEGRATION_GUIDE.md`
+
+### Overview
+
+ระบบ AI Trading มี 6 กลยุทธ์ที่แตกต่างกัน โดยแต่ละกลยุทธ์ใช้ตัวชี้วัดทางเทคนิคที่เหมาะสมกับสภาวะตลาดที่แตกต่างกัน
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `Core/Services/AITradingService.cs` | Signal generation, strategy logic |
+| `Core/Models/AITradingModels.cs` | Data models, strategy info |
+| `Infrastructure/Services/DemoWalletService.cs` | Demo trading wallet |
+| `UI/Views/AITradingPage.xaml.cs` | UI logic, demo/real mode |
+
+### AI Trading Strategies
+
+```
+┌─────────────────┬───────────────┬──────────────────────────────────┐
+│ Strategy        │ Hold Time     │ Best For                         │
+├─────────────────┼───────────────┼──────────────────────────────────┤
+│ Scalping        │ 5-15 min      │ High volume, tight spread        │
+│ Momentum        │ 1-4 hours     │ Clear trend, medium volatility   │
+│ Mean Reversion  │ 30min-2hours  │ Sideways, range-bound market     │
+│ Grid Trading    │ Variable      │ Sideways with clear range        │
+│ Breakout        │ 30min-4hours  │ After consolidation, news        │
+│ Smart DCA       │ Long-term     │ Long-term investment             │
+└─────────────────┴───────────────┴──────────────────────────────────┘
+```
+
+### Signal Generation Flow
+
+Each strategy has its OWN signal generation method:
+- `GenerateScalpingSignal()` - RSI extremes + tight spreads
+- `GenerateMomentumSignal()` - EMA crossover + MACD + SMA50
+- `GenerateMeanReversionSignal()` - Bollinger Bands + RSI
+- `GenerateGridTradingSignal()` - ATR grid sizing + support/resistance
+- `GenerateBreakoutSignal()` - BB breakout + volume confirmation
+- `GenerateSmartDCASignal()` - RSI + SMA200 for DCA timing
+
+### Demo vs Real Mode
+
+```csharp
+// In AITradingPage.xaml.cs
+private bool _isDemoMode = true;  // Default: Demo Mode ON
+
+// When user clicks BUY:
+if (_isDemoMode)
+    await ExecuteDemoBuyAsync(amount);  // Uses DemoWalletService
+else
+    await _aiTradingService.ExecuteManualTradeAsync(...);  // Real API
+```
+
+### Demo Wallet API
+
+```csharp
+// Buy (open position)
+DemoWalletService.ExecuteAIBuyAsync(pair, exchange, quantity, price)
+
+// Sell (close position)
+DemoWalletService.ExecuteAISellAsync(pair, exchange, quantity, entryPrice, exitPrice)
+```
+
+### Auto TP/SL
+
+- Demo positions have automatic TP/SL checking every 1 second
+- When price hits TP or SL, position closes automatically
+- Uses `CheckDemoTPSLAsync()` in market data update loop
+
+### Important Variables in AITradingPage
+
+```csharp
+private bool _isDemoMode = true;           // Demo mode flag
+private DemoAIPosition? _demoPosition;     // Current demo position
+private AITradingPosition? _currentPosition; // Real position
+private DemoWalletService? _demoWallet;    // Demo wallet service
+```
+
+### Strategy Auto-Recommendation
+
+```csharp
+// In AITradingModels.cs
+AITradingMode.RecommendStrategy(volatilityPercent, isTrending, volume24h)
+```
+
+| Condition | Recommended |
+|-----------|-------------|
+| High volatility + Trending | Breakout/Momentum |
+| Low volatility + Sideways | Grid/Mean Reversion |
+| Medium volatility | Scalping |
+| Uncertain | Smart DCA |
+
 ## Common Tasks for Claude
 
 1. **UI Improvements:** Focus on `Views/` folder, maintain glass morphism style
@@ -229,9 +324,196 @@ This is an **educational project** for learning about:
 3. **Business Logic:** Modify `Core/Services/`
 4. **Bug Fixes:** Check both XAML and code-behind files
 5. **Performance:** Look for async/await patterns, consider caching
+6. **AI Trading:** Always check `_isDemoMode` for new trading features
 
 ## Testing Guidelines
 
 - Unit test business logic in Core
 - Integration test exchange clients with mock responses
 - UI tests are optional but appreciated
+- **AI Trading:** Test both Demo and Real mode paths
+
+---
+
+## ⚠️ Production Audit Notes (CRITICAL — Must Read Before Modifying)
+
+> **Last audited:** February 2025 (3 rounds, ~42 fixes across ~20 files)
+> **Build status:** 0 errors, 47 tests passed
+
+### Patterns Already Established — DO NOT Break
+
+The following patterns were intentionally implemented to fix critical bugs.
+**If you modify these files, you MUST preserve these patterns:**
+
+#### 1. DemoWalletService — Event Firing Pattern
+```csharp
+// ✅ CORRECT — Always use this pattern
+private void RaiseWalletChanged(DemoWallet wallet)
+{
+    try { WalletChanged?.Invoke(this, wallet); }
+    catch (Exception ex) { _logger.LogError(...); }
+}
+
+// ❌ NEVER do this — causes infinite recursion → StackOverflow
+private void RaiseWalletChanged(DemoWallet wallet)
+{
+    RaiseWalletChanged(wallet);  // WRONG: calls itself!
+}
+```
+- All wallet event firing goes through `RaiseWalletChanged()` wrapper
+- Input validation exists on all trade methods (quantity > 0, price > 0)
+- `ParsePair()` helper handles safe pair splitting with validation
+
+#### 2. AITradingService — Division by Zero Guards
+```csharp
+// ✅ Every division MUST have a > 0 guard:
+var result = denominator > 0 ? numerator / denominator : fallbackValue;
+```
+**Protected locations (DO NOT remove guards):**
+- Drawdown calculation (`PeakPnL` can be 0)
+- `AverageTradeDurationMinutes` (TotalTrades can be 0)
+- Bollinger Bands `bbWidth` and `pricePosition` (`bbRange` and `bbMiddle` can be 0)
+- ATR calculation (period can produce 0)
+- RSI calculation (losses sum can be 0)
+
+#### 3. AITradingService — Position Race Condition Fix
+```csharp
+// ✅ CORRECT — Always snapshot to local variables first
+var position = _currentPosition;
+var config = _config;
+if (position == null || config == null) return;
+// Use 'position' and 'config' locally, never re-read _currentPosition
+
+// ❌ NEVER read _currentPosition multiple times in the same method
+```
+
+#### 4. AITradingService — Fee Calculation
+```csharp
+// ✅ Uses actual order fee when available, falls back to config FeePercent
+// FeePercent is in AIStrategyConfig (e.g., 0.1 = 0.1%)
+// DO NOT hardcode 0.001m — different exchanges have different fees
+```
+
+#### 5. AITradingService — Error Loop Backoff
+```csharp
+// ✅ Trading loop uses exponential backoff on errors
+// consecutiveErrors → 5s, 10s, 20s, 40s, 60s (max)
+// Resets to 0 on success
+// DO NOT remove — prevents CPU spin on persistent errors
+```
+
+#### 6. BaseExchangeClient — Rate Limiter Semaphore
+```csharp
+// ✅ CORRECT — Release MUST always happen via try/finally with CancellationToken.None
+_ = Task.Run(async () =>
+{
+    try { await Task.Delay(1000, CancellationToken.None); }
+    finally { _rateLimiter.Release(); }
+}, CancellationToken.None);
+
+// ❌ NEVER pass caller's CancellationToken to the delay
+// Cancellation during delay = semaphore never released = API permanently blocked
+```
+
+#### 7. CurrencyConverterService — HttpClient Reuse
+```csharp
+// ✅ Two HttpClient fields — both created ONCE in constructor:
+private readonly HttpClient _httpClient;          // For Bitkub primary API
+private readonly HttpClient _fallbackHttpClient;  // For all 4 fallback APIs
+
+// ❌ NEVER create new HttpClient() inside methods
+// Each HttpClient holds a socket; creating per-call = socket exhaustion
+```
+- `IsRateValid` — true only after at least one successful fetch
+- `IsRateStale` — true if rate is older than 1 hour
+- All API responses validated with `> 0` before accepting
+
+#### 8. ConnectionStatusService — Case-Insensitive Keys
+```csharp
+// ✅ Dictionary uses OrdinalIgnoreCase — "Binance" == "binance" == "BINANCE"
+private readonly Dictionary<string, ExchangeConnectionStatus> _verifiedExchanges
+    = new(StringComparer.OrdinalIgnoreCase);
+
+// ❌ NEVER use .ToLower() on exchange names before dictionary lookup
+// ❌ NEVER create new Dictionary<string,...>() without StringComparer
+```
+
+#### 9. MainWindow — Event Cleanup on Close
+```csharp
+// ✅ MainWindow_Closing handler unsubscribes ALL 9+ events:
+// _arbEngine: StatusChanged, TradeCompleted, OpportunityFound, PriceUpdated, ErrorOccurred
+// _balancePool: BalanceUpdated, EmergencyTriggered
+// _notificationService: NotificationReceived
+// _licenseService: DemoModeReminder
+// _connectionStatusService: ConnectionStatusChanged
+// Also stops: _priceUpdateTimer, _aiScannerTimer, _statusBarTimer
+// Also cancels: _botCancellationTokenSource
+
+// ❌ If you add a NEW event subscription in constructor or Loaded,
+//    you MUST add the corresponding -= in MainWindow_Closing
+```
+
+#### 10. App.xaml.cs — Database Init Order
+```csharp
+// ✅ CORRECT order in OnStartup:
+Services = services.BuildServiceProvider();
+await db.InitializeAsync();              // ← DB first!
+await LoadCredentialsFromDatabaseAsync(); // ← Then credentials
+
+// ❌ NEVER use fire-and-forget Task.Run for DB init
+// ❌ NEVER access DB before InitializeAsync() completes
+```
+
+#### 11. DatabaseService — Transaction-Wrapped Schema
+```csharp
+// ✅ CreateTablesAsync wraps all DDL in BeginTransaction/Commit/Rollback
+// This ensures atomic schema creation — all tables or none
+// ❌ If adding new tables, add them INSIDE the existing transaction block
+```
+
+#### 12. BalancePoolService — Zero-Price Asset Guard
+```csharp
+// ✅ Exchange breakdown P&L skips assets where GetAssetPrice() returns 0
+// Logs warning for skipped assets
+// ❌ NEVER multiply balance * price without checking price > 0 first
+// A zero price silently zeroes out P&L for that asset
+```
+
+#### 13. AppConfig — Validation
+```csharp
+// ✅ AppConfig.Validate() checks: exchange fees/timeouts, strategy params,
+//    risk limits, trading pair formats
+// AppConfig.IsValid — quick check
+// Call Validate() before using config in production paths
+```
+
+### Known Safe — No Fix Needed
+
+These were audited and confirmed correct:
+- **AITradingPage** dynamic buttons — has `Unloaded` cleanup
+- **TradingPage** events — has `CleanupEventHandlers()`
+- **ScannerPage** buttons — has `Unloaded` cleanup
+- **CoinIcon cache** — bounded by finite crypto count (~200 coins, <5MB)
+- **TradingViewWidget** CoreWebView2 — has `_isInitialized` guard at every call site
+- **NullToVisibilityConverter** `null!` in ConvertBack — ConvertBack is never called (OneWay binding only)
+
+### Build Warnings (Acceptable)
+
+These 4 warnings are known and acceptable:
+- `CS8625` in `TradingViewChart.xaml.cs:200` — null to non-nullable (safe in context)
+- `CS0414` in `DashboardPage.xaml.cs:78` — `_currentTradingMode` assigned but unused (reserved for future use)
+
+### Quick Checklist for New Code
+
+Before submitting any change, verify:
+
+- [ ] No `new HttpClient()` inside methods — reuse class-level instances
+- [ ] Every division has a `> 0` guard on denominator
+- [ ] Every event `+=` has a matching `-=` in cleanup/dispose
+- [ ] Exchange name comparisons are case-insensitive
+- [ ] `SemaphoreSlim.Release()` is in `finally` block
+- [ ] No fire-and-forget `Task.Run` for critical initialization
+- [ ] New DB tables go inside existing transaction in `CreateTablesAsync`
+- [ ] Demo mode (`_isDemoMode`) checked for all trading features
+- [ ] ScrollViewer/ListView uses premium scrollbar styles
+- [ ] `dotnet build` = 0 errors, `dotnet test` = 47 passed

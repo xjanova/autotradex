@@ -9,6 +9,7 @@
 
 using AutoTradeX.Core.Interfaces;
 using AutoTradeX.Core.Models;
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -48,12 +49,12 @@ public class GateIOClient : BaseExchangeClient
             {
                 Symbol = symbol,
                 Exchange = ExchangeName,
-                BidPrice = decimal.Parse(data.HighestBid ?? "0"),
-                AskPrice = decimal.Parse(data.LowestAsk ?? "0"),
+                BidPrice = decimal.Parse(data.HighestBid ?? "0", CultureInfo.InvariantCulture),
+                AskPrice = decimal.Parse(data.LowestAsk ?? "0", CultureInfo.InvariantCulture),
                 BidQuantity = 0, // Gate.io ticker doesn't include quantities
                 AskQuantity = 0,
-                LastPrice = decimal.Parse(data.Last ?? "0"),
-                Volume24h = decimal.Parse(data.BaseVolume ?? "0"),
+                LastPrice = decimal.Parse(data.Last ?? "0", CultureInfo.InvariantCulture),
+                Volume24h = decimal.Parse(data.BaseVolume ?? "0", CultureInfo.InvariantCulture),
                 Timestamp = DateTime.UtcNow
             };
         }
@@ -90,8 +91,8 @@ public class GateIOClient : BaseExchangeClient
                 if (bid.Length >= 2)
                 {
                     orderBook.Bids.Add(new OrderBookEntry(
-                        decimal.Parse(bid[0]),
-                        decimal.Parse(bid[1])
+                        decimal.Parse(bid[0], CultureInfo.InvariantCulture),
+                        decimal.Parse(bid[1], CultureInfo.InvariantCulture)
                     ));
                 }
             }
@@ -101,8 +102,8 @@ public class GateIOClient : BaseExchangeClient
                 if (ask.Length >= 2)
                 {
                     orderBook.Asks.Add(new OrderBookEntry(
-                        decimal.Parse(ask[0]),
-                        decimal.Parse(ask[1])
+                        decimal.Parse(ask[0], CultureInfo.InvariantCulture),
+                        decimal.Parse(ask[1], CultureInfo.InvariantCulture)
                     ));
                 }
             }
@@ -116,7 +117,244 @@ public class GateIOClient : BaseExchangeClient
         }
     }
 
+    /// <summary>
+    /// Get ALL tickers from Gate.io in one API call
+    /// Endpoint: GET /api/v4/spot/tickers (without currency_pair returns all)
+    /// </summary>
+    public override async Task<Dictionary<string, Ticker>> GetAllTickersAsync(
+        string? quoteAsset = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<string, Ticker>();
+
+        try
+        {
+            _logger.LogInfo(ExchangeName, "GetAllTickersAsync: Fetching all tickers...");
+
+            var response = await GetAsync<List<GateIOTickerData>>(
+                "/api/v4/spot/tickers",
+                cancellationToken);
+
+            if (response == null || response.Count == 0)
+            {
+                _logger.LogWarning(ExchangeName, "GetAllTickersAsync: No data returned from API");
+                return result;
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Got {response.Count} tickers from API");
+
+            foreach (var data in response)
+            {
+                var symbol = data.CurrencyPair ?? "";
+
+                // Filter by quote asset if specified (e.g., "USDT")
+                // Gate.io format: BASE_QUOTE (e.g., BTC_USDT)
+                if (!string.IsNullOrEmpty(quoteAsset))
+                {
+                    if (!symbol.EndsWith($"_{quoteAsset}", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
+
+                // Skip pairs with zero volume (inactive)
+                var volume = decimal.TryParse(data.BaseVolume, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0;
+                var lastPrice = decimal.TryParse(data.Last, NumberStyles.Any, CultureInfo.InvariantCulture, out var p) ? p : 0;
+
+                if (volume <= 0 && lastPrice <= 0)
+                    continue;
+
+                result[symbol] = new Ticker
+                {
+                    Symbol = symbol,
+                    Exchange = ExchangeName,
+                    BidPrice = decimal.TryParse(data.HighestBid, NumberStyles.Any, CultureInfo.InvariantCulture, out var bid) ? bid : 0,
+                    AskPrice = decimal.TryParse(data.LowestAsk, NumberStyles.Any, CultureInfo.InvariantCulture, out var ask) ? ask : 0,
+                    BidQuantity = 0,
+                    AskQuantity = 0,
+                    LastPrice = lastPrice,
+                    Volume24h = volume,
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Returning {result.Count} active tickers");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetAllTickersAsync error: {ex.Message}");
+        }
+
+        return result;
+    }
+
     #endregion
+
+    #region Connection Test
+
+    /// <summary>
+    /// Test connection to Gate.io API with proper validation
+    /// </summary>
+    public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInfo(ExchangeName, "Testing Gate.io API connection...");
+
+            // Step 1: Test public API - get server time
+            var serverTimeResponse = await GetAsync<GateIOServerTime>(
+                "/api/v4/spot/time",
+                cancellationToken);
+
+            if (serverTimeResponse == null)
+            {
+                _logger.LogWarning(ExchangeName, "Failed to get Gate.io server time");
+                return false;
+            }
+
+            _logger.LogInfo(ExchangeName, "Gate.io public API reachable");
+
+            // Step 2: Test ticker API with BTC_USDT
+            var ticker = await GetTickerAsync("BTC_USDT", cancellationToken);
+            if (ticker == null)
+            {
+                _logger.LogWarning(ExchangeName, "Failed to get BTC_USDT ticker");
+                return false;
+            }
+
+            _logger.LogInfo(ExchangeName, $"BTC_USDT: ${ticker.LastPrice:N2}");
+
+            // Step 3: If API credentials are configured, test private API
+            if (HasCredentials())
+            {
+                try
+                {
+                    var balance = await GetBalanceAsync(cancellationToken);
+                    if (balance != null)
+                    {
+                        _logger.LogInfo(ExchangeName, "API credentials verified successfully");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ExchangeName, $"API credential test failed: {ex.Message}");
+                    // Still return true if public API works
+                }
+            }
+
+            IsConnected = true;
+            _logger.LogInfo(ExchangeName, "Gate.io connection test successful");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"Connection test failed: {ex.Message}");
+            IsConnected = false;
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region API Permissions
+
+    /// <summary>
+    /// Get API key permissions from Gate.io
+    /// Gate.io ไม่มี API สำหรับเช็ค permissions โดยตรง
+    /// ต้องลองเรียก API แล้วดูผลลัพธ์
+    /// </summary>
+    public override async Task<ApiPermissionInfo> GetApiPermissionsAsync(CancellationToken cancellationToken = default)
+    {
+        var permissions = new ApiPermissionInfo();
+
+        try
+        {
+            if (!HasCredentials())
+            {
+                permissions.AdditionalInfo = "ไม่ได้ตั้งค่า API Key";
+                return permissions;
+            }
+
+            // ลองดึง balance - ถ้าได้แสดงว่ามี Read permission
+            try
+            {
+                var balance = await GetBalanceAsync(cancellationToken);
+                permissions.CanRead = balance != null;
+                _logger.LogInfo(ExchangeName, "API Read permission verified");
+            }
+            catch
+            {
+                permissions.CanRead = false;
+            }
+
+            // Gate.io API permissions ต้องดูจากการตั้งค่าบนเว็บ
+            if (permissions.CanRead)
+            {
+                // สมมติว่ามี Trade ถ้า Read ได้
+                permissions.CanTrade = true;
+                permissions.AdditionalInfo = "กรุณาตรวจสอบสิทธิ์ Trade/Withdraw ที่ gate.io";
+            }
+
+            _logger.LogInfo(ExchangeName, $"API Permissions - Read: {permissions.CanRead}, Trade: {permissions.CanTrade} (assumed)");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ExchangeName, $"Failed to get API permissions: {ex.Message}");
+            permissions.AdditionalInfo = $"ไม่สามารถตรวจสอบสิทธิ์: {ex.Message}";
+        }
+
+        return permissions;
+    }
+
+    #endregion
+
+    public override async Task<List<PriceCandle>> GetKlinesAsync(string symbol, string interval = "1m", int limit = 100, CancellationToken cancellationToken = default)
+    {
+        var candles = new List<PriceCandle>();
+        try
+        {
+            var normalizedSymbol = NormalizeSymbol(symbol);
+
+            // Gate.io uses: 10s, 1m, 5m, 15m, 30m, 1h, 4h, 8h, 1d, 7d, 30d
+            var gateInterval = interval switch
+            {
+                "1m" => "1m",
+                "5m" => "5m",
+                "15m" => "15m",
+                "30m" => "30m",
+                "1h" => "1h",
+                "4h" => "4h",
+                "1d" => "1d",
+                _ => "1m"
+            };
+
+            var clampedLimit = Math.Min(limit, 1000); // Gate.io max 1000
+
+            var response = await GetAsync<List<List<string>>>(
+                $"/api/v4/spot/candlesticks?currency_pair={normalizedSymbol}&interval={gateInterval}&limit={clampedLimit}",
+                cancellationToken);
+
+            if (response == null || response.Count == 0) return candles;
+
+            // Gate.io returns: [timestamp, volume, close, high, low, open, amount]
+            foreach (var kline in response)
+            {
+                if (kline.Count < 6) continue;
+                candles.Add(new PriceCandle
+                {
+                    Time = DateTimeOffset.FromUnixTimeSeconds(long.Parse(kline[0], CultureInfo.InvariantCulture)).UtcDateTime,
+                    Volume = decimal.Parse(kline[1], CultureInfo.InvariantCulture),
+                    Close = decimal.Parse(kline[2], CultureInfo.InvariantCulture),
+                    High = decimal.Parse(kline[3], CultureInfo.InvariantCulture),
+                    Low = decimal.Parse(kline[4], CultureInfo.InvariantCulture),
+                    Open = decimal.Parse(kline[5], CultureInfo.InvariantCulture)
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetKlinesAsync error for {symbol}: {ex.Message}");
+        }
+        return candles;
+    }
 
     #region Account Data (Private APIs)
 
@@ -158,8 +396,8 @@ public class GateIOClient : BaseExchangeClient
 
             foreach (var asset in result)
             {
-                var available = decimal.Parse(asset.Available ?? "0");
-                var locked = decimal.Parse(asset.Locked ?? "0");
+                var available = decimal.Parse(asset.Available ?? "0", CultureInfo.InvariantCulture);
+                var locked = decimal.Parse(asset.Locked ?? "0", CultureInfo.InvariantCulture);
 
                 if (available > 0 || locked > 0)
                 {
@@ -255,12 +493,12 @@ public class GateIOClient : BaseExchangeClient
                 Type = request.Type,
                 Status = MapOrderStatus(result.Status),
                 RequestedQuantity = request.Quantity,
-                FilledQuantity = decimal.Parse(result.FilledTotal ?? "0"),
+                FilledQuantity = decimal.Parse(result.FilledTotal ?? "0", CultureInfo.InvariantCulture),
                 RequestedPrice = request.Price,
-                AverageFilledPrice = !string.IsNullOrEmpty(result.AvgDealPrice) ? decimal.Parse(result.AvgDealPrice) : 0,
-                Fee = decimal.Parse(result.Fee ?? "0"),
+                AverageFilledPrice = !string.IsNullOrEmpty(result.AvgDealPrice) ? decimal.Parse(result.AvgDealPrice, CultureInfo.InvariantCulture) : 0,
+                Fee = decimal.Parse(result.Fee ?? "0", CultureInfo.InvariantCulture),
                 FeeCurrency = result.FeeCurrency ?? "USDT",
-                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(long.Parse(result.CreateTime ?? "0")).UtcDateTime,
+                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(long.Parse(result.CreateTime ?? "0", CultureInfo.InvariantCulture)).UtcDateTime,
                 UpdatedAt = DateTime.UtcNow
             };
         }
@@ -349,13 +587,13 @@ public class GateIOClient : BaseExchangeClient
                 Side = result.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
                 Type = result.Type == "market" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(result.Status),
-                RequestedQuantity = decimal.Parse(result.Amount ?? "0"),
-                FilledQuantity = decimal.Parse(result.FilledTotal ?? "0"),
-                RequestedPrice = !string.IsNullOrEmpty(result.Price) ? decimal.Parse(result.Price) : null,
-                AverageFilledPrice = !string.IsNullOrEmpty(result.AvgDealPrice) ? decimal.Parse(result.AvgDealPrice) : 0,
-                Fee = decimal.Parse(result.Fee ?? "0"),
+                RequestedQuantity = decimal.Parse(result.Amount ?? "0", CultureInfo.InvariantCulture),
+                FilledQuantity = decimal.Parse(result.FilledTotal ?? "0", CultureInfo.InvariantCulture),
+                RequestedPrice = !string.IsNullOrEmpty(result.Price) ? decimal.Parse(result.Price, CultureInfo.InvariantCulture) : null,
+                AverageFilledPrice = !string.IsNullOrEmpty(result.AvgDealPrice) ? decimal.Parse(result.AvgDealPrice, CultureInfo.InvariantCulture) : 0,
+                Fee = decimal.Parse(result.Fee ?? "0", CultureInfo.InvariantCulture),
                 FeeCurrency = result.FeeCurrency ?? "USDT",
-                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(long.Parse(result.CreateTime ?? "0")).UtcDateTime,
+                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(long.Parse(result.CreateTime ?? "0", CultureInfo.InvariantCulture)).UtcDateTime,
                 UpdatedAt = DateTime.UtcNow
             };
         }
@@ -405,9 +643,9 @@ public class GateIOClient : BaseExchangeClient
                 Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
                 Type = data.Type == "market" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(data.Status),
-                RequestedQuantity = decimal.Parse(data.Amount ?? "0"),
-                FilledQuantity = decimal.Parse(data.FilledTotal ?? "0"),
-                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(long.Parse(data.CreateTime ?? "0")).UtcDateTime
+                RequestedQuantity = decimal.Parse(data.Amount ?? "0", CultureInfo.InvariantCulture),
+                FilledQuantity = decimal.Parse(data.FilledTotal ?? "0", CultureInfo.InvariantCulture),
+                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(long.Parse(data.CreateTime ?? "0", CultureInfo.InvariantCulture)).UtcDateTime
             }).ToList();
         }
         catch (Exception ex)
@@ -486,6 +724,12 @@ public class GateIOClient : BaseExchangeClient
 }
 
 #region Gate.io API Response Models
+
+internal class GateIOServerTime
+{
+    [JsonPropertyName("server_time")]
+    public long ServerTime { get; set; }
+}
 
 internal class GateIOTickerData
 {

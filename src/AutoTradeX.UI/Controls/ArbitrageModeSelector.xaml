@@ -1,0 +1,231 @@
+<UserControl x:Class="AutoTradeX.UI.Controls.ArbitrageModeSelector"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="300" d:DesignWidth="500">
+    <UserControl.Resources>
+        <!-- Mode Card Style -->
+        <Style x:Key="ModeCardStyle" TargetType="Border">
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="15,12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#20FFFFFF" Offset="0"/>
+                        <GradientStop Color="#10FFFFFF" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush" Value="#30FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- Selected Mode Card Style -->
+        <Style x:Key="SelectedModeCardStyle" TargetType="Border" BasedOn="{StaticResource ModeCardStyle}">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#307C3AED" Offset="0"/>
+                        <GradientStop Color="#207C3AED" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush" Value="#7C3AED"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+
+        <!-- Transfer Sub-option Style -->
+        <Style x:Key="TransferOptionStyle" TargetType="Border">
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="#10FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#20FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="0,5,0,0"/>
+        </Style>
+
+        <!-- Selected Transfer Option Style -->
+        <Style x:Key="SelectedTransferOptionStyle" TargetType="Border" BasedOn="{StaticResource TransferOptionStyle}">
+            <Setter Property="Background" Value="#20F59E0B"/>
+            <Setter Property="BorderBrush" Value="#F59E0B"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="#10FFFFFF" CornerRadius="16" Padding="15">
+        <StackPanel>
+            <!-- Header -->
+            <TextBlock Text="ARBITRAGE MODE / โหมด Arbitrage" FontSize="11" FontWeight="SemiBold"
+                       Foreground="#60FFFFFF" Margin="0,0,0,12"/>
+
+            <!-- Mode Selection Grid -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Dual-Balance Mode Card -->
+                <Border x:Name="DualBalanceCard" Grid.Column="0" Style="{StaticResource SelectedModeCardStyle}"
+                        MouseLeftButtonDown="DualBalanceCard_Click">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <TextBlock Text="⚡" FontSize="22" VerticalAlignment="Center"/>
+                            <StackPanel Margin="8,0,0,0">
+                                <TextBlock Text="Dual-Balance" FontSize="13" FontWeight="Bold" Foreground="White"/>
+                                <TextBlock Text="โหมดสองกระเป๋า" FontSize="10" Foreground="#80FFFFFF"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock Text="เร็ว • ไม่โอน" FontSize="9" Foreground="#10B981"
+                                   HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                        <!-- Selection indicator -->
+                        <Border x:Name="DualBalanceCheck" Width="18" Height="18" CornerRadius="9"
+                                Background="#10B981" HorizontalAlignment="Center" Margin="0,8,0,0">
+                            <TextBlock Text="✓" FontSize="10" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- Transfer Mode Card -->
+                <Border x:Name="TransferModeCard" Grid.Column="2" Style="{StaticResource ModeCardStyle}"
+                        MouseLeftButtonDown="TransferModeCard_Click">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <TextBlock Text="🔄" FontSize="22" VerticalAlignment="Center"/>
+                            <StackPanel Margin="8,0,0,0">
+                                <TextBlock Text="Transfer Mode" FontSize="13" FontWeight="Bold" Foreground="White"/>
+                                <TextBlock Text="โหมดโอนจริง" FontSize="10" Foreground="#80FFFFFF"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock Text="แบบดั้งเดิม • โอนจริง" FontSize="9" Foreground="#F59E0B"
+                                   HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                        <!-- Selection indicator (hidden by default) -->
+                        <Border x:Name="TransferModeCheck" Width="18" Height="18" CornerRadius="9"
+                                Background="#F59E0B" HorizontalAlignment="Center" Margin="0,8,0,0" Visibility="Collapsed">
+                            <TextBlock Text="✓" FontSize="10" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <Ellipse x:Name="TransferModeUncheck" Width="18" Height="18"
+                                 Stroke="#40FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Mode Description -->
+            <Border Background="#10FFFFFF" CornerRadius="10" Padding="12" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock x:Name="ModeDescriptionTitle" Text="Dual-Balance Mode"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#10B981"/>
+                    <TextBlock x:Name="ModeDescription"
+                               Text="ใช้ยอดเงินที่มีอยู่แล้วบนทั้งสองกระดานพร้อมกัน&#x0a;ซื้อด้วย USDT บนกระดาน A พร้อมกับขายด้วย Crypto บนกระดาน B&#x0a;ไม่ต้องโอนผ่าน blockchain - เร็วมาก!"
+                               FontSize="10" Foreground="#80FFFFFF" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Transfer Mode Sub-options (visible only when Transfer Mode selected) -->
+            <Border x:Name="TransferOptionsPanel" Visibility="Collapsed" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="TRANSFER TYPE / รูปแบบการโอน" FontSize="10"
+                               Foreground="#60FFFFFF" Margin="0,0,0,8"/>
+
+                    <!-- Auto Transfer Option -->
+                    <Border x:Name="AutoTransferCard" Style="{StaticResource TransferOptionStyle}"
+                            MouseLeftButtonDown="AutoTransferCard_Click">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="🤖" FontSize="18" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Auto Transfer" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                    <TextBlock Text=" / โอนอัตโนมัติ" FontSize="11" Foreground="#60FFFFFF"/>
+                                </StackPanel>
+                                <TextBlock Text="บอทถอน/ฝากให้อัตโนมัติผ่าน API" FontSize="9" Foreground="#60FFFFFF"/>
+                            </StackPanel>
+                            <Ellipse x:Name="AutoTransferUncheck" Grid.Column="2" Width="16" Height="16"
+                                     Stroke="#40FFFFFF" StrokeThickness="1" VerticalAlignment="Center"/>
+                            <Border x:Name="AutoTransferCheck" Grid.Column="2" Width="16" Height="16"
+                                    CornerRadius="8" Background="#F59E0B" VerticalAlignment="Center" Visibility="Collapsed">
+                                <TextBlock Text="✓" FontSize="9" Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <!-- Manual Transfer Option -->
+                    <Border x:Name="ManualTransferCard" Style="{StaticResource SelectedTransferOptionStyle}"
+                            MouseLeftButtonDown="ManualTransferCard_Click">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="👤" FontSize="18" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Manual Transfer" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                    <TextBlock Text=" / โอนเอง" FontSize="11" Foreground="#60FFFFFF"/>
+                                </StackPanel>
+                                <TextBlock Text="บอทแจ้งเตือน คุณโอนเองผ่านเว็บ exchange" FontSize="9" Foreground="#60FFFFFF"/>
+                            </StackPanel>
+                            <Ellipse x:Name="ManualTransferUncheck" Grid.Column="2" Width="16" Height="16"
+                                     Stroke="#40FFFFFF" StrokeThickness="1" VerticalAlignment="Center" Visibility="Collapsed"/>
+                            <Border x:Name="ManualTransferCheck" Grid.Column="2" Width="16" Height="16"
+                                    CornerRadius="8" Background="#F59E0B" VerticalAlignment="Center">
+                                <TextBlock Text="✓" FontSize="9" Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- Balance Readiness (for Dual-Balance Mode) -->
+            <Border x:Name="BalanceReadinessPanel" Background="#10FFFFFF" CornerRadius="10"
+                    Padding="12" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="BALANCE READINESS / ความพร้อมยอดเงิน" FontSize="10"
+                               Foreground="#60FFFFFF" Margin="0,0,0,8"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Exchange A (Buy Side) -->
+                        <StackPanel Margin="0,0,5,0">
+                            <TextBlock x:Name="ExchangeALabel" Text="Exchange A (Buy)"
+                                       FontSize="9" Foreground="#60FFFFFF"/>
+                            <TextBlock x:Name="ExchangeABalance" Text="✓ 1,000.00 USDT"
+                                       FontSize="11" FontWeight="SemiBold" Foreground="#10B981" Margin="0,3,0,0"/>
+                        </StackPanel>
+
+                        <!-- Exchange B (Sell Side) -->
+                        <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                            <TextBlock x:Name="ExchangeBLabel" Text="Exchange B (Sell)"
+                                       FontSize="9" Foreground="#60FFFFFF"/>
+                            <TextBlock x:Name="ExchangeBBalance" Text="✓ 0.05000000 BTC"
+                                       FontSize="11" FontWeight="SemiBold" Foreground="#10B981" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Overall Status -->
+                    <Border x:Name="ReadyStatusBorder" Background="#2010B981" CornerRadius="6"
+                            Padding="8,5" Margin="0,10,0,0">
+                        <TextBlock x:Name="ReadyStatusText" Text="✓ พร้อมเทรด / Ready to Trade"
+                                   FontSize="10" Foreground="#10B981" HorizontalAlignment="Center"/>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Border>
+</UserControl>

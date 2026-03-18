@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -22,8 +23,9 @@ public partial class MainWindow : Window
     private readonly IBalancePoolService? _balancePool;
     private readonly ITradeHistoryService? _tradeHistory;
     private readonly INotificationService? _notificationService;
-    private readonly IConnectionStatusService? _connectionStatusService;
+    private IConnectionStatusService? _connectionStatusService;  // Not readonly - may be set later in InitializeMainApp
     private readonly ILicenseService? _licenseService;
+    private IApiCredentialsService? _apiCredentialsService;  // Not readonly - may be set later in InitializeMainApp
     private System.Windows.Threading.DispatcherTimer? _priceUpdateTimer;
     private System.Windows.Threading.DispatcherTimer? _aiScannerTimer;
     private System.Windows.Threading.DispatcherTimer? _statusBarTimer;
@@ -63,12 +65,10 @@ public partial class MainWindow : Window
         _notificationService = App.Services?.GetService<INotificationService>();
         _connectionStatusService = App.Services?.GetService<IConnectionStatusService>();
         _licenseService = App.Services?.GetService<ILicenseService>();
+        _apiCredentialsService = App.Services?.GetService<IApiCredentialsService>();
 
-        // Subscribe to Connection Status events
-        if (_connectionStatusService != null)
-        {
-            _connectionStatusService.ConnectionStatusChanged += ConnectionStatus_Changed;
-        }
+        // NOTE: Connection Status subscription moved to MainWindow_Loaded
+        // because App.Services may be null at this point (MainWindow is created before App.OnStartup)
 
         // Subscribe to ArbEngine events
         if (_arbEngine != null)
@@ -101,6 +101,64 @@ public partial class MainWindow : Window
 
         // Set Dashboard as default active tab
         Loaded += MainWindow_Loaded;
+        Closing += MainWindow_Closing;
+    }
+
+    /// <summary>
+    /// Cleanup all event subscriptions and timers on window close
+    /// ป้องกัน memory leak และ crash ขณะ shutdown
+    /// </summary>
+    private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        try
+        {
+            // Stop all timers
+            _priceUpdateTimer?.Stop();
+            _aiScannerTimer?.Stop();
+            _statusBarTimer?.Stop();
+
+            // Cancel bot if running
+            _botCancellationTokenSource?.Cancel();
+
+            // Unsubscribe from ArbEngine events
+            if (_arbEngine != null)
+            {
+                _arbEngine.StatusChanged -= ArbEngine_StatusChanged;
+                _arbEngine.TradeCompleted -= ArbEngine_TradeCompleted;
+                _arbEngine.OpportunityFound -= ArbEngine_OpportunityFound;
+                _arbEngine.PriceUpdated -= ArbEngine_PriceUpdated;
+                _arbEngine.ErrorOccurred -= ArbEngine_ErrorOccurred;
+            }
+
+            // Unsubscribe from BalancePool events
+            if (_balancePool != null)
+            {
+                _balancePool.BalanceUpdated -= BalancePool_BalanceUpdated;
+                _balancePool.EmergencyTriggered -= BalancePool_EmergencyTriggered;
+            }
+
+            // Unsubscribe from Notification events
+            if (_notificationService != null)
+            {
+                _notificationService.NotificationReceived -= NotificationService_NotificationReceived;
+            }
+
+            // Unsubscribe from License events
+            if (_licenseService is LicenseService licenseServiceImpl)
+            {
+                licenseServiceImpl.DemoModeReminder -= LicenseService_DemoModeReminder;
+            }
+
+            // Unsubscribe from ConnectionStatus events
+            if (_connectionStatusService != null)
+            {
+                _connectionStatusService.ConnectionStatusChanged -= ConnectionStatus_Changed;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("MainWindow", $"Error during cleanup: {ex.Message}");
+        }
     }
 
     #region Demo Mode Warning
@@ -441,31 +499,8 @@ public partial class MainWindow : Window
                     ? Visibility.Collapsed
                     : Visibility.Visible;
 
-                // Show Early Bird discount text if not licensed (trial or demo)
-                if (!isLicensed && EarlyBirdText != null)
-                {
-                    var license = _licenseService?.CurrentLicense;
-                    var earlyBird = license?.EarlyBird;
-                    var trialDays = _licenseService?.GetTrialDaysRemaining() ?? 0;
-
-                    // Show Early Bird if:
-                    // 1. Server sent EarlyBird info and eligible, OR
-                    // 2. User is in trial period (all trial users get Early Bird by default)
-                    if ((earlyBird != null && earlyBird.Eligible) ||
-                        (license?.Status == LicenseStatus.Trial && trialDays > 0))
-                    {
-                        var discountPercent = earlyBird?.DiscountPercent ?? 20; // Default 20%
-                        EarlyBirdText.Text = trialDays > 0
-                            ? $"ลด {discountPercent}%! เหลือ {trialDays} วัน"
-                            : $"ลด {discountPercent}%!";
-                        EarlyBirdText.Visibility = Visibility.Visible;
-                        _logger?.LogInfo("UI", $"Early Bird displayed: {discountPercent}% off, {trialDays} days remaining");
-                    }
-                    else
-                    {
-                        EarlyBirdText.Visibility = Visibility.Collapsed;
-                    }
-                }
+                // Log activation button visibility
+                _logger?.LogInfo("UI", $"Activate button visibility: {(isLicensed ? "Hidden" : "Visible")}");
             }
         }
         catch (Exception ex)
@@ -664,52 +699,200 @@ public partial class MainWindow : Window
 
     private void ConnectionStatus_Changed(object? sender, ConnectionStatusChangedEventArgs e)
     {
+        _logger?.LogInfo("MainWindow", $"=== ConnectionStatus_Changed EVENT RECEIVED ===");
+        _logger?.LogInfo("MainWindow", $"  ChangedExchange: {e.ChangedExchange}");
+        _logger?.LogInfo("MainWindow", $"  Message: {e.Message}");
+        _logger?.LogInfo("MainWindow", $"  ConnectedExchangeCount: {e.Status.ConnectedExchangeCount}");
+        _logger?.LogInfo("MainWindow", $"  Total Exchanges in Status: {e.Status.Exchanges.Count}");
+
+        foreach (var ex in e.Status.Exchanges)
+        {
+            _logger?.LogInfo("MainWindow", $"    {ex.Key}: IsConnected={ex.Value.IsConnected}, HasValidCredentials={ex.Value.HasValidCredentials}");
+        }
+
         Dispatcher.Invoke(() =>
         {
+            _logger?.LogInfo("MainWindow", "Updating UI on dispatcher thread...");
             _canStartTrading = _connectionStatusService?.CanStartTrading ?? false;
             UpdateConnectionStatusUI(e.Status);
+            _logger?.LogInfo("MainWindow", "UI update completed");
+
+            // DEBUG: Show message box to confirm event was received
+            System.Diagnostics.Debug.WriteLine($"[DEBUG] Event received for {e.ChangedExchange}! Connected: {e.Status.ConnectedExchangeCount}");
         });
     }
 
     private void UpdateConnectionStatusUI(ConnectionStatusSnapshot status)
     {
-        // Update status bar connection indicator
-        if (StatusBarConnectionText != null)
-        {
-            var connectedCount = status.ConnectedExchangeCount;
-            var totalExchanges = 2; // Exchange A and B
-
-            StatusBarConnectionText.Text = connectedCount > 0
-                ? $"{connectedCount}/{totalExchanges} Connected"
-                : "Not Connected";
-
-            var color = status.OverallHealth switch
-            {
-                ConnectionHealth.Connected => "#10B981",
-                ConnectionHealth.Partial => "#F59E0B",
-                _ => "#EF4444"
-            };
-            StatusBarConnectionText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
-        }
-
-        if (StatusBarConnectionDot != null)
-        {
-            var color = status.OverallHealth switch
-            {
-                ConnectionHealth.Connected => "#10B981",
-                ConnectionHealth.Partial => "#F59E0B",
-                _ => "#EF4444"
-            };
-            StatusBarConnectionDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
-        }
-
-        // Update exchange count
-        if (StatusBarExchangeCount != null)
-        {
-            StatusBarExchangeCount.Text = $" • {status.Exchanges.Count} Exchanges";
-        }
+        // Update status bar with connected exchange logos
+        UpdateConnectedExchangeLogos(status);
 
         _logger?.LogInfo("Connection", $"Status updated: {status.ConnectedExchangeCount} exchanges connected");
+    }
+
+    /// <summary>
+    /// Update the status bar to show logos of connected exchanges
+    /// อัพเดท status bar ให้แสดงโลโก้ของ exchange ที่เชื่อมต่อได้
+    /// </summary>
+    private void UpdateConnectedExchangeLogos(ConnectionStatusSnapshot status)
+    {
+        if (ConnectedExchangeLogos == null)
+        {
+            _logger?.LogWarning("MainWindow", "ConnectedExchangeLogos is null!");
+            return;
+        }
+
+        ConnectedExchangeLogos.Children.Clear();
+
+        _logger?.LogInfo("MainWindow", $"UpdateConnectedExchangeLogos: Total exchanges in status: {status.Exchanges.Count}");
+        foreach (var ex in status.Exchanges)
+        {
+            _logger?.LogInfo("MainWindow", $"  - {ex.Key}: IsConnected={ex.Value.IsConnected}, HasValidCredentials={ex.Value.HasValidCredentials}");
+        }
+
+        var connectedExchanges = status.Exchanges
+            .Where(e => e.Value.IsConnected && e.Value.HasValidCredentials)
+            .Select(e => e.Key)
+            .ToList();
+
+        _logger?.LogInfo("MainWindow", $"Connected exchanges count: {connectedExchanges.Count}");
+
+        if (connectedExchanges.Count == 0)
+        {
+            // Show "No exchanges connected" message
+            if (NoConnectionText != null)
+            {
+                NoConnectionText.Visibility = Visibility.Visible;
+            }
+            return;
+        }
+
+        // Hide the no connection message
+        if (NoConnectionText != null)
+        {
+            NoConnectionText.Visibility = Visibility.Collapsed;
+        }
+
+        // Add logo for each connected exchange
+        foreach (var exchangeName in connectedExchanges)
+        {
+            var logoContainer = CreateExchangeLogoElement(exchangeName);
+            if (logoContainer != null)
+            {
+                ConnectedExchangeLogos.Children.Add(logoContainer);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Create a small exchange logo element for the status bar
+    /// สร้างโลโก้ exchange ขนาดเล็กสำหรับ status bar
+    /// </summary>
+    private Border? CreateExchangeLogoElement(string exchangeName)
+    {
+        try
+        {
+            var logoPath = GetExchangeLogoPath(exchangeName);
+            if (string.IsNullOrEmpty(logoPath)) return null;
+
+            var image = new Image
+            {
+                Width = 18,
+                Height = 18,
+                Stretch = System.Windows.Media.Stretch.Uniform,
+                ToolTip = exchangeName
+            };
+
+            // Load logo from resources
+            try
+            {
+                var uri = new Uri(logoPath, UriKind.RelativeOrAbsolute);
+                image.Source = new System.Windows.Media.Imaging.BitmapImage(uri);
+            }
+            catch
+            {
+                // Fallback: show text initial
+                return CreateTextLogoFallback(exchangeName);
+            }
+
+            var border = new Border
+            {
+                Width = 24,
+                Height = 24,
+                CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#20FFFFFF")),
+                Margin = new Thickness(2, 0, 2, 0),
+                ToolTip = $"{exchangeName} - Connected",
+                Child = image,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            // Add green dot indicator
+            var grid = new Grid();
+            grid.Children.Add(border);
+
+            var greenDot = new Ellipse
+            {
+                Width = 6,
+                Height = 6,
+                Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981")),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, -1, -1)
+            };
+            grid.Children.Add(greenDot);
+
+            var containerBorder = new Border
+            {
+                Child = grid,
+                Margin = new Thickness(1, 0, 1, 0)
+            };
+
+            return containerBorder;
+        }
+        catch
+        {
+            return CreateTextLogoFallback(exchangeName);
+        }
+    }
+
+    /// <summary>
+    /// Create a text-based fallback logo when image is not available
+    /// </summary>
+    private Border CreateTextLogoFallback(string exchangeName)
+    {
+        var initial = exchangeName.Length > 0 ? exchangeName[0].ToString().ToUpper() : "?";
+
+        var textBlock = new TextBlock
+        {
+            Text = initial,
+            FontSize = 10,
+            FontWeight = FontWeights.Bold,
+            Foreground = Brushes.White,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        return new Border
+        {
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(4),
+            Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7C3AED")),
+            Margin = new Thickness(2, 0, 2, 0),
+            ToolTip = $"{exchangeName} - Connected",
+            Child = textBlock,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+    }
+
+    /// <summary>
+    /// Get the logo path for an exchange
+    /// </summary>
+    private string GetExchangeLogoPath(string exchangeName)
+    {
+        var name = exchangeName.ToLower().Replace(".", "").Replace(" ", "");
+        return $"pack://application:,,,/Assets/Exchanges/{name}.png";
     }
 
     private async Task CheckConnectionsAndUpdateUIAsync()
@@ -873,10 +1056,27 @@ public partial class MainWindow : Window
 
     #region Window Events
 
-    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
+            // CRITICAL: Wait for App.Services to be ready
+            // App.OnStartup is async void, so WPF may create MainWindow before services are ready
+            // รอให้ App.Services พร้อมก่อนเริ่ม - เพราะ OnStartup เป็น async void
+            int waitCount = 0;
+            while (App.Services == null && waitCount < 50) // Max 5 seconds
+            {
+                await Task.Delay(100);
+                waitCount++;
+            }
+
+            if (App.Services == null)
+            {
+                _logger?.LogError("MainWindow", "App.Services is still null after waiting!");
+                MessageBox.Show("ไม่สามารถเริ่มต้นระบบได้ กรุณาลองใหม่", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
             // Start Splash Screen Animation first
             StartSplashAnimation();
         }
@@ -890,6 +1090,29 @@ public partial class MainWindow : Window
     {
         try
         {
+            // CRITICAL: Re-get services now that App.Services is ready
+            // MainWindow constructor runs before App.OnStartup, so services were null
+            if (_connectionStatusService == null)
+            {
+                _connectionStatusService = App.Services?.GetService<IConnectionStatusService>();
+                _logger?.LogInfo("MainWindow", $"Got ConnectionStatusService: {_connectionStatusService != null}");
+            }
+            if (_apiCredentialsService == null)
+            {
+                _apiCredentialsService = App.Services?.GetService<IApiCredentialsService>();
+            }
+
+            // Subscribe to Connection Status events NOW (after App.Services is ready)
+            if (_connectionStatusService != null)
+            {
+                _connectionStatusService.ConnectionStatusChanged += ConnectionStatus_Changed;
+                _logger?.LogInfo("MainWindow", "Subscribed to ConnectionStatusChanged event");
+            }
+            else
+            {
+                _logger?.LogError("MainWindow", "ConnectionStatusService is STILL null! Cannot subscribe to events.");
+            }
+
             // Set default tab
             SetActiveTab(DashboardTab);
 
@@ -904,6 +1127,15 @@ public partial class MainWindow : Window
 
             // Check API connections and show status
             await CheckConnectionsAndUpdateUIAsync();
+
+            // CRITICAL: Tell DashboardPage to refresh exchange statuses
+            // because it was created before Splash verified the connections
+            // แจ้ง DashboardPage ให้ refresh status เพราะมันถูกสร้างก่อน Splash verify เสร็จ
+            if (DashboardContent != null)
+            {
+                _logger?.LogInfo("MainWindow", "Notifying DashboardPage to refresh exchange statuses...");
+                DashboardContent.RefreshExchangeStatuses();
+            }
 
             // Start connection monitoring (check every 60 seconds)
             _connectionStatusService?.StartMonitoring(TimeSpan.FromSeconds(60));
@@ -1118,17 +1350,20 @@ public partial class MainWindow : Window
             // Start splash hyperdrive animation
             StartSplashHyperdrive();
 
-            // Animate loading progress
+            // Animate loading progress (phase 1: initialization)
             _splashTimer = new System.Windows.Threading.DispatcherTimer();
             _splashTimer.Interval = TimeSpan.FromMilliseconds(50);
             _splashTimer.Tick += SplashTimer_Tick;
             _splashTimer.Start();
 
-            // Wait for loading to complete (simulated)
-            await Task.Delay(3000);
+            // Wait for initial loading (phase 1)
+            await Task.Delay(2000);
+
+            // Phase 2: Connection check - integrated into splash
+            _splashTimer?.Stop();
+            await RunConnectionCheckInSplash();
 
             // Stop splash animations
-            _splashTimer?.Stop();
             _splashHyperTimer?.Stop();
 
             // Animate logo shrink and move to corner
@@ -1144,6 +1379,341 @@ public partial class MainWindow : Window
             if (SplashOverlay != null) SplashOverlay.Visibility = Visibility.Collapsed;
             InitializeMainApp();
         }
+    }
+
+    /// <summary>
+    /// Run connection check integrated into splash screen
+    /// ตรวจสอบ connection ภายใน splash screen
+    /// </summary>
+    private async Task RunConnectionCheckInSplash()
+    {
+        try
+        {
+            _logger?.LogInfo("Startup", "Starting connection check in splash...");
+
+            // CRITICAL: Re-get services now that App.Services is ready
+            // MainWindow constructor runs before App.OnStartup, so services were null
+            // ต้อง re-get services เพราะ MainWindow constructor รันก่อน App.OnStartup
+            if (_apiCredentialsService == null)
+            {
+                _apiCredentialsService = App.Services?.GetService<IApiCredentialsService>();
+                _logger?.LogInfo("Startup", $"Re-got ApiCredentialsService: {_apiCredentialsService != null}");
+            }
+            if (_connectionStatusService == null)
+            {
+                _connectionStatusService = App.Services?.GetService<IConnectionStatusService>();
+                _logger?.LogInfo("Startup", $"Re-got ConnectionStatusService: {_connectionStatusService != null}");
+            }
+
+            // Show connection check panel
+            if (ConnectionCheckPanel != null)
+            {
+                ConnectionCheckPanel.Visibility = Visibility.Visible;
+            }
+
+            // Update loading text
+            if (LoadingText != null)
+            {
+                LoadingText.Text = "Checking Exchange Connections...";
+            }
+
+            // Initialize exchange list for splash
+            var exchanges = InitializeSplashExchangeList();
+            if (SplashExchangeList != null)
+            {
+                SplashExchangeList.ItemsSource = exchanges;
+            }
+
+            int connectedCount = 0;
+            int totalConfigured = 0;
+
+            // Check each exchange
+            foreach (var exchange in exchanges)
+            {
+                // Update to checking state
+                exchange.Status = SplashCheckStatus.Checking;
+                exchange.StatusMessage = "กำลังตรวจสอบ...";
+                exchange.StatusIcon = "🔄";
+                exchange.StatusColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B"));
+                exchange.IconBackground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#30F59E0B"));
+
+                await Task.Delay(100); // Small delay for UI update
+
+                try
+                {
+                    // Check if credentials are configured - ใช้ database เป็นหลัก
+                    bool hasCredentials = false;
+
+                    if (_apiCredentialsService != null)
+                    {
+                        // ตรวจสอบจาก database โดยตรง
+                        hasCredentials = await _apiCredentialsService.HasCredentialsAsync(exchange.Name);
+                        _logger?.LogInfo("ConnectionCheck", $"{exchange.Name}: HasCredentials from DB = {hasCredentials}");
+
+                        // ถ้ามี credentials ใน DB ให้ load เข้า env vars ก่อน test
+                        if (hasCredentials)
+                        {
+                            var creds = await _apiCredentialsService.GetCredentialsAsync(exchange.Name);
+                            if (creds != null)
+                            {
+                                SetExchangeEnvVars(exchange.Name, creds.ApiKey, creds.ApiSecret, creds.Passphrase);
+                                _logger?.LogInfo("ConnectionCheck", $"{exchange.Name}: Loaded credentials to env vars");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Fallback to old method if service not available
+                        _logger?.LogWarning("ConnectionCheck", "ApiCredentialsService is NULL - using fallback");
+                        hasCredentials = HasExchangeCredentials(exchange.Name);
+                        _logger?.LogInfo("ConnectionCheck", $"{exchange.Name}: HasCredentials from legacy = {hasCredentials}");
+                    }
+
+                    if (!hasCredentials)
+                    {
+                        // Not configured
+                        exchange.Status = SplashCheckStatus.NotConfigured;
+                        exchange.StatusMessage = "ยังไม่ได้ตั้งค่า";
+                        exchange.StatusIcon = "➖";
+                        exchange.StatusColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#60FFFFFF"));
+                        exchange.IconBackground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#20FFFFFF"));
+
+                        _logger?.LogInfo("ConnectionCheck", $"{exchange.Name}: Not configured");
+                        continue;
+                    }
+
+                    totalConfigured++;
+
+                    // Test actual connection
+                    if (_connectionStatusService != null)
+                    {
+                        var status = await _connectionStatusService.CheckExchangeConnectionAsync(exchange.Name);
+
+                        if (status.IsConnected && status.HasValidCredentials)
+                        {
+                            exchange.Status = SplashCheckStatus.Connected;
+                            exchange.StatusMessage = $"เชื่อมต่อสำเร็จ ({status.Latency}ms)";
+                            exchange.StatusIcon = "✓";
+                            exchange.StatusColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"));
+                            exchange.IconBackground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2010B981"));
+
+                            connectedCount++;
+                            _logger?.LogInfo("ConnectionCheck", $"{exchange.Name}: Connected ({status.Latency}ms)");
+
+                            // Mark as verified
+                            _connectionStatusService.MarkExchangeAsVerified(exchange.Name, status.CanTrade);
+                        }
+                        else
+                        {
+                            exchange.Status = SplashCheckStatus.Failed;
+                            exchange.StatusMessage = status.ErrorMessage ?? "เชื่อมต่อล้มเหลว";
+                            exchange.StatusIcon = "✗";
+                            exchange.StatusColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
+                            exchange.IconBackground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#20EF4444"));
+
+                            _logger?.LogWarning("ConnectionCheck", $"{exchange.Name}: Failed - {status.ErrorMessage}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    exchange.Status = SplashCheckStatus.Failed;
+                    exchange.StatusMessage = ex.Message.Length > 30 ? ex.Message.Substring(0, 30) + "..." : ex.Message;
+                    exchange.StatusIcon = "✗";
+                    exchange.StatusColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
+                    exchange.IconBackground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#20EF4444"));
+
+                    _logger?.LogError("ConnectionCheck", $"{exchange.Name}: Error - {ex.Message}");
+                }
+            }
+
+            // Update summary
+            if (ConnectionSummary != null)
+            {
+                if (totalConfigured == 0)
+                {
+                    ConnectionSummary.Text = "ไม่พบ API Key - กรุณาตั้งค่าใน Settings";
+                }
+                else if (connectedCount == totalConfigured)
+                {
+                    ConnectionSummary.Text = $"✓ เชื่อมต่อสำเร็จ {connectedCount} Exchange";
+                    ConnectionSummary.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"));
+                }
+                else if (connectedCount > 0)
+                {
+                    ConnectionSummary.Text = $"เชื่อมต่อได้ {connectedCount}/{totalConfigured} Exchange";
+                }
+                else
+                {
+                    ConnectionSummary.Text = $"ไม่สามารถเชื่อมต่อ Exchange ได้";
+                    ConnectionSummary.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
+                }
+            }
+
+            // Update progress bar to 100%
+            if (LoadingProgress != null)
+            {
+                LoadingProgress.Width = 300;
+            }
+
+            if (LoadingText != null)
+            {
+                LoadingText.Text = connectedCount > 0 ? "พร้อมใช้งาน!" : "กรุณาตั้งค่า API Key";
+            }
+
+            _logger?.LogInfo("ConnectionCheck", $"Check complete: {connectedCount}/{totalConfigured} connected");
+
+            // Wait a moment before transitioning
+            await Task.Delay(1500);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("Startup", $"Connection check error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Check if exchange has credentials configured (env vars OR saved file)
+    /// ตรวจสอบว่า exchange มี credentials หรือไม่ (จาก env vars หรือ saved file)
+    /// </summary>
+    private bool HasExchangeCredentials(string exchangeName)
+    {
+        // Check environment variables first
+        var (keyEnv, secretEnv) = GetExchangeEnvVarNamesForCheck(exchangeName);
+        var apiKey = Environment.GetEnvironmentVariable(keyEnv);
+        var apiSecret = Environment.GetEnvironmentVariable(secretEnv);
+
+        if (!string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(apiSecret))
+        {
+            return true;
+        }
+
+        // Also check saved credentials file (for credentials saved in Settings)
+        // ไฟล์ credentials ถูกบันทึกที่ credentials.encrypted.json
+        try
+        {
+            var credentialsPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "AutoTradeX",
+                "credentials.encrypted.json");
+
+            if (File.Exists(credentialsPath))
+            {
+                var json = File.ReadAllText(credentialsPath);
+                var creds = System.Text.Json.JsonSerializer.Deserialize<StartupSavedCredentials>(json);
+
+                if (creds != null)
+                {
+                    // Get credentials based on exchange name
+                    var (savedKey, savedSecret, savedPassphrase) = exchangeName.ToLower() switch
+                    {
+                        "binance" => (creds.BinanceApiKey, creds.BinanceApiSecret, (string?)null),
+                        "kucoin" => (creds.KuCoinApiKey, creds.KuCoinApiSecret, creds.KuCoinPassphrase),
+                        "okx" => (creds.OKXApiKey, creds.OKXApiSecret, creds.OKXPassphrase),
+                        "bybit" => (creds.BybitApiKey, creds.BybitApiSecret, (string?)null),
+                        "gate.io" => (creds.GateIOApiKey, creds.GateIOApiSecret, (string?)null),
+                        "bitkub" => (creds.BitkubApiKey, creds.BitkubApiSecret, (string?)null),
+                        _ => (null, null, null)
+                    };
+
+                    if (!string.IsNullOrEmpty(savedKey) && !string.IsNullOrEmpty(savedSecret))
+                    {
+                        // Set to environment variables for this session
+                        Environment.SetEnvironmentVariable(keyEnv, savedKey);
+                        Environment.SetEnvironmentVariable(secretEnv, savedSecret);
+
+                        // Handle passphrase for OKX/KuCoin
+                        if (!string.IsNullOrEmpty(savedPassphrase))
+                        {
+                            if (exchangeName.ToLower() == "okx")
+                            {
+                                Environment.SetEnvironmentVariable("AUTOTRADEX_OKX_PASSPHRASE", savedPassphrase);
+                            }
+                            else if (exchangeName.ToLower() == "kucoin")
+                            {
+                                Environment.SetEnvironmentVariable("AUTOTRADEX_KUCOIN_API_KEY_PASSPHRASE", savedPassphrase);
+                            }
+                        }
+
+                        _logger?.LogInfo("Startup", $"{exchangeName}: Loaded credentials from saved file");
+                        return true;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning("Startup", $"Error reading saved credentials: {ex.Message}");
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Get environment variable names for exchange credentials
+    /// </summary>
+    private static (string keyEnv, string secretEnv) GetExchangeEnvVarNamesForCheck(string exchangeName)
+    {
+        return exchangeName.ToLower() switch
+        {
+            "binance" => ("AUTOTRADEX_BINANCE_API_KEY", "AUTOTRADEX_BINANCE_API_SECRET"),
+            "kucoin" => ("AUTOTRADEX_KUCOIN_API_KEY", "AUTOTRADEX_KUCOIN_API_SECRET"),
+            "okx" => ("AUTOTRADEX_OKX_API_KEY", "AUTOTRADEX_OKX_API_SECRET"),
+            "bybit" => ("AUTOTRADEX_BYBIT_API_KEY", "AUTOTRADEX_BYBIT_API_SECRET"),
+            "gate.io" => ("AUTOTRADEX_GATEIO_API_KEY", "AUTOTRADEX_GATEIO_API_SECRET"),
+            "bitkub" => ("AUTOTRADEX_BITKUB_API_KEY", "AUTOTRADEX_BITKUB_API_SECRET"),
+            _ => ($"AUTOTRADEX_{exchangeName.ToUpper().Replace(".", "")}_API_KEY",
+                  $"AUTOTRADEX_{exchangeName.ToUpper().Replace(".", "")}_API_SECRET")
+        };
+    }
+
+    /// <summary>
+    /// Set environment variables for exchange credentials
+    /// ตั้งค่า environment variables สำหรับ credentials ของ exchange
+    /// </summary>
+    private static void SetExchangeEnvVars(string exchangeName, string apiKey, string apiSecret, string? passphrase)
+    {
+        var prefix = $"AUTOTRADEX_{exchangeName.ToUpper().Replace(".", "").Replace(" ", "")}";
+
+        if (!string.IsNullOrEmpty(apiKey))
+            Environment.SetEnvironmentVariable($"{prefix}_API_KEY", apiKey);
+
+        if (!string.IsNullOrEmpty(apiSecret))
+            Environment.SetEnvironmentVariable($"{prefix}_API_SECRET", apiSecret);
+
+        if (!string.IsNullOrEmpty(passphrase))
+        {
+            var passEnv = exchangeName.ToLower() == "okx"
+                ? "AUTOTRADEX_OKX_PASSPHRASE"
+                : $"{prefix}_API_KEY_PASSPHRASE";
+            Environment.SetEnvironmentVariable(passEnv, passphrase);
+        }
+    }
+
+    /// <summary>
+    /// Initialize splash exchange list with all supported exchanges
+    /// </summary>
+    private System.Collections.ObjectModel.ObservableCollection<SplashExchangeItem> InitializeSplashExchangeList()
+    {
+        var exchanges = new System.Collections.ObjectModel.ObservableCollection<SplashExchangeItem>();
+        var supportedExchanges = new[] { "Binance", "KuCoin", "OKX", "Bybit", "Gate.io", "Bitkub" };
+
+        foreach (var name in supportedExchanges)
+        {
+            var logoName = name.ToLower().Replace(".", "").Replace(" ", "");
+            exchanges.Add(new SplashExchangeItem
+            {
+                Name = name,
+                LogoPath = $"pack://application:,,,/Assets/Exchanges/{logoName}.png",
+                Status = SplashCheckStatus.Pending,
+                StatusMessage = "รอตรวจสอบ...",
+                StatusIcon = "⏳",
+                StatusColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#80FFFFFF")),
+                IconBackground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#30FFFFFF"))
+            });
+        }
+
+        return exchanges;
     }
 
     private void SplashTimer_Tick(object? sender, EventArgs e)
@@ -1339,7 +1909,10 @@ public partial class MainWindow : Window
             // Update bot status
             UpdateStatusBarBotStatus();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger?.LogError("MainWindow", $"UpdateStatusBar error: {ex.Message}");
+        }
     }
 
     private void UpdateStatusBarBotStatus()
@@ -1375,7 +1948,8 @@ public partial class MainWindow : Window
 
     private async void PriceUpdateTimer_Tick(object? sender, EventArgs e)
     {
-        _priceUpdateTimer!.Interval = TimeSpan.FromSeconds(30);
+        // Update interval to 5 seconds after initial load for near real-time updates
+        _priceUpdateTimer!.Interval = TimeSpan.FromSeconds(5);
         await UpdatePricesAsync();
     }
 
@@ -1440,9 +2014,20 @@ public partial class MainWindow : Window
 
     private void MaximizeButton_Click(object sender, RoutedEventArgs e)
     {
-        WindowState = WindowState == WindowState.Maximized
-            ? WindowState.Normal
-            : WindowState.Maximized;
+        if (WindowState == WindowState.Maximized)
+        {
+            WindowState = WindowState.Normal;
+            // Restore border when normal
+            if (MainBorder != null)
+                MainBorder.BorderThickness = new Thickness(1);
+        }
+        else
+        {
+            WindowState = WindowState.Maximized;
+            // Remove border when maximized (avoids edge artifacts)
+            if (MainBorder != null)
+                MainBorder.BorderThickness = new Thickness(0);
+        }
     }
 
     private async void CloseButton_Click(object sender, RoutedEventArgs e)
@@ -1458,7 +2043,10 @@ public partial class MainWindow : Window
                 _botCancellationTokenSource?.Cancel();
                 await _arbEngine.StopAsync();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger?.LogError("MainWindow", $"Error stopping ArbEngine on close: {ex.Message}");
+            }
         }
 
         // No explicit save needed - data is auto-saved
@@ -1480,6 +2068,12 @@ public partial class MainWindow : Window
     {
         SetActiveTab(TradingTab);
         ShowPage("Trading");
+    }
+
+    private void AITradingTab_Click(object sender, MouseButtonEventArgs e)
+    {
+        SetActiveTab(AITradingTab);
+        ShowPage("AITrading");
     }
 
     private void ScannerTab_Click(object sender, MouseButtonEventArgs e)
@@ -1523,6 +2117,7 @@ public partial class MainWindow : Window
         // Hide all pages
         DashboardContent.Visibility = Visibility.Collapsed;
         TradingContent.Visibility = Visibility.Collapsed;
+        AITradingContent.Visibility = Visibility.Collapsed;
         ScannerContent.Visibility = Visibility.Collapsed;
         HistoryContent.Visibility = Visibility.Collapsed;
         StrategyContent.Visibility = Visibility.Collapsed;
@@ -1538,6 +2133,9 @@ public partial class MainWindow : Window
                 break;
             case "Trading":
                 TradingContent.Visibility = Visibility.Visible;
+                break;
+            case "AITrading":
+                AITradingContent.Visibility = Visibility.Visible;
                 break;
             case "Scanner":
                 ScannerContent.Visibility = Visibility.Visible;
@@ -1593,6 +2191,7 @@ public partial class MainWindow : Window
         {
             "Dashboard" => DashboardTab,
             "Trading" => TradingTab,
+            "AITrading" => AITradingTab,
             "Scanner" => ScannerTab,
             "History" => HistoryTab,
             "Strategy" => StrategyTab,
@@ -1720,4 +2319,100 @@ public class ArbitrageOpportunityInfo
     public string BuyExchange { get; set; } = "";
     public string SellExchange { get; set; } = "";
     public string Priority { get; set; } = "LOW";
+}
+
+/// <summary>
+/// Status for splash screen connection check
+/// </summary>
+public enum SplashCheckStatus
+{
+    Pending,
+    Checking,
+    Connected,
+    Failed,
+    NotConfigured
+}
+
+/// <summary>
+/// Model for splash screen exchange connection check
+/// </summary>
+public class SplashExchangeItem : System.ComponentModel.INotifyPropertyChanged
+{
+    private string _name = "";
+    private string _logoPath = "";
+    private SplashCheckStatus _status;
+    private string _statusMessage = "";
+    private string _statusIcon = "";
+    private SolidColorBrush _statusColor = Brushes.Gray;
+    private SolidColorBrush _iconBackground = Brushes.Gray;
+
+    public string Name
+    {
+        get => _name;
+        set { _name = value; OnPropertyChanged(nameof(Name)); }
+    }
+
+    public string LogoPath
+    {
+        get => _logoPath;
+        set { _logoPath = value; OnPropertyChanged(nameof(LogoPath)); }
+    }
+
+    public SplashCheckStatus Status
+    {
+        get => _status;
+        set { _status = value; OnPropertyChanged(nameof(Status)); }
+    }
+
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        set { _statusMessage = value; OnPropertyChanged(nameof(StatusMessage)); }
+    }
+
+    public string StatusIcon
+    {
+        get => _statusIcon;
+        set { _statusIcon = value; OnPropertyChanged(nameof(StatusIcon)); }
+    }
+
+    public SolidColorBrush StatusColor
+    {
+        get => _statusColor;
+        set { _statusColor = value; OnPropertyChanged(nameof(StatusColor)); }
+    }
+
+    public SolidColorBrush IconBackground
+    {
+        get => _iconBackground;
+        set { _iconBackground = value; OnPropertyChanged(nameof(IconBackground)); }
+    }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    protected void OnPropertyChanged(string propertyName)
+    {
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
+    }
+}
+
+/// <summary>
+/// Model for reading saved credentials from file (matching SettingsPage SavedCredentials)
+/// </summary>
+public class StartupSavedCredentials
+{
+    public string? BinanceApiKey { get; set; }
+    public string? BinanceApiSecret { get; set; }
+    public string? KuCoinApiKey { get; set; }
+    public string? KuCoinApiSecret { get; set; }
+    public string? KuCoinPassphrase { get; set; }
+    public string? BitkubApiKey { get; set; }
+    public string? BitkubApiSecret { get; set; }
+    public string? OKXApiKey { get; set; }
+    public string? OKXApiSecret { get; set; }
+    public string? OKXPassphrase { get; set; }
+    public string? BybitApiKey { get; set; }
+    public string? BybitApiSecret { get; set; }
+    public string? GateIOApiKey { get; set; }
+    public string? GateIOApiSecret { get; set; }
 }

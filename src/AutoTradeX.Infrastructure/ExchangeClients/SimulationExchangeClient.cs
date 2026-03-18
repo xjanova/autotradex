@@ -177,16 +177,45 @@ public class SimulationExchangeClient : IExchangeClient
         return Task.FromResult(orderBook);
     }
 
-    public Task<Dictionary<string, Ticker>> GetTickersAsync(
+    public async Task<Dictionary<string, Ticker>> GetTickersAsync(
         IEnumerable<string> symbols,
         CancellationToken cancellationToken = default)
     {
         var result = new Dictionary<string, Ticker>();
         foreach (var symbol in symbols)
         {
-            result[symbol] = GetTickerAsync(symbol, cancellationToken).Result;
+            result[symbol] = await GetTickerAsync(symbol, cancellationToken);
         }
-        return Task.FromResult(result);
+        return result;
+    }
+
+    /// <summary>
+    /// Get ALL simulated tickers (returns a set of common trading pairs)
+    /// </summary>
+    public async Task<Dictionary<string, Ticker>> GetAllTickersAsync(
+        string? quoteAsset = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Generate simulated tickers for common pairs
+        var simulatedPairs = new[]
+        {
+            "BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT",
+            "ADAUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT", "MATICUSDT",
+            "LTCUSDT", "ATOMUSDT", "UNIUSDT", "SHIBUSDT", "ARBUSDT"
+        };
+
+        var result = new Dictionary<string, Ticker>();
+
+        foreach (var symbol in simulatedPairs)
+        {
+            if (!string.IsNullOrEmpty(quoteAsset) && !symbol.EndsWith(quoteAsset, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            result[symbol] = await GetTickerAsync(symbol, cancellationToken);
+        }
+
+        _logger.LogInfo(_exchangeName, $"GetAllTickersAsync: Returning {result.Count} simulated tickers");
+        return result;
     }
 
     #endregion
@@ -435,6 +464,96 @@ public class SimulationExchangeClient : IExchangeClient
     public Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
         return Task.FromResult(true);
+    }
+
+    public Task<ApiPermissionInfo> GetApiPermissionsAsync(CancellationToken cancellationToken = default)
+    {
+        // Simulation client has all permissions
+        return Task.FromResult(new ApiPermissionInfo
+        {
+            CanRead = true,
+            CanTrade = true,
+            CanWithdraw = true,
+            CanDeposit = true,
+            AdditionalInfo = "Simulation mode - all permissions enabled"
+        });
+    }
+
+    public Task<DepositAddressInfo> GetDepositAddressAsync(string asset, string? network = null, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new DepositAddressInfo
+        {
+            Asset = asset,
+            Network = network ?? asset,
+            Address = $"SIM_{_exchangeName}_{asset}_{Guid.NewGuid().ToString("N")[..8]}",
+            RequiredConfirmations = 2,
+            MinDepositAmount = 0.001m
+        });
+    }
+
+    public Task<WithdrawalFeeInfo> GetWithdrawalFeeAsync(string asset, string? network = null, CancellationToken cancellationToken = default)
+    {
+        // Use common fee estimates
+        var fee = asset.ToUpperInvariant() switch
+        {
+            "BTC" => 0.0005m,
+            "ETH" => 0.005m,
+            "USDT" => 1m,
+            "XRP" => 0.25m,
+            _ => 0.01m
+        };
+
+        return Task.FromResult(new WithdrawalFeeInfo
+        {
+            Asset = asset,
+            Network = network ?? asset,
+            Fee = fee,
+            MinWithdrawalAmount = fee * 10,
+            IsEnabled = true
+        });
+    }
+
+    public Task<List<PriceCandle>> GetKlinesAsync(string symbol, string interval = "1m", int limit = 100, CancellationToken cancellationToken = default)
+    {
+        // Generate simulated candles for testing
+        var candles = new List<PriceCandle>();
+        var basePrice = _basePrices.GetValueOrDefault(symbol.ToUpper(), 50000m);
+        var random = new Random((int)(DateTime.UtcNow.Ticks % int.MaxValue));
+
+        var timeStep = interval switch
+        {
+            "1m" => TimeSpan.FromMinutes(1),
+            "5m" => TimeSpan.FromMinutes(5),
+            "15m" => TimeSpan.FromMinutes(15),
+            "1h" => TimeSpan.FromHours(1),
+            "4h" => TimeSpan.FromHours(4),
+            "1d" => TimeSpan.FromDays(1),
+            _ => TimeSpan.FromMinutes(1)
+        };
+
+        var volatility = basePrice * 0.005m;
+        for (int i = limit; i > 0; i--)
+        {
+            var time = DateTime.UtcNow - (timeStep * i);
+            var change = (decimal)(random.NextDouble() - 0.5) * 2 * volatility;
+            var open = basePrice + change;
+            var close = open + (decimal)(random.NextDouble() - 0.5) * volatility;
+            var high = Math.Max(open, close) + (decimal)random.NextDouble() * volatility * 0.3m;
+            var low = Math.Min(open, close) - (decimal)random.NextDouble() * volatility * 0.3m;
+
+            candles.Add(new PriceCandle
+            {
+                Time = time,
+                Open = open,
+                High = high,
+                Low = low,
+                Close = close,
+                Volume = (decimal)(random.NextDouble() * 1000000)
+            });
+            basePrice = close;
+        }
+
+        return Task.FromResult(candles);
     }
 
     #endregion

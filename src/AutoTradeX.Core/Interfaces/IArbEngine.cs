@@ -123,6 +123,51 @@ public interface IArbEngine : IDisposable
     /// <returns>ผลลัพธ์การเทรด</returns>
     Task<TradeResult> ExecuteArbitrageAsync(SpreadOpportunity opportunity, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Execute Arbitrage Trade based on execution mode (Dual-Balance or Transfer)
+    /// ส่งคำสั่ง Arbitrage ตามโหมดที่เลือก (สองกระเป๋า หรือ โอนจริง)
+    /// </summary>
+    /// <param name="opportunity">โอกาสที่ต้องการเทรด</param>
+    /// <param name="mode">โหมดการทำ Arbitrage</param>
+    /// <param name="transferType">รูปแบบการโอน (สำหรับ Transfer Mode)</param>
+    /// <returns>ผลลัพธ์การเทรด</returns>
+    Task<TradeResult> ExecuteArbitrageWithModeAsync(
+        SpreadOpportunity opportunity,
+        ArbitrageExecutionMode mode,
+        TransferExecutionType? transferType = null,
+        CancellationToken cancellationToken = default);
+
+    // ========== Transfer Mode Operations / การดำเนินการโหมดโอน ==========
+
+    /// <summary>
+    /// Cancel an active transfer
+    /// ยกเลิกการโอนที่กำลังดำเนินอยู่
+    /// </summary>
+    /// <param name="transferId">รหัสการโอน</param>
+    Task CancelTransferAsync(string transferId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Update and get transfer status
+    /// อัปเดตและรับสถานะการโอน
+    /// </summary>
+    /// <param name="transferId">รหัสการโอน</param>
+    /// <returns>สถานะการโอนล่าสุด</returns>
+    Task<TransferStatus?> UpdateTransferStatusAsync(string transferId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Complete transfer arbitrage (sell side after deposit complete)
+    /// ดำเนินการ Arbitrage แบบโอนให้สมบูรณ์ (ขายหลังจากฝากเสร็จ)
+    /// </summary>
+    /// <param name="transferId">รหัสการโอน</param>
+    /// <returns>ผลลัพธ์การเทรด</returns>
+    Task<TradeResult?> CompleteTransferArbitrageAsync(string transferId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get list of active transfers in progress
+    /// รับรายการโอนที่กำลังดำเนินอยู่
+    /// </summary>
+    IReadOnlyList<TransferStatus> GetActiveTransfers();
+
     // ========== Configuration ==========
 
     /// <summary>

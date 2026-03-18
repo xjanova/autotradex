@@ -9,6 +9,7 @@
 
 using AutoTradeX.Core.Interfaces;
 using AutoTradeX.Core.Models;
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -56,12 +57,12 @@ public class BinanceClient : BaseExchangeClient
             {
                 Symbol = symbol,
                 Exchange = ExchangeName,
-                BidPrice = decimal.Parse(response.BidPrice),
-                AskPrice = decimal.Parse(response.AskPrice),
-                BidQuantity = decimal.Parse(response.BidQty),
-                AskQuantity = decimal.Parse(response.AskQty),
-                LastPrice = stats24h != null ? decimal.Parse(stats24h.LastPrice) : decimal.Parse(response.BidPrice),
-                Volume24h = stats24h != null ? decimal.Parse(stats24h.Volume) : 0,
+                BidPrice = decimal.Parse(response.BidPrice, CultureInfo.InvariantCulture),
+                AskPrice = decimal.Parse(response.AskPrice, CultureInfo.InvariantCulture),
+                BidQuantity = decimal.Parse(response.BidQty, CultureInfo.InvariantCulture),
+                AskQuantity = decimal.Parse(response.AskQty, CultureInfo.InvariantCulture),
+                LastPrice = stats24h != null ? decimal.Parse(stats24h.LastPrice, CultureInfo.InvariantCulture) : decimal.Parse(response.BidPrice, CultureInfo.InvariantCulture),
+                Volume24h = stats24h != null ? decimal.Parse(stats24h.Volume, CultureInfo.InvariantCulture) : 0,
                 Timestamp = DateTime.UtcNow
             };
         }
@@ -98,8 +99,8 @@ public class BinanceClient : BaseExchangeClient
                 if (bid.Length >= 2)
                 {
                     orderBook.Bids.Add(new OrderBookEntry(
-                        decimal.Parse(bid[0]),
-                        decimal.Parse(bid[1])
+                        decimal.Parse(bid[0], CultureInfo.InvariantCulture),
+                        decimal.Parse(bid[1], CultureInfo.InvariantCulture)
                     ));
                 }
             }
@@ -109,8 +110,8 @@ public class BinanceClient : BaseExchangeClient
                 if (ask.Length >= 2)
                 {
                     orderBook.Asks.Add(new OrderBookEntry(
-                        decimal.Parse(ask[0]),
-                        decimal.Parse(ask[1])
+                        decimal.Parse(ask[0], CultureInfo.InvariantCulture),
+                        decimal.Parse(ask[1], CultureInfo.InvariantCulture)
                     ));
                 }
             }
@@ -122,6 +123,238 @@ public class BinanceClient : BaseExchangeClient
             _logger.LogError(ExchangeName, $"GetOrderBookAsync error for {symbol}: {ex.Message}");
             throw;
         }
+    }
+
+    /// <summary>
+    /// Get ALL tickers from Binance in one API call
+    /// Endpoint: GET /api/v3/ticker/24hr (without symbol param returns all)
+    /// </summary>
+    public override async Task<Dictionary<string, Ticker>> GetAllTickersAsync(
+        string? quoteAsset = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<string, Ticker>();
+
+        try
+        {
+            _logger.LogInfo(ExchangeName, "GetAllTickersAsync: Fetching all tickers...");
+
+            // Get all 24hr tickers in one call
+            var response = await GetAsync<List<Binance24hResponse>>(
+                "/api/v3/ticker/24hr",
+                cancellationToken);
+
+            if (response == null || response.Count == 0)
+            {
+                _logger.LogWarning(ExchangeName, "GetAllTickersAsync: No data returned from API");
+                return result;
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Got {response.Count} tickers from API");
+
+            foreach (var data in response)
+            {
+                var symbol = data.Symbol;
+
+                // Filter by quote asset if specified (e.g., "USDT")
+                if (!string.IsNullOrEmpty(quoteAsset))
+                {
+                    if (!symbol.EndsWith(quoteAsset, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
+
+                // Skip pairs with zero volume (inactive)
+                var volume = decimal.TryParse(data.Volume, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0;
+                var lastPrice = decimal.TryParse(data.LastPrice, NumberStyles.Any, CultureInfo.InvariantCulture, out var p) ? p : 0;
+
+                if (volume <= 0 && lastPrice <= 0)
+                    continue;
+
+                result[symbol] = new Ticker
+                {
+                    Symbol = symbol,
+                    Exchange = ExchangeName,
+                    BidPrice = 0, // 24hr ticker doesn't include bid/ask
+                    AskPrice = 0,
+                    BidQuantity = 0,
+                    AskQuantity = 0,
+                    LastPrice = lastPrice,
+                    Volume24h = volume,
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Returning {result.Count} active tickers");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetAllTickersAsync error: {ex.Message}");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Get Klines (Candlestick) data from Binance
+    /// Endpoint: GET /api/v3/klines
+    /// </summary>
+    public override async Task<List<PriceCandle>> GetKlinesAsync(
+        string symbol, string interval = "1m", int limit = 100, CancellationToken cancellationToken = default)
+    {
+        var candles = new List<PriceCandle>();
+
+        try
+        {
+            var normalizedSymbol = NormalizeSymbol(symbol);
+            var clampedLimit = Math.Min(limit, 500);
+
+            var response = await GetAsync<List<List<JsonElement>>>(
+                $"/api/v3/klines?symbol={normalizedSymbol}&interval={interval}&limit={clampedLimit}",
+                cancellationToken);
+
+            if (response == null || response.Count == 0)
+            {
+                _logger.LogWarning(ExchangeName, $"GetKlinesAsync: No data returned for {symbol} ({interval})");
+                return candles;
+            }
+
+            // Binance klines format: [openTime, open, high, low, close, volume, closeTime, ...]
+            foreach (var kline in response)
+            {
+                if (kline.Count < 6) continue;
+
+                candles.Add(new PriceCandle
+                {
+                    Time = DateTimeOffset.FromUnixTimeMilliseconds(kline[0].GetInt64()).UtcDateTime,
+                    Open = decimal.Parse(kline[1].GetString() ?? "0", CultureInfo.InvariantCulture),
+                    High = decimal.Parse(kline[2].GetString() ?? "0", CultureInfo.InvariantCulture),
+                    Low = decimal.Parse(kline[3].GetString() ?? "0", CultureInfo.InvariantCulture),
+                    Close = decimal.Parse(kline[4].GetString() ?? "0", CultureInfo.InvariantCulture),
+                    Volume = decimal.Parse(kline[5].GetString() ?? "0", CultureInfo.InvariantCulture)
+                });
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetKlinesAsync: Got {candles.Count} candles for {symbol} ({interval})");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetKlinesAsync error for {symbol}: {ex.Message}");
+        }
+
+        return candles;
+    }
+
+    #endregion
+
+    #region Connection Test
+
+    /// <summary>
+    /// Test connection to Binance API with proper validation
+    /// </summary>
+    public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInfo(ExchangeName, "Testing Binance API connection...");
+
+            // Step 1: Test public API - get server time
+            var serverTimeResponse = await GetAsync<BinanceServerTime>(
+                "/api/v3/time",
+                cancellationToken);
+
+            if (serverTimeResponse == null)
+            {
+                _logger.LogWarning(ExchangeName, "Failed to get Binance server time");
+                return false;
+            }
+
+            _logger.LogInfo(ExchangeName, "Binance public API reachable");
+
+            // Step 2: Test ticker API with BTCUSDT
+            var ticker = await GetTickerAsync("BTCUSDT", cancellationToken);
+            if (ticker == null)
+            {
+                _logger.LogWarning(ExchangeName, "Failed to get BTCUSDT ticker");
+                return false;
+            }
+
+            _logger.LogInfo(ExchangeName, $"BTCUSDT: ${ticker.LastPrice:N2}");
+
+            // Step 3: If API credentials are configured, test private API
+            if (HasCredentials())
+            {
+                try
+                {
+                    var balance = await GetBalanceAsync(cancellationToken);
+                    if (balance != null)
+                    {
+                        _logger.LogInfo(ExchangeName, "API credentials verified successfully");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ExchangeName, $"API credential test failed: {ex.Message}");
+                    // Still return true if public API works
+                }
+            }
+
+            IsConnected = true;
+            _logger.LogInfo(ExchangeName, "Binance connection test successful");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"Connection test failed: {ex.Message}");
+            IsConnected = false;
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region API Permissions
+
+    /// <summary>
+    /// Get API key permissions from Binance account info
+    /// Binance returns canTrade, canWithdraw, canDeposit in account response
+    /// </summary>
+    public override async Task<ApiPermissionInfo> GetApiPermissionsAsync(CancellationToken cancellationToken = default)
+    {
+        var permissions = new ApiPermissionInfo();
+
+        try
+        {
+            if (!HasCredentials())
+            {
+                permissions.AdditionalInfo = "ไม่ได้ตั้งค่า API Key";
+                return permissions;
+            }
+
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var queryString = $"timestamp={timestamp}";
+            var signature = SignRequest(queryString);
+
+            var response = await GetAsync<BinanceAccountResponse>(
+                $"/api/v3/account?{queryString}&signature={signature}",
+                cancellationToken);
+
+            if (response != null)
+            {
+                permissions.CanRead = true; // ถ้าดึงข้อมูลได้แสดงว่า read ได้
+                permissions.CanTrade = response.CanTrade;
+                permissions.CanWithdraw = response.CanWithdraw;
+                permissions.CanDeposit = response.CanDeposit;
+
+                _logger.LogInfo(ExchangeName, $"API Permissions - Read: {permissions.CanRead}, Trade: {permissions.CanTrade}, Withdraw: {permissions.CanWithdraw}, Deposit: {permissions.CanDeposit}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ExchangeName, $"Failed to get API permissions: {ex.Message}");
+            permissions.AdditionalInfo = $"ไม่สามารถตรวจสอบสิทธิ์: {ex.Message}";
+        }
+
+        return permissions;
     }
 
     #endregion
@@ -159,8 +392,8 @@ public class BinanceClient : BaseExchangeClient
 
             foreach (var asset in response.Balances)
             {
-                var free = decimal.Parse(asset.Free);
-                var locked = decimal.Parse(asset.Locked);
+                var free = decimal.Parse(asset.Free, CultureInfo.InvariantCulture);
+                var locked = decimal.Parse(asset.Locked, CultureInfo.InvariantCulture);
 
                 if (free > 0 || locked > 0)
                 {
@@ -240,10 +473,10 @@ public class BinanceClient : BaseExchangeClient
                 Type = request.Type,
                 Status = MapOrderStatus(response.Status),
                 RequestedQuantity = request.Quantity,
-                FilledQuantity = decimal.Parse(response.ExecutedQty),
+                FilledQuantity = decimal.Parse(response.ExecutedQty, CultureInfo.InvariantCulture),
                 RequestedPrice = request.Price,
-                AverageFilledPrice = !string.IsNullOrEmpty(response.AvgPrice) && decimal.Parse(response.AvgPrice) > 0
-                    ? decimal.Parse(response.AvgPrice)
+                AverageFilledPrice = !string.IsNullOrEmpty(response.AvgPrice) && decimal.Parse(response.AvgPrice, CultureInfo.InvariantCulture) > 0
+                    ? decimal.Parse(response.AvgPrice, CultureInfo.InvariantCulture)
                     : request.Price ?? 0,
                 Fee = CalculateFee(response),
                 FeeCurrency = "USDT",
@@ -330,10 +563,10 @@ public class BinanceClient : BaseExchangeClient
                 Side = response.Side == "BUY" ? OrderSide.Buy : OrderSide.Sell,
                 Type = response.Type == "MARKET" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(response.Status),
-                RequestedQuantity = decimal.Parse(response.OrigQty),
-                FilledQuantity = decimal.Parse(response.ExecutedQty),
-                RequestedPrice = !string.IsNullOrEmpty(response.Price) ? decimal.Parse(response.Price) : null,
-                AverageFilledPrice = !string.IsNullOrEmpty(response.AvgPrice) ? decimal.Parse(response.AvgPrice) : 0,
+                RequestedQuantity = decimal.Parse(response.OrigQty, CultureInfo.InvariantCulture),
+                FilledQuantity = decimal.Parse(response.ExecutedQty, CultureInfo.InvariantCulture),
+                RequestedPrice = !string.IsNullOrEmpty(response.Price) ? decimal.Parse(response.Price, CultureInfo.InvariantCulture) : null,
+                AverageFilledPrice = !string.IsNullOrEmpty(response.AvgPrice) ? decimal.Parse(response.AvgPrice, CultureInfo.InvariantCulture) : 0,
                 CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(response.Time).UtcDateTime,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -378,8 +611,8 @@ public class BinanceClient : BaseExchangeClient
                 Side = r.Side == "BUY" ? OrderSide.Buy : OrderSide.Sell,
                 Type = r.Type == "MARKET" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(r.Status),
-                RequestedQuantity = decimal.Parse(r.OrigQty),
-                FilledQuantity = decimal.Parse(r.ExecutedQty),
+                RequestedQuantity = decimal.Parse(r.OrigQty, CultureInfo.InvariantCulture),
+                FilledQuantity = decimal.Parse(r.ExecutedQty, CultureInfo.InvariantCulture),
                 CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(r.Time).UtcDateTime
             }).ToList();
         }
@@ -415,16 +648,25 @@ public class BinanceClient : BaseExchangeClient
 
     private async Task<T?> PostSignedAsync<T>(string endpoint, CancellationToken cancellationToken)
     {
+        // Binance sends order params as query string, body is empty (correct for their API)
         var response = await _httpClient.PostAsync(endpoint, null, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(_jsonOptions, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new Exception($"Binance POST failed ({response.StatusCode}): {content}");
+        }
+        return JsonSerializer.Deserialize<T>(content, _jsonOptions);
     }
 
     private async Task<T?> DeleteAsync<T>(string endpoint, CancellationToken cancellationToken)
     {
         var response = await _httpClient.DeleteAsync(endpoint, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(_jsonOptions, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new Exception($"Binance DELETE failed ({response.StatusCode}): {content}");
+        }
+        return JsonSerializer.Deserialize<T>(content, _jsonOptions);
     }
 
     private OrderStatus MapOrderStatus(string status)
@@ -446,13 +688,13 @@ public class BinanceClient : BaseExchangeClient
     {
         if (response.Fills != null && response.Fills.Count > 0)
         {
-            return response.Fills.Sum(f => decimal.Parse(f.Commission));
+            return response.Fills.Sum(f => decimal.Parse(f.Commission, CultureInfo.InvariantCulture));
         }
         // Estimate fee: 0.1% for maker/taker
-        var qty = decimal.Parse(response.ExecutedQty);
-        var price = !string.IsNullOrEmpty(response.AvgPrice) && decimal.Parse(response.AvgPrice) > 0
-            ? decimal.Parse(response.AvgPrice)
-            : !string.IsNullOrEmpty(response.Price) ? decimal.Parse(response.Price) : 0;
+        var qty = decimal.Parse(response.ExecutedQty, CultureInfo.InvariantCulture);
+        var price = !string.IsNullOrEmpty(response.AvgPrice) && decimal.Parse(response.AvgPrice, CultureInfo.InvariantCulture) > 0
+            ? decimal.Parse(response.AvgPrice, CultureInfo.InvariantCulture)
+            : !string.IsNullOrEmpty(response.Price) ? decimal.Parse(response.Price, CultureInfo.InvariantCulture) : 0;
         return qty * price * 0.001m;
     }
 
@@ -460,6 +702,11 @@ public class BinanceClient : BaseExchangeClient
 }
 
 #region Binance API Response Models
+
+internal class BinanceServerTime
+{
+    public long ServerTime { get; set; }
+}
 
 internal class BinanceTickerResponse
 {

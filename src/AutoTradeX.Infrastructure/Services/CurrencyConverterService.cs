@@ -13,15 +13,29 @@ namespace AutoTradeX.Infrastructure.Services;
 public class CurrencyConverterService : ICurrencyConverterService, IDisposable
 {
     private readonly HttpClient _httpClient;
+    private readonly HttpClient _fallbackHttpClient;
     private readonly ILoggingService? _logger;
     private readonly SemaphoreSlim _rateLock = new(1, 1);
 
-    private decimal _cachedThbUsdtRate = 35.0m; // Default fallback rate
+    private decimal _cachedThbUsdtRate = 35.0m; // Default fallback rate (approximate THB/USD)
     private DateTime _lastRateUpdate = DateTime.MinValue;
     private readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(1); // Refresh rate every minute
+    private readonly TimeSpan _staleThreshold = TimeSpan.FromHours(1); // Rate is considered stale after 1 hour
+    private bool _hasEverFetchedSuccessfully = false;
 
     public DateTime LastRateUpdate => _lastRateUpdate;
     public string RateSource { get; private set; } = "Default";
+
+    /// <summary>
+    /// Whether the current rate has been successfully fetched from an API (not default/fallback)
+    /// </summary>
+    public bool IsRateValid => _hasEverFetchedSuccessfully;
+
+    /// <summary>
+    /// Whether the cached rate is stale (over 1 hour old or never fetched)
+    /// </summary>
+    public bool IsRateStale => !_hasEverFetchedSuccessfully ||
+        (_lastRateUpdate > DateTime.MinValue && DateTime.UtcNow - _lastRateUpdate > _staleThreshold);
 
     public CurrencyConverterService(ILoggingService? logger = null)
     {
@@ -32,6 +46,13 @@ public class CurrencyConverterService : ICurrencyConverterService, IDisposable
             Timeout = TimeSpan.FromSeconds(10)
         };
         _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
+
+        // Reusable HttpClient for fallback APIs (avoids socket exhaustion)
+        _fallbackHttpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(10)
+        };
+        _fallbackHttpClient.DefaultRequestHeaders.Add("User-Agent", "AutoTradeX/1.0");
     }
 
     /// <summary>
@@ -78,11 +99,12 @@ public class CurrencyConverterService : ICurrencyConverterService, IDisposable
                 "/api/market/ticker",
                 cancellationToken);
 
-            if (response != null && response.TryGetValue("THB_USDT", out var usdtTicker))
+            if (response != null && response.TryGetValue("THB_USDT", out var usdtTicker) && usdtTicker.Last > 0)
             {
                 // The last price is THB per 1 USDT
                 _cachedThbUsdtRate = usdtTicker.Last;
                 _lastRateUpdate = DateTime.UtcNow;
+                _hasEverFetchedSuccessfully = true;
                 RateSource = "Bitkub";
 
                 _logger?.LogInfo("CurrencyConverter", $"Updated THB/USDT rate: {_cachedThbUsdtRate:N2} THB (from Bitkub)");
@@ -116,26 +138,20 @@ public class CurrencyConverterService : ICurrencyConverterService, IDisposable
     /// </summary>
     private async Task FetchRateFromFallbackAsync(CancellationToken cancellationToken)
     {
-        using var fallbackClient = new HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(10)
-        };
-        fallbackClient.DefaultRequestHeaders.Add("User-Agent", "AutoTradeX/1.0");
-
-        // Try multiple fallback sources
+        // Use shared _fallbackHttpClient to avoid socket exhaustion
         var fallbackSources = new List<Func<Task<bool>>>
         {
             // 1. FloatRates - Reliable free API, no registration needed
-            async () => await TryFloatRatesAsync(fallbackClient, cancellationToken),
+            async () => await TryFloatRatesAsync(_fallbackHttpClient, cancellationToken),
 
             // 2. Open Exchange Rates (free tier with app_id=free)
-            async () => await TryOpenExchangeRatesAsync(fallbackClient, cancellationToken),
+            async () => await TryOpenExchangeRatesAsync(_fallbackHttpClient, cancellationToken),
 
             // 3. Frankfurter API - ECB data, very reliable
-            async () => await TryFrankfurterAsync(fallbackClient, cancellationToken),
+            async () => await TryFrankfurterAsync(_fallbackHttpClient, cancellationToken),
 
             // 4. ExchangeRate-API v4 (open/free)
-            async () => await TryExchangeRateApiAsync(fallbackClient, cancellationToken),
+            async () => await TryExchangeRateApiAsync(_fallbackHttpClient, cancellationToken),
         };
 
         foreach (var trySource in fallbackSources)
@@ -164,10 +180,11 @@ public class CurrencyConverterService : ICurrencyConverterService, IDisposable
         var response = await client.GetFromJsonAsync<FloatRatesResponse>(
             "https://www.floatrates.com/daily/usd.json", ct);
 
-        if (response?.Thb != null)
+        if (response?.Thb != null && response.Thb.Rate > 0)
         {
             _cachedThbUsdtRate = response.Thb.Rate;
             _lastRateUpdate = DateTime.UtcNow;
+            _hasEverFetchedSuccessfully = true;
             RateSource = "FloatRates";
             _logger?.LogInfo("CurrencyConverter", $"Updated THB/USDT rate: {_cachedThbUsdtRate:N2} THB (from FloatRates)");
             return true;
@@ -185,10 +202,11 @@ public class CurrencyConverterService : ICurrencyConverterService, IDisposable
             "https://open.er-api.com/v6/latest/USD", ct);
 
         var response = System.Text.Json.JsonSerializer.Deserialize<OpenExchangeRatesResponse>(json);
-        if (response?.Rates != null && response.Rates.TryGetValue("THB", out var thbRate))
+        if (response?.Rates != null && response.Rates.TryGetValue("THB", out var thbRate) && thbRate > 0)
         {
             _cachedThbUsdtRate = thbRate;
             _lastRateUpdate = DateTime.UtcNow;
+            _hasEverFetchedSuccessfully = true;
             RateSource = "Open Exchange Rates";
             _logger?.LogInfo("CurrencyConverter", $"Updated THB/USDT rate: {_cachedThbUsdtRate:N2} THB (from Open ER)");
             return true;
@@ -204,10 +222,11 @@ public class CurrencyConverterService : ICurrencyConverterService, IDisposable
         var response = await client.GetFromJsonAsync<FrankfurterResponse>(
             "https://api.frankfurter.app/latest?from=USD&to=THB", ct);
 
-        if (response?.Rates != null && response.Rates.TryGetValue("THB", out var thbRate))
+        if (response?.Rates != null && response.Rates.TryGetValue("THB", out var thbRate) && thbRate > 0)
         {
             _cachedThbUsdtRate = thbRate;
             _lastRateUpdate = DateTime.UtcNow;
+            _hasEverFetchedSuccessfully = true;
             RateSource = "Frankfurter (ECB)";
             _logger?.LogInfo("CurrencyConverter", $"Updated THB/USDT rate: {_cachedThbUsdtRate:N2} THB (from Frankfurter)");
             return true;
@@ -223,10 +242,11 @@ public class CurrencyConverterService : ICurrencyConverterService, IDisposable
         var response = await client.GetFromJsonAsync<ExchangeRateApiResponse>(
             "https://api.exchangerate-api.com/v4/latest/USD", ct);
 
-        if (response?.Rates != null && response.Rates.TryGetValue("THB", out var thbRate))
+        if (response?.Rates != null && response.Rates.TryGetValue("THB", out var thbRate) && thbRate > 0)
         {
             _cachedThbUsdtRate = thbRate;
             _lastRateUpdate = DateTime.UtcNow;
+            _hasEverFetchedSuccessfully = true;
             RateSource = "ExchangeRate-API";
             _logger?.LogInfo("CurrencyConverter", $"Updated THB/USDT rate: {_cachedThbUsdtRate:N2} THB (from ExchangeRate-API)");
             return true;
@@ -240,6 +260,11 @@ public class CurrencyConverterService : ICurrencyConverterService, IDisposable
     public async Task<decimal> ConvertUsdtToThbAsync(decimal usdtAmount, CancellationToken cancellationToken = default)
     {
         var rate = await GetThbUsdtRateAsync(cancellationToken);
+        if (IsRateStale)
+        {
+            _logger?.LogWarning("CurrencyConverter",
+                $"Using potentially stale THB/USDT rate ({rate:N2}). Last updated: {_lastRateUpdate:yyyy-MM-dd HH:mm:ss UTC}. Source: {RateSource}");
+        }
         return usdtAmount * rate;
     }
 
@@ -249,7 +274,16 @@ public class CurrencyConverterService : ICurrencyConverterService, IDisposable
     public async Task<decimal> ConvertThbToUsdtAsync(decimal thbAmount, CancellationToken cancellationToken = default)
     {
         var rate = await GetThbUsdtRateAsync(cancellationToken);
-        if (rate == 0) return 0;
+        if (rate <= 0)
+        {
+            _logger?.LogError("CurrencyConverter", "THB/USDT rate is zero or negative, cannot convert");
+            return 0;
+        }
+        if (IsRateStale)
+        {
+            _logger?.LogWarning("CurrencyConverter",
+                $"Using potentially stale THB/USDT rate ({rate:N2}). Last updated: {_lastRateUpdate:yyyy-MM-dd HH:mm:ss UTC}. Source: {RateSource}");
+        }
         return thbAmount / rate;
     }
 
@@ -281,6 +315,7 @@ public class CurrencyConverterService : ICurrencyConverterService, IDisposable
     public void Dispose()
     {
         _httpClient.Dispose();
+        _fallbackHttpClient.Dispose();
         _rateLock.Dispose();
     }
 }

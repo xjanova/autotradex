@@ -434,7 +434,10 @@ public partial class AnalyticsPage : UserControl
 
             DbSizeText.Text = sizeMB >= 1 ? $"{sizeMB:F1} MB" : $"{sizeKB:F0} KB";
         }
-        catch { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[AnalyticsPage] UpdateDatabaseSizeAsync error: {ex.Message}");
+        }
     }
 
     private static string FormatPnL(decimal pnl)

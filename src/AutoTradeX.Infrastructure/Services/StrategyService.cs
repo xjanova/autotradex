@@ -485,6 +485,12 @@ public class ProjectService : IProjectService
 
     private const int MaxPairsPerProject = 10;
 
+    /// <summary>
+    /// Raised when the active project or its trading pairs change
+    /// เมื่อโปรเจคที่ใช้งานหรือคู่เทรดเปลี่ยนแปลง
+    /// </summary>
+    public event EventHandler<ProjectChangedEventArgs>? ActiveProjectChanged;
+
     public ProjectService(ILoggingService? logger = null)
     {
         _logger = logger;
@@ -597,6 +603,13 @@ public class ProjectService : IProjectService
 
         await SaveAllAsync();
         _logger?.LogInfo("ProjectService", $"Project saved: {project.Name}");
+
+        ActiveProjectChanged?.Invoke(this, new ProjectChangedEventArgs
+        {
+            ProjectId = project.Id,
+            ChangeType = ProjectChangeType.ProjectSaved
+        });
+
         return true;
     }
 
@@ -632,6 +645,13 @@ public class ProjectService : IProjectService
         _activeProjectId = id;
         await SaveAllAsync();
         _logger?.LogInfo("ProjectService", $"Active project set to: {id}");
+
+        ActiveProjectChanged?.Invoke(this, new ProjectChangedEventArgs
+        {
+            ProjectId = id,
+            ChangeType = ProjectChangeType.ActiveProjectSwitched
+        });
+
         return true;
     }
 
@@ -651,6 +671,14 @@ public class ProjectService : IProjectService
         project.TradingPairs.Add(pair);
         project.UpdatedAt = DateTime.UtcNow;
         await SaveAllAsync();
+
+        ActiveProjectChanged?.Invoke(this, new ProjectChangedEventArgs
+        {
+            ProjectId = projectId,
+            ChangeType = ProjectChangeType.PairAdded,
+            AffectedPair = pair
+        });
+
         return true;
     }
 
@@ -667,6 +695,14 @@ public class ProjectService : IProjectService
         project.TradingPairs.Remove(pair);
         project.UpdatedAt = DateTime.UtcNow;
         await SaveAllAsync();
+
+        ActiveProjectChanged?.Invoke(this, new ProjectChangedEventArgs
+        {
+            ProjectId = projectId,
+            ChangeType = ProjectChangeType.PairRemoved,
+            AffectedPair = pair
+        });
+
         return true;
     }
 
@@ -683,6 +719,14 @@ public class ProjectService : IProjectService
         project.TradingPairs[index] = pair;
         project.UpdatedAt = DateTime.UtcNow;
         await SaveAllAsync();
+
+        ActiveProjectChanged?.Invoke(this, new ProjectChangedEventArgs
+        {
+            ProjectId = projectId,
+            ChangeType = ProjectChangeType.PairUpdated,
+            AffectedPair = pair
+        });
+
         return true;
     }
 
@@ -700,6 +744,42 @@ public class ProjectService : IProjectService
 
         var project = _projects.FirstOrDefault(p => p.Id == projectId);
         return project != null && project.TradingPairs.Count < MaxPairsPerProject;
+    }
+
+    public async Task<bool> AddToActiveProjectAsync(ProjectTradingPair pair)
+    {
+        await EnsureLoadedAsync();
+        var activeProject = await GetActiveProjectAsync();
+        if (activeProject == null)
+        {
+            _logger?.LogWarning("ProjectService", "No active project found");
+            return false;
+        }
+
+        // Check for duplicate symbol in the same project
+        // ตรวจสอบว่ามีคู่เทรดซ้ำในโปรเจคเดียวกันหรือไม่
+        if (activeProject.TradingPairs.Any(p =>
+            p.Symbol == pair.Symbol &&
+            p.ExchangeA == pair.ExchangeA &&
+            p.ExchangeB == pair.ExchangeB))
+        {
+            _logger?.LogInfo("ProjectService", $"Pair {pair.Symbol} already exists in active project");
+            return true; // Already exists, not an error
+        }
+
+        return await AddTradingPairAsync(activeProject.Id, pair);
+    }
+
+    public async Task<bool> RemoveFromActiveProjectAsync(string pairId)
+    {
+        await EnsureLoadedAsync();
+        var activeProject = await GetActiveProjectAsync();
+        if (activeProject == null)
+        {
+            _logger?.LogWarning("ProjectService", "No active project found");
+            return false;
+        }
+        return await RemoveTradingPairAsync(activeProject.Id, pairId);
     }
 
     private class ProjectData

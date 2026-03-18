@@ -1,0 +1,1410 @@
+<UserControl x:Class="AutoTradeX.UI.Views.AITradingPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:AutoTradeX.UI.Controls">
+
+    <UserControl.Resources>
+        <!-- Glass Card Style -->
+        <Style x:Key="GlassCard" TargetType="Border">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#20FFFFFF" Offset="0"/>
+                        <GradientStop Color="#10FFFFFF" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush" Value="#30FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.3" Color="#000000"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Exchange Tab Style -->
+        <Style x:Key="ExchangeTabStyle" TargetType="Border">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="15,10"/>
+            <Setter Property="Margin" Value="4,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <!-- Selected Exchange Tab -->
+        <Style x:Key="SelectedExchangeTab" TargetType="Border" BasedOn="{StaticResource ExchangeTabStyle}">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#7C3AED" Offset="0"/>
+                        <GradientStop Color="#5B21B6" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="12" ShadowDepth="0" Opacity="0.5" Color="#7C3AED"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Strategy Card Style -->
+        <Style x:Key="StrategyCard" TargetType="Border">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <!-- Action Button Style -->
+        <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="20,12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" CornerRadius="10" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark TextBox Style -->
+        <Style x:Key="DarkTextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#30FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="CaretBrush" Value="#00D4FF"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="#7C3AED"/>
+                                <Setter TargetName="border" Property="Background" Value="#20FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Active Pair Tab Style -->
+        <Style x:Key="ActivePairTabStyle" TargetType="Border">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+            <Setter Property="CornerRadius" Value="8,8,0,0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="2,0"/>
+        </Style>
+
+        <!-- Selected Pair Tab -->
+        <Style x:Key="SelectedPairTab" TargetType="Border" BasedOn="{StaticResource ActivePairTabStyle}">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#7C3AED" Offset="0"/>
+                        <GradientStop Color="#6D28D9" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Premium ScrollBar Thumb Style -->
+        <Style x:Key="PremiumScrollBarThumb" TargetType="Thumb">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="thumb" CornerRadius="5" MinHeight="40" Width="8" HorizontalAlignment="Center">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#8B5CF6" Offset="0"/>
+                                    <GradientStop Color="#7C3AED" Offset="0.5"/>
+                                    <GradientStop Color="#6D28D9" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.6" Color="#7C3AED"/>
+                            </Border.Effect>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Premium ScrollBar Style -->
+        <Style x:Key="PremiumScrollBar" TargetType="ScrollBar">
+            <Setter Property="Width" Value="10"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid x:Name="Root" Width="10" Margin="2,4,6,4">
+                            <Border Background="#15FFFFFF" CornerRadius="5" Width="8" HorizontalAlignment="Center"/>
+                            <Track x:Name="PART_Track" IsDirectionReversed="True" Width="10">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageUpCommand">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Background="Transparent"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageDownCommand">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Background="Transparent"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource PremiumScrollBarThumb}" Width="8"/>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Premium ScrollViewer Style -->
+        <Style x:Key="PremiumScrollViewer" TargetType="ScrollViewer">
+            <Setter Property="CanContentScroll" Value="False"/>
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollViewer">
+                        <Grid Background="{TemplateBinding Background}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ScrollContentPresenter Grid.Column="0" CanContentScroll="False"
+                                                    Content="{TemplateBinding Content}"
+                                                    Margin="{TemplateBinding Padding}"/>
+                            <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1"
+                                       Orientation="Vertical" Style="{StaticResource PremiumScrollBar}"
+                                       Maximum="{TemplateBinding ScrollableHeight}"
+                                       Value="{TemplateBinding VerticalOffset}"
+                                       ViewportSize="{TemplateBinding ViewportHeight}"
+                                       Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Close Button Template for Pair Tabs -->
+        <ControlTemplate x:Key="CloseButtonTemplate" TargetType="Button">
+            <Border x:Name="border" Background="#30FFFFFF" CornerRadius="3" Padding="4,2" Cursor="Hand">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="border" Property="Background" Value="#50FFFFFF"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Bar - Demo Mode & Active Pairs Tabs -->
+        <Border Grid.Row="0" Background="#10FFFFFF" Padding="15,10" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Trading Mode Panel (Demo/Real) -->
+                <Border x:Name="TradingModePanel" Grid.Column="0" CornerRadius="12" Padding="15,10" VerticalAlignment="Center">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop x:Name="ModePanelColor1" Color="#20F59E0B" Offset="0"/>
+                            <GradientStop x:Name="ModePanelColor2" Color="#10F59E0B" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Mode Icon & Label -->
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="ModeIcon" Text="🎮" FontSize="24" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Border x:Name="DemoModeBadge" CornerRadius="6" Padding="10,4">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                <GradientStop Color="#F59E0B" Offset="0"/>
+                                                <GradientStop Color="#D97706" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <TextBlock x:Name="DemoModeText" Text="DEMO MODE" FontSize="12" FontWeight="Bold" Foreground="#0A0A1A"/>
+                                    </Border>
+                                </StackPanel>
+                                <TextBlock x:Name="ModeDescription" Text="ใช้เงินเสมือน - ปลอดภัย" FontSize="9" Foreground="#80FFFFFF" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Balance Display - Starting & Current -->
+                        <Border Grid.Column="1" Background="#10FFFFFF" CornerRadius="10" Padding="15,8" Margin="15,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Starting Balance -->
+                                <StackPanel Grid.Column="0" Margin="0,0,15,0">
+                                    <TextBlock x:Name="BalanceLabelStart" Text="💰 เริ่มต้น:" FontSize="9" Foreground="#80FFFFFF"/>
+                                    <TextBlock x:Name="StartingBalance" Text="$10,000.00" FontSize="14" FontWeight="SemiBold" Foreground="#A78BFA"
+                                               ToolTip="ยอดเงินตอนเริ่มต้น Session"/>
+                                </StackPanel>
+
+                                <!-- Arrow / Separator -->
+                                <TextBlock Grid.Column="1" Text="→" FontSize="16" Foreground="#40FFFFFF" VerticalAlignment="Center" Margin="0,0,15,0"/>
+
+                                <!-- Current Balance -->
+                                <StackPanel Grid.Column="2" Margin="0,0,15,0">
+                                    <TextBlock x:Name="BalanceLabel" Text="📊 ปัจจุบัน:" FontSize="9" Foreground="#80FFFFFF"/>
+                                    <TextBlock x:Name="DemoWalletBalance" Text="$10,000.00" FontSize="16" FontWeight="Bold" Foreground="White"
+                                               ToolTip="ยอดเงินปัจจุบัน"/>
+                                </StackPanel>
+
+                                <!-- Profit/Loss Indicator -->
+                                <Border Grid.Column="3" x:Name="PnLBadge" CornerRadius="6" Padding="8,4" VerticalAlignment="Center"
+                                        Background="#2010B981">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PnLIcon" Text="📈" FontSize="10" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="PnLText" Text="+$0.00" FontSize="11" FontWeight="Bold" Foreground="#10B981"/>
+                                        <TextBlock x:Name="PnLPercent" Text=" (0.00%)" FontSize="9" Foreground="#10B981" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- Toggle Switch -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="DEMO" FontSize="10" Foreground="#F59E0B" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Border x:Name="DemoRealToggle" Width="50" Height="26" CornerRadius="13"
+                                    Background="#30FFFFFF" Cursor="Hand"
+                                    MouseLeftButtonDown="ToggleDemoMode_Click" ToolTip="สลับระหว่าง Demo และ Real Mode">
+                                <Ellipse x:Name="DemoRealToggleKnob" Width="20" Height="20" Fill="White"
+                                         HorizontalAlignment="Left" Margin="3,0,0,0"
+                                         IsHitTestVisible="False">
+                                    <Ellipse.Effect>
+                                        <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.3"/>
+                                    </Ellipse.Effect>
+                                </Ellipse>
+                            </Border>
+                            <TextBlock Text="REAL" FontSize="10" Foreground="#60FFFFFF" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Real Mode Warning Banner (Hidden by default) - IsHitTestVisible=False so it doesn't block clicks -->
+                <Border x:Name="RealModeWarning" Grid.Column="0" Grid.ColumnSpan="3" Background="#30EF4444" CornerRadius="8"
+                        Padding="10,6" Margin="0,5,0,0" Visibility="Collapsed" VerticalAlignment="Bottom"
+                        IsHitTestVisible="False">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBlock Text="⚠️" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="REAL MODE - ใช้เงินจริง!" FontSize="11" FontWeight="Bold" Foreground="#EF4444" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="RealBalanceText" Text="" FontSize="10" Foreground="#F87171" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Active Pairs Tabs (max 10) - with overflow control -->
+                <Border Grid.Column="1" Background="#08FFFFFF" CornerRadius="8" Margin="10,0" Padding="5" ClipToBounds="True">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                                  Style="{StaticResource PremiumScrollViewer}">
+                        <StackPanel x:Name="ActivePairsTabs" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Dynamic tabs will be added in code-behind -->
+
+                            <!-- Add New Pair Button -->
+                            <Border x:Name="AddPairButton" Background="#15FFFFFF" CornerRadius="8" Padding="10,6" Margin="4,0,0,0"
+                                    Cursor="Hand" MouseLeftButtonDown="AddPair_Click" ToolTip="Add trading pair (max 10)">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="+" FontSize="14" FontWeight="Bold" Foreground="#7C3AED" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="PairCount" Text="1/10" FontSize="10" Foreground="#60FFFFFF" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Scan Pairs Button -->
+                <Button Grid.Column="2" Padding="15,10" Style="{StaticResource ActionButton}" Click="ScanPairs_Click">
+                    <Button.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#7C3AED" Offset="0"/>
+                            <GradientStop Color="#5B21B6" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Button.Background>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🔍" FontSize="14" Margin="0,0,6,0"/>
+                        <TextBlock Text="SCAN PAIRS" FontSize="11" FontWeight="Bold"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Main Content Area - Responsive Grid -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" MinWidth="280" MaxWidth="350"/>
+                <ColumnDefinition Width="*" MinWidth="400"/>
+                <ColumnDefinition Width="Auto" MinWidth="280" MaxWidth="380"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Panel - Exchange Selection & Strategy -->
+            <ScrollViewer Style="{StaticResource PremiumScrollViewer}" Grid.Column="0" Margin="0,0,10,0" MaxWidth="350">
+                <StackPanel>
+                    <!-- Exchange Tabs -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,15">
+                        <StackPanel>
+                            <TextBlock Text="SELECT EXCHANGE / เลือกกระดาน" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,15"/>
+
+                            <WrapPanel x:Name="ExchangeTabs">
+                                <!-- Binance -->
+                                <Border x:Name="BinanceTab" Style="{StaticResource SelectedExchangeTab}"
+                                        MouseLeftButtonDown="ExchangeTab_Click" Tag="Binance">
+                                    <StackPanel Orientation="Horizontal">
+                                        <controls:ExchangeIcon ExchangeName="Binance" Size="24" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Binance" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- KuCoin -->
+                                <Border x:Name="KuCoinTab" Style="{StaticResource ExchangeTabStyle}"
+                                        MouseLeftButtonDown="ExchangeTab_Click" Tag="KuCoin">
+                                    <StackPanel Orientation="Horizontal">
+                                        <controls:ExchangeIcon ExchangeName="KuCoin" Size="24" Margin="0,0,8,0"/>
+                                        <TextBlock Text="KuCoin" FontWeight="SemiBold" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- OKX -->
+                                <Border x:Name="OKXTab" Style="{StaticResource ExchangeTabStyle}"
+                                        MouseLeftButtonDown="ExchangeTab_Click" Tag="OKX">
+                                    <StackPanel Orientation="Horizontal">
+                                        <controls:ExchangeIcon ExchangeName="OKX" Size="24" Margin="0,0,8,0"/>
+                                        <TextBlock Text="OKX" FontWeight="SemiBold" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Bybit -->
+                                <Border x:Name="BybitTab" Style="{StaticResource ExchangeTabStyle}"
+                                        MouseLeftButtonDown="ExchangeTab_Click" Tag="Bybit">
+                                    <StackPanel Orientation="Horizontal">
+                                        <controls:ExchangeIcon ExchangeName="Bybit" Size="24" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Bybit" FontWeight="SemiBold" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Gate.io -->
+                                <Border x:Name="GateIOTab" Style="{StaticResource ExchangeTabStyle}"
+                                        MouseLeftButtonDown="ExchangeTab_Click" Tag="Gate.io">
+                                    <StackPanel Orientation="Horizontal">
+                                        <controls:ExchangeIcon ExchangeName="Gate.io" Size="24" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Gate.io" FontWeight="SemiBold" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Bitkub -->
+                                <Border x:Name="BitkubTab" Style="{StaticResource ExchangeTabStyle}"
+                                        MouseLeftButtonDown="ExchangeTab_Click" Tag="Bitkub">
+                                    <StackPanel Orientation="Horizontal">
+                                        <controls:ExchangeIcon ExchangeName="Bitkub" Size="24" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Bitkub" FontWeight="SemiBold" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                            </WrapPanel>
+
+                            <!-- Connection Status -->
+                            <Border Background="#10FFFFFF" CornerRadius="8" Padding="10" Margin="0,15,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="ConnectionDot" Width="8" Height="8" Fill="#10B981" Margin="0,0,8,0"/>
+                                    <TextBlock x:Name="ConnectionStatus" Text="Connected / เชื่อมต่อแล้ว" FontSize="11" Foreground="#10B981"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Trading Pair Selection -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,15">
+                        <StackPanel>
+                            <TextBlock Text="TRADING PAIR / คู่เทรด" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox x:Name="SymbolSearch" Style="{StaticResource DarkTextBox}"
+                                         Text="BTC/USDT" FontSize="16" FontWeight="Bold"
+                                         TextChanged="SymbolSearch_TextChanged"/>
+
+                                <Button Grid.Column="1" Content="Search" Margin="8,0,0,0"
+                                        Style="{StaticResource ActionButton}" Click="SearchSymbol_Click">
+                                    <Button.Background>
+                                        <SolidColorBrush Color="#7C3AED"/>
+                                    </Button.Background>
+                                </Button>
+                            </Grid>
+
+                            <!-- Quick Pairs -->
+                            <TextBlock Text="Quick Select:" FontSize="10" Foreground="#50FFFFFF" Margin="0,12,0,5"/>
+                            <WrapPanel>
+                                <Button Content="BTC/USDT" Padding="10,5" Margin="0,0,5,5" FontSize="11"
+                                        Style="{StaticResource ActionButton}" Click="QuickPair_Click" Tag="BTC/USDT">
+                                    <Button.Background><SolidColorBrush Color="#20FFFFFF"/></Button.Background>
+                                </Button>
+                                <Button Content="ETH/USDT" Padding="10,5" Margin="0,0,5,5" FontSize="11"
+                                        Style="{StaticResource ActionButton}" Click="QuickPair_Click" Tag="ETH/USDT">
+                                    <Button.Background><SolidColorBrush Color="#20FFFFFF"/></Button.Background>
+                                </Button>
+                                <Button Content="SOL/USDT" Padding="10,5" Margin="0,0,5,5" FontSize="11"
+                                        Style="{StaticResource ActionButton}" Click="QuickPair_Click" Tag="SOL/USDT">
+                                    <Button.Background><SolidColorBrush Color="#20FFFFFF"/></Button.Background>
+                                </Button>
+                                <Button Content="XRP/USDT" Padding="10,5" Margin="0,0,5,5" FontSize="11"
+                                        Style="{StaticResource ActionButton}" Click="QuickPair_Click" Tag="XRP/USDT">
+                                    <Button.Background><SolidColorBrush Color="#20FFFFFF"/></Button.Background>
+                                </Button>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- AI Strategy Selection -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,15">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,10">
+                                <TextBlock Text="AI STRATEGY / กลยุทธ์ AI" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF"/>
+                                <Border Background="#207C3AED" CornerRadius="4" Padding="6,2" HorizontalAlignment="Right">
+                                    <TextBlock Text="SMART" FontSize="9" FontWeight="Bold" Foreground="#7C3AED"/>
+                                </Border>
+                            </Grid>
+
+                            <!-- Auto Strategy Toggle -->
+                            <Border x:Name="AutoStrategyPanel" Background="#1510B981" CornerRadius="10" Padding="12,10" Margin="0,0,0,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <TextBlock Text="🤖" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="AUTO STRATEGY" FontSize="11" FontWeight="Bold" Foreground="#10B981" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="AutoStrategyDescription" Text="AI จะเลือกกลยุทธ์ตามสภาพตลาด"
+                                                   FontSize="9" Foreground="#80FFFFFF" TextWrapping="Wrap"/>
+                                    </StackPanel>
+
+                                    <!-- Toggle Switch -->
+                                    <Border Grid.Column="1" x:Name="AutoStrategyToggle" Width="44" Height="24" CornerRadius="12"
+                                            Background="#30FFFFFF" Cursor="Hand" Margin="10,0,0,0"
+                                            MouseLeftButtonDown="AutoStrategyToggle_Click">
+                                        <Ellipse x:Name="AutoStrategyToggleKnob" Width="18" Height="18" Fill="White"
+                                                 HorizontalAlignment="Left" Margin="3,0,0,0">
+                                            <Ellipse.Effect>
+                                                <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.3"/>
+                                            </Ellipse.Effect>
+                                        </Ellipse>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <!-- Recommended Strategy (shown when Auto is ON) -->
+                            <Border x:Name="RecommendedStrategyPanel" Background="#15F59E0B" CornerRadius="8" Padding="10" Margin="0,0,0,10" Visibility="Collapsed">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="💡" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="แนะนำ:" FontSize="9" Foreground="#F59E0B"/>
+                                        <TextBlock x:Name="RecommendedStrategyText" Text="Scalping - ตลาด Sideway, Volume ปานกลาง"
+                                                   FontSize="10" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Scalping -->
+                            <Border x:Name="ScalpingStrategy" Style="{StaticResource StrategyCard}" Margin="0,0,0,8"
+                                    MouseLeftButtonDown="Strategy_Click" Tag="Scalping">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#207C3AED" Offset="0"/>
+                                        <GradientStop Color="#107C3AED" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="⚡" FontSize="24" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Scalping / สกัลปิง" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
+                                        <TextBlock Text="Quick trades, small profits" FontSize="10" Foreground="#80FFFFFF"/>
+                                    </StackPanel>
+                                    <Ellipse Grid.Column="2" x:Name="ScalpingCheck" Width="20" Height="20" Fill="#7C3AED"/>
+                                </Grid>
+                            </Border>
+
+                            <!-- Momentum -->
+                            <Border x:Name="MomentumStrategy" Style="{StaticResource StrategyCard}" Margin="0,0,0,8"
+                                    MouseLeftButtonDown="Strategy_Click" Tag="Momentum">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="📈" FontSize="24" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Momentum / โมเมนตัม" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
+                                        <TextBlock Text="Follow the trend" FontSize="10" Foreground="#80FFFFFF"/>
+                                    </StackPanel>
+                                    <Ellipse Grid.Column="2" x:Name="MomentumCheck" Width="20" Height="20" Stroke="#40FFFFFF" StrokeThickness="2"/>
+                                </Grid>
+                            </Border>
+
+                            <!-- Mean Reversion -->
+                            <Border x:Name="MeanReversionStrategy" Style="{StaticResource StrategyCard}" Margin="0,0,0,8"
+                                    MouseLeftButtonDown="Strategy_Click" Tag="MeanReversion">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="🔄" FontSize="24" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Mean Reversion / คืนค่าเฉลี่ย" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
+                                        <TextBlock Text="Buy oversold, sell overbought" FontSize="10" Foreground="#80FFFFFF"/>
+                                    </StackPanel>
+                                    <Ellipse Grid.Column="2" x:Name="MeanReversionCheck" Width="20" Height="20" Stroke="#40FFFFFF" StrokeThickness="2"/>
+                                </Grid>
+                            </Border>
+
+                            <!-- Grid Trading -->
+                            <Border x:Name="GridStrategy" Style="{StaticResource StrategyCard}" Margin="0,0,0,8"
+                                    MouseLeftButtonDown="Strategy_Click" Tag="GridTrading">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="📊" FontSize="24" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Grid Trading / กริด" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
+                                        <TextBlock Text="Auto buy/sell at intervals" FontSize="10" Foreground="#80FFFFFF"/>
+                                    </StackPanel>
+                                    <Ellipse Grid.Column="2" x:Name="GridCheck" Width="20" Height="20" Stroke="#40FFFFFF" StrokeThickness="2"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Trade Settings -->
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel>
+                            <TextBlock Text="TRADE SETTINGS / ตั้งค่าเทรด" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,15"/>
+
+                            <!-- Trade Amount -->
+                            <TextBlock Text="Trade Amount (USDT)" FontSize="10" Foreground="#80FFFFFF" Margin="0,0,0,5"/>
+                            <TextBox x:Name="TradeAmount" Style="{StaticResource DarkTextBox}" Text="100"/>
+
+                            <!-- Take Profit -->
+                            <TextBlock Text="Take Profit %" FontSize="10" Foreground="#80FFFFFF" Margin="0,12,0,5"/>
+                            <Grid>
+                                <TextBox x:Name="TakeProfit" Style="{StaticResource DarkTextBox}" Text="1.0"/>
+                                <TextBlock Text="%" FontSize="12" Foreground="#50FFFFFF" HorizontalAlignment="Right"
+                                           VerticalAlignment="Center" Margin="0,0,15,0"/>
+                            </Grid>
+
+                            <!-- Stop Loss -->
+                            <TextBlock Text="Stop Loss %" FontSize="10" Foreground="#80FFFFFF" Margin="0,12,0,5"/>
+                            <Grid>
+                                <TextBox x:Name="StopLoss" Style="{StaticResource DarkTextBox}" Text="0.5"/>
+                                <TextBlock Text="%" FontSize="12" Foreground="#50FFFFFF" HorizontalAlignment="Right"
+                                           VerticalAlignment="Center" Margin="0,0,15,0"/>
+                            </Grid>
+
+                            <!-- Max Trades Per Hour -->
+                            <TextBlock Text="Max Trades/Hour" FontSize="10" Foreground="#80FFFFFF" Margin="0,12,0,5"/>
+                            <TextBox x:Name="MaxTradesPerHour" Style="{StaticResource DarkTextBox}" Text="10"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Center Panel - Chart & AI Signal -->
+            <Grid Grid.Column="1" Margin="10,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Current Price Header -->
+                <Border Grid.Row="0" Style="{StaticResource GlassCard}" Margin="0,0,0,15">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Orientation="Horizontal">
+                            <controls:CoinIcon x:Name="CurrentCoinIcon" Symbol="BTC" Size="48" Margin="0,0,15,0"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="CurrentSymbol" Text="BTC/USDT" FontSize="24" FontWeight="Bold" Foreground="White"/>
+                                    <Border x:Name="ExchangeBadge" Background="#20F3BA2F" CornerRadius="6" Padding="8,3" Margin="12,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="CurrentExchange" Text="BINANCE" FontSize="10" FontWeight="Bold" Foreground="#F3BA2F"/>
+                                    </Border>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="CurrentPrice" Text="$0.00" FontSize="18" FontWeight="SemiBold" Foreground="White"/>
+                                    <TextBlock x:Name="PriceChange" Text="+0.00%" FontSize="14" Foreground="#10B981" Margin="10,0,0,0" VerticalAlignment="Bottom"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Volume & Stats -->
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="24h Vol:" FontSize="11" Foreground="#60FFFFFF" Margin="0,0,5,0"/>
+                                <TextBlock x:Name="Volume24h" Text="$0" FontSize="11" Foreground="White"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                <TextBlock Text="High:" FontSize="10" Foreground="#10B981" Margin="0,0,5,0"/>
+                                <TextBlock x:Name="High24h" Text="$0" FontSize="10" Foreground="#10B981"/>
+                                <TextBlock Text=" | Low:" FontSize="10" Foreground="#EF4444" Margin="5,0,5,0"/>
+                                <TextBlock x:Name="Low24h" Text="$0" FontSize="10" Foreground="#EF4444"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Chart Controls (Outside Chart) -->
+                <Border Grid.Row="1" Background="#10FFFFFF" CornerRadius="10" Padding="12,8" Margin="0,0,0,10">
+                    <Grid>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⏱️" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="INTERVAL" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <Button x:Name="Chart1m" Content="1m" Padding="12,6" FontSize="11" Margin="3,0"
+                                    Style="{StaticResource ActionButton}" Click="ChartInterval_Click" Tag="1m">
+                                <Button.Background><SolidColorBrush Color="#7C3AED"/></Button.Background>
+                            </Button>
+                            <Button x:Name="Chart5m" Content="5m" Padding="12,6" FontSize="11" Margin="3,0"
+                                    Style="{StaticResource ActionButton}" Click="ChartInterval_Click" Tag="5m">
+                                <Button.Background><SolidColorBrush Color="#20FFFFFF"/></Button.Background>
+                            </Button>
+                            <Button x:Name="Chart15m" Content="15m" Padding="12,6" FontSize="11" Margin="3,0"
+                                    Style="{StaticResource ActionButton}" Click="ChartInterval_Click" Tag="15m">
+                                <Button.Background><SolidColorBrush Color="#20FFFFFF"/></Button.Background>
+                            </Button>
+                            <Button x:Name="Chart1h" Content="1h" Padding="12,6" FontSize="11" Margin="3,0"
+                                    Style="{StaticResource ActionButton}" Click="ChartInterval_Click" Tag="1h">
+                                <Button.Background><SolidColorBrush Color="#20FFFFFF"/></Button.Background>
+                            </Button>
+                            <Button x:Name="Chart4h" Content="4h" Padding="12,6" FontSize="11" Margin="3,0"
+                                    Style="{StaticResource ActionButton}" Click="ChartInterval_Click" Tag="4h">
+                                <Button.Background><SolidColorBrush Color="#20FFFFFF"/></Button.Background>
+                            </Button>
+                            <Button x:Name="Chart1d" Content="1D" Padding="12,6" FontSize="11" Margin="3,0"
+                                    Style="{StaticResource ActionButton}" Click="ChartInterval_Click" Tag="1d">
+                                <Button.Background><SolidColorBrush Color="#20FFFFFF"/></Button.Background>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- AI Overlay Toggle -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock Text="AI Markers" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Border x:Name="AIOverlayToggle" Background="#207C3AED" CornerRadius="12"
+                                    Padding="8,4" Cursor="Hand" MouseLeftButtonDown="AIOverlayToggle_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="AIOverlayDot" Width="8" Height="8" Fill="#7C3AED" Margin="0,0,6,0"/>
+                                    <TextBlock x:Name="AIOverlayText" Text="ON" FontSize="10" FontWeight="Bold" Foreground="#7C3AED"/>
+                                </StackPanel>
+                            </Border>
+                            <Button x:Name="MockTradesBtn" Content="🎯 Demo" Padding="10,4" FontSize="10" Margin="10,0,0,0"
+                                    Style="{StaticResource ActionButton}" Click="MockTrades_Click" ToolTip="แสดงตัวอย่างจุดซื้อขาย AI">
+                                <Button.Background><SolidColorBrush Color="#20F59E0B"/></Button.Background>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Chart Area (Clean TradingView) -->
+                <Border Grid.Row="2" Style="{StaticResource GlassCard}" Padding="0">
+                    <controls:TradingViewWidget x:Name="TradingViewChart" MinHeight="380"/>
+                </Border>
+
+                <!-- AI Control Panel - Premium Responsive Design -->
+                <Border Grid.Row="3" Style="{StaticResource GlassCard}" Margin="0,15,0,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Top Row: Header with Status & Timer -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🤖 AI CONTROL PANEL" FontSize="13" FontWeight="Bold" Foreground="#A78BFA" VerticalAlignment="Center"/>
+                                <Border x:Name="AIStatusBadge" Background="#2010B981" CornerRadius="6" Padding="10,4" Margin="15,0,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse x:Name="AIStatusDot" Width="8" Height="8" Fill="#10B981" Margin="0,0,8,0"/>
+                                        <TextBlock x:Name="AIStatus" Text="READY" FontSize="10" FontWeight="Bold" Foreground="#10B981"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Session Timer (visible when AI running) -->
+                            <StackPanel x:Name="SessionTimerPanel" Grid.Column="1" Orientation="Horizontal" Visibility="Collapsed">
+                                <Border Background="#20F59E0B" CornerRadius="8" Padding="12,6">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="⏱️" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock x:Name="SessionTimer" Text="00:00:00" FontSize="16" FontWeight="Bold" Foreground="#F59E0B"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Main Content: Responsive WrapPanel -->
+                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" MaxHeight="220">
+                            <WrapPanel Orientation="Horizontal">
+
+                                <!-- Section 0: Market Analysis -->
+                                <Border Background="#10FFFFFF" CornerRadius="12" Padding="15" Margin="0,0,10,10" MinWidth="260">
+                                    <StackPanel>
+                                        <TextBlock Text="📈 MARKET ANALYSIS / วิเคราะห์ตลาด" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>
+
+                                        <!-- Market Condition -->
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="สภาพตลาด:" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                            <Border x:Name="MarketConditionBadge" Grid.Column="1" Background="#2010B981" CornerRadius="6" Padding="8,3">
+                                                <TextBlock x:Name="MarketConditionText" Text="TRENDING UP" FontSize="9" FontWeight="Bold" Foreground="#10B981"/>
+                                            </Border>
+                                        </Grid>
+
+                                        <!-- Volatility -->
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Volatility:" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                <TextBlock x:Name="VolatilityText" Text="2.5%" FontSize="11" FontWeight="SemiBold" Foreground="#F59E0B"/>
+                                                <TextBlock x:Name="VolatilityLevel" Text=" (ปานกลาง)" FontSize="9" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Volume 24h -->
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Volume 24h:" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="Volume24hText" Grid.Column="1" Text="$1.2B" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                        </Grid>
+
+                                        <!-- RSI -->
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="RSI (14):" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="RSIText" Grid.Column="1" Text="55.2" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                        </Grid>
+
+                                        <!-- Trend -->
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Trend:" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                <TextBlock x:Name="TrendIcon" Text="📈" FontSize="10" Margin="0,0,4,0"/>
+                                                <TextBlock x:Name="TrendText" Text="BULLISH" FontSize="10" FontWeight="SemiBold" Foreground="#10B981"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Recommended Strategy -->
+                                        <Border Background="#157C3AED" CornerRadius="8" Padding="10" Margin="0,10,0,0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="💡" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="กลยุทธ์แนะนำ:" FontSize="9" Foreground="#A78BFA"/>
+                                                    <TextBlock x:Name="RecommendedStrategyName" Text="⚡ Momentum" FontSize="12" FontWeight="Bold" Foreground="White"/>
+                                                    <TextBlock x:Name="RecommendedStrategyReason" Text="เหมาะสำหรับตลาดที่มีเทรนด์ชัด"
+                                                               FontSize="9" Foreground="#80FFFFFF" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Trading Fee Info -->
+                                        <Border Background="#15F59E0B" CornerRadius="8" Padding="10" Margin="0,8,0,0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="💰" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="Trading Fee:" FontSize="9" Foreground="#F59E0B"/>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock x:Name="TradingFeeText" Text="0.25%" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                                        <TextBlock x:Name="TradingFeeExchange" Text=" (Bitkub)" FontSize="9" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                    <TextBlock x:Name="MinTradeText" Text="ขั้นต่ำแนะนำ: ฿2,000" FontSize="9" Foreground="#80FFFFFF"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Section 1: AI Signal -->
+                                <Border Background="#10FFFFFF" CornerRadius="12" Padding="15" Margin="0,0,10,10" MinWidth="280" MaxWidth="350">
+                                    <StackPanel>
+                                        <TextBlock Text="📊 AI SIGNAL" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>
+
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Signal Type Icon -->
+                                            <Border x:Name="SignalTypeBox" Width="60" Height="60" CornerRadius="12" Margin="0,0,12,0">
+                                                <Border.Background>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                        <GradientStop Color="#10B981" Offset="0"/>
+                                                        <GradientStop Color="#059669" Offset="1"/>
+                                                    </LinearGradientBrush>
+                                                </Border.Background>
+                                                <Border.Effect>
+                                                    <DropShadowEffect x:Name="SignalGlow" BlurRadius="12" ShadowDepth="0" Opacity="0.5" Color="#10B981"/>
+                                                </Border.Effect>
+                                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                    <TextBlock x:Name="SignalIcon" Text="📈" FontSize="22" HorizontalAlignment="Center"/>
+                                                    <TextBlock x:Name="SignalTypeText" Text="BUY" FontSize="10" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Signal Details -->
+                                            <StackPanel Grid.Column="1">
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                                    <TextBlock Text="Confidence:" FontSize="10" Foreground="#80FFFFFF" Margin="0,0,6,0"/>
+                                                    <TextBlock x:Name="SignalConfidence" Text="85%" FontSize="14" FontWeight="Bold" Foreground="#10B981"/>
+                                                </StackPanel>
+
+                                                <!-- Confidence Bar -->
+                                                <Border Background="#15FFFFFF" CornerRadius="4" Height="8" Margin="0,0,0,8">
+                                                    <Border x:Name="ConfidenceBar" Background="#10B981" CornerRadius="4" HorizontalAlignment="Left" Width="120">
+                                                        <Border.Effect>
+                                                            <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.5" Color="#10B981"/>
+                                                        </Border.Effect>
+                                                    </Border>
+                                                </Border>
+
+                                                <!-- Entry/Target/SL inline -->
+                                                <WrapPanel>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                                        <TextBlock Text="Entry:" FontSize="9" Foreground="#60FFFFFF" Margin="0,0,4,0"/>
+                                                        <TextBlock x:Name="SignalEntry" Text="$0.00" FontSize="10" Foreground="White" FontWeight="SemiBold"/>
+                                                    </StackPanel>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                                        <TextBlock Text="🎯" FontSize="9" Margin="0,0,2,0"/>
+                                                        <TextBlock x:Name="SignalTarget" Text="$0.00" FontSize="10" Foreground="#10B981" FontWeight="SemiBold"/>
+                                                    </StackPanel>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="🛑" FontSize="9" Margin="0,0,2,0"/>
+                                                        <TextBlock x:Name="SignalStopLoss" Text="$0.00" FontSize="10" Foreground="#EF4444" FontWeight="SemiBold"/>
+                                                    </StackPanel>
+                                                </WrapPanel>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- AI Reasoning -->
+                                        <TextBlock x:Name="AIReasoning" Text="RSI oversold, MACD bullish crossover..."
+                                                   FontSize="9" Foreground="#60FFFFFF" TextWrapping="Wrap" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" MaxHeight="32"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Section 2: AI Settings -->
+                                <Border Background="#10FFFFFF" CornerRadius="12" Padding="15" Margin="0,0,10,10" MinWidth="220">
+                                    <StackPanel>
+                                        <TextBlock Text="⚙️ AI SETTINGS" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>
+
+                                        <!-- Compact Settings Grid -->
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="⏰ เวลาเทรด" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                            <ComboBox x:Name="TradeDurationCombo" Grid.Column="1" SelectedIndex="2" Width="85" FontSize="9" Background="#20FFFFFF">
+                                                <ComboBoxItem Content="30 นาที"/>
+                                                <ComboBoxItem Content="1 ชั่วโมง"/>
+                                                <ComboBoxItem Content="2 ชั่วโมง"/>
+                                                <ComboBoxItem Content="4 ชั่วโมง"/>
+                                                <ComboBoxItem Content="8 ชั่วโมง"/>
+                                                <ComboBoxItem Content="ไม่จำกัด"/>
+                                            </ComboBox>
+                                        </Grid>
+
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="🎯 กำไรเป้าหมาย" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                            <StackPanel Orientation="Horizontal" Grid.Column="1">
+                                                <TextBox x:Name="ProfitTargetInput" Text="5" Width="35" FontSize="10"
+                                                         Background="#20FFFFFF" BorderThickness="0" Foreground="White"
+                                                         TextAlignment="Center" VerticalContentAlignment="Center" Padding="3"/>
+                                                <TextBlock Text="%" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center" Margin="3,0,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="🛑 หยุดขาดทุน" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                            <StackPanel Orientation="Horizontal" Grid.Column="1">
+                                                <TextBox x:Name="MaxLossInput" Text="3" Width="35" FontSize="10"
+                                                         Background="#20FFFFFF" BorderThickness="0" Foreground="White"
+                                                         TextAlignment="Center" VerticalContentAlignment="Center" Padding="3"/>
+                                                <TextBlock Text="%" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center" Margin="3,0,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="📊 เทรด/ชม." FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                            <ComboBox x:Name="MaxTradesCombo" Grid.Column="1" SelectedIndex="1" Width="55" FontSize="9" Background="#20FFFFFF">
+                                                <ComboBoxItem Content="5"/>
+                                                <ComboBoxItem Content="10"/>
+                                                <ComboBoxItem Content="20"/>
+                                                <ComboBoxItem Content="∞"/>
+                                            </ComboBox>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Section 3: Trade Actions -->
+                                <Border Background="#15FFFFFF" CornerRadius="12" Padding="15" Margin="0,0,0,10" MinWidth="180">
+                                    <StackPanel>
+                                        <TextBlock Text="⚡ TRADE ACTIONS" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>
+
+                                        <!-- AI Toggle Button - Premium -->
+                                        <Button x:Name="AITradeToggle" Padding="16,14" FontSize="13" FontWeight="Bold"
+                                                Style="{StaticResource ActionButton}" Click="AITradeToggle_Click" Margin="0,0,0,10">
+                                            <Button.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <GradientStop Color="#7C3AED" Offset="0"/>
+                                                    <GradientStop Color="#5B21B6" Offset="1"/>
+                                                </LinearGradientBrush>
+                                            </Button.Background>
+                                            <Button.Effect>
+                                                <DropShadowEffect BlurRadius="12" ShadowDepth="0" Opacity="0.5" Color="#7C3AED"/>
+                                            </Button.Effect>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock x:Name="AIToggleIcon" Text="▶" FontSize="11" Margin="0,0,8,0"/>
+                                                <TextBlock x:Name="AIToggleText" Text="START AI"/>
+                                            </StackPanel>
+                                        </Button>
+
+                                        <!-- Running Indicator -->
+                                        <Border x:Name="AIRunningIndicator" Visibility="Collapsed" Background="#1510B981"
+                                                CornerRadius="8" Padding="10,6" Margin="0,0,0,10">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                <Ellipse x:Name="PulseIndicator" Width="8" Height="8" Fill="#10B981" Margin="0,0,8,0">
+                                                    <Ellipse.Triggers>
+                                                        <EventTrigger RoutedEvent="Loaded">
+                                                            <BeginStoryboard>
+                                                                <Storyboard RepeatBehavior="Forever">
+                                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                     From="1" To="0.3" Duration="0:0:0.8"
+                                                                                     AutoReverse="True"/>
+                                                                </Storyboard>
+                                                            </BeginStoryboard>
+                                                        </EventTrigger>
+                                                    </Ellipse.Triggers>
+                                                </Ellipse>
+                                                <TextBlock x:Name="AIRunningText" Text="AI กำลังทำงาน..." FontSize="9" Foreground="#10B981" FontWeight="SemiBold"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Manual Trade Buttons -->
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Button x:Name="ManualBuyBtn" Content="▲ BUY" Padding="6,8" FontSize="10" FontWeight="Bold"
+                                                    Style="{StaticResource ActionButton}" Click="ManualBuy_Click" Margin="0,0,3,0">
+                                                <Button.Background>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                        <GradientStop Color="#10B981" Offset="0"/>
+                                                        <GradientStop Color="#059669" Offset="1"/>
+                                                    </LinearGradientBrush>
+                                                </Button.Background>
+                                            </Button>
+                                            <Button x:Name="ManualSellBtn" Grid.Column="1" Content="▼ SELL" Padding="6,8" FontSize="10" FontWeight="Bold"
+                                                    Style="{StaticResource ActionButton}" Click="ManualSell_Click" Margin="3,0,0,0">
+                                                <Button.Background>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                        <GradientStop Color="#EF4444" Offset="0"/>
+                                                        <GradientStop Color="#DC2626" Offset="1"/>
+                                                    </LinearGradientBrush>
+                                                </Button.Background>
+                                            </Button>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                            </WrapPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Right Panel - Position & Stats -->
+            <ScrollViewer Style="{StaticResource PremiumScrollViewer}" Grid.Column="2" Margin="10,0,0,0" MaxWidth="380">
+                <StackPanel>
+                    <!-- Current Position -->
+                    <Border x:Name="PositionCard" Style="{StaticResource GlassCard}" Margin="0,0,0,15">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,12">
+                                <TextBlock Text="CURRENT POSITION / Position ปัจจุบัน" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF"/>
+                                <Border x:Name="PositionStatusBadge" Background="#20F59E0B" CornerRadius="4" Padding="6,2" HorizontalAlignment="Right">
+                                    <TextBlock x:Name="PositionStatusText" Text="NO POSITION" FontSize="9" FontWeight="Bold" Foreground="#F59E0B"/>
+                                </Border>
+                            </Grid>
+
+                            <!-- Position Info (hidden when no position) -->
+                            <StackPanel x:Name="PositionInfo" Visibility="Collapsed">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Entry Price" FontSize="9" Foreground="#60FFFFFF"/>
+                                        <TextBlock x:Name="PositionEntryPrice" Text="$0.00" FontSize="14" FontWeight="SemiBold" Foreground="White"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Current Price" FontSize="9" Foreground="#60FFFFFF"/>
+                                        <TextBlock x:Name="PositionCurrentPrice" Text="$0.00" FontSize="14" FontWeight="SemiBold" Foreground="White"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Size" FontSize="9" Foreground="#60FFFFFF"/>
+                                        <TextBlock x:Name="PositionSize" Text="0" FontSize="14" FontWeight="SemiBold" Foreground="White"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Value" FontSize="9" Foreground="#60FFFFFF"/>
+                                        <TextBlock x:Name="PositionValue" Text="$0.00" FontSize="14" FontWeight="SemiBold" Foreground="White"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Unrealized PnL -->
+                                <Border Background="#15FFFFFF" CornerRadius="10" Padding="12">
+                                    <Grid>
+                                        <StackPanel>
+                                            <TextBlock Text="Unrealized P&amp;L" FontSize="10" Foreground="#60FFFFFF"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock x:Name="PositionPnL" Text="+$0.00" FontSize="20" FontWeight="Bold" Foreground="#10B981"/>
+                                                <TextBlock x:Name="PositionPnLPercent" Text=" (+0.00%)" FontSize="14" Foreground="#10B981" VerticalAlignment="Bottom"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Button x:Name="ClosePositionBtn" Content="CLOSE" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Padding="15,8" FontSize="11" Style="{StaticResource ActionButton}" Click="ClosePosition_Click">
+                                            <Button.Background><SolidColorBrush Color="#EF4444"/></Button.Background>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Take Profit / Stop Loss Levels -->
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Background="#1510B981" CornerRadius="6" Padding="8">
+                                        <StackPanel>
+                                            <TextBlock Text="Take Profit" FontSize="9" Foreground="#10B981"/>
+                                            <TextBlock x:Name="PositionTP" Text="$0.00" FontSize="12" FontWeight="SemiBold" Foreground="#10B981"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="1" Background="#15EF4444" CornerRadius="6" Padding="8" Margin="5,0,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="Stop Loss" FontSize="9" Foreground="#EF4444"/>
+                                            <TextBlock x:Name="PositionSL" Text="$0.00" FontSize="12" FontWeight="SemiBold" Foreground="#EF4444"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- No Position Message -->
+                            <TextBlock x:Name="NoPositionText" Text="No active position. Click START AI or MANUAL BUY to enter."
+                                       FontSize="11" Foreground="#60FFFFFF" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Session Statistics -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,15">
+                        <StackPanel>
+                            <TextBlock Text="SESSION STATS / สถิติรอบนี้" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,15"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Margin="0,0,0,10">
+                                    <TextBlock Text="Total P&amp;L" FontSize="9" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="SessionPnL" Text="+$0.00" FontSize="18" FontWeight="Bold" Foreground="#10B981"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Margin="0,0,0,10">
+                                    <TextBlock Text="Win Rate" FontSize="9" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="SessionWinRate" Text="0%" FontSize="18" FontWeight="Bold" Foreground="#00D4FF"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Margin="0,0,0,10">
+                                    <TextBlock Text="Total Trades" FontSize="9" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="SessionTrades" Text="0" FontSize="14" FontWeight="SemiBold" Foreground="White"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
+                                    <TextBlock Text="Win/Lose" FontSize="9" Foreground="#60FFFFFF"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="SessionWins" Text="0" FontSize="14" FontWeight="SemiBold" Foreground="#10B981"/>
+                                        <TextBlock Text=" / " FontSize="14" Foreground="#60FFFFFF"/>
+                                        <TextBlock x:Name="SessionLosses" Text="0" FontSize="14" FontWeight="SemiBold" Foreground="#EF4444"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2">
+                                    <TextBlock Text="Profit Factor" FontSize="9" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="SessionProfitFactor" Text="0.00" FontSize="14" FontWeight="SemiBold" Foreground="#7C3AED"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Grid.Column="1">
+                                    <TextBlock Text="Max Drawdown" FontSize="9" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="SessionDrawdown" Text="0%" FontSize="14" FontWeight="SemiBold" Foreground="#F59E0B"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Technical Indicators -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,15">
+                        <StackPanel>
+                            <TextBlock Text="INDICATORS / ตัวชี้วัด" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,15"/>
+
+                            <ItemsControl x:Name="IndicatorsList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#10FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding ShortName}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                                    <TextBlock Text="{Binding Description}" FontSize="9" Foreground="#60FFFFFF" TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1" Text="{Binding Value, StringFormat=N2}" FontSize="12"
+                                                           Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                <Border Grid.Column="2" CornerRadius="4" Padding="6,3" VerticalAlignment="Center">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Background" Value="#20F59E0B"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Bullish">
+                                                                    <Setter Property="Background" Value="#2010B981"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Bearish">
+                                                                    <Setter Property="Background" Value="#20EF4444"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock Text="{Binding Status}" FontSize="9" FontWeight="Bold">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="#F59E0B"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="Bullish">
+                                                                        <Setter Property="Foreground" Value="#10B981"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="Bearish">
+                                                                        <Setter Property="Foreground" Value="#EF4444"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Emergency Stop -->
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel>
+                            <TextBlock Text="RISK MANAGEMENT / จัดการความเสี่ยง" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,15"/>
+
+                            <!-- Daily Loss Display -->
+                            <Border Background="#15EF4444" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                                <Grid>
+                                    <StackPanel>
+                                        <TextBlock Text="Daily Loss Limit" FontSize="9" Foreground="#EF4444"/>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock x:Name="DailyLoss" Text="$0.00" FontSize="14" FontWeight="SemiBold" Foreground="White"/>
+                                            <TextBlock Text=" / " FontSize="14" Foreground="#60FFFFFF"/>
+                                            <TextBlock x:Name="DailyLossLimit" Text="$50.00" FontSize="14" Foreground="#EF4444"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Emergency Stop Button -->
+                            <Button x:Name="EmergencyStopBtn" Cursor="Hand" Click="EmergencyStop_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="emergencyBorder" CornerRadius="12" Padding="0,14">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <GradientStop Color="#EF4444" Offset="0"/>
+                                                    <GradientStop Color="#DC2626" Offset="1"/>
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                            <Border.Effect>
+                                                <DropShadowEffect BlurRadius="15" ShadowDepth="0" Opacity="0.5" Color="#EF4444"/>
+                                            </Border.Effect>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                <TextBlock Text="🛑" FontSize="16" Margin="0,0,8,0" Foreground="White" VerticalAlignment="Center"/>
+                                                <TextBlock Text="EMERGENCY STOP" FontSize="14" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="emergencyBorder" Property="Background">
+                                                    <Setter.Value>
+                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                            <GradientStop Color="#F87171" Offset="0"/>
+                                                            <GradientStop Color="#EF4444" Offset="1"/>
+                                                        </LinearGradientBrush>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <TextBlock Text="Immediately closes all positions and stops AI trading"
+                                       FontSize="9" Foreground="#60FFFFFF" TextAlignment="Center" Margin="0,8,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>

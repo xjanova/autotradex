@@ -57,6 +57,30 @@ public interface IConnectionStatusService
     /// Stop periodic connection monitoring
     /// </summary>
     void StopMonitoring();
+
+    /// <summary>
+    /// Mark exchange as verified (called after successful test in Settings)
+    /// บันทึกว่า exchange นี้ test ผ่านแล้ว (เรียกหลัง test สำเร็จใน Settings)
+    /// </summary>
+    void MarkExchangeAsVerified(string exchangeName, bool canTrade = true);
+
+    /// <summary>
+    /// Check if exchange has been verified in this session
+    /// ตรวจสอบว่า exchange นี้ถูก verify แล้วหรือยังใน session นี้
+    /// </summary>
+    bool IsExchangeVerified(string exchangeName);
+
+    /// <summary>
+    /// Get cached verified status for exchange (if available)
+    /// ดึงสถานะที่ cached ไว้สำหรับ exchange (ถ้ามี)
+    /// </summary>
+    ExchangeConnectionStatus? GetVerifiedStatus(string exchangeName);
+
+    /// <summary>
+    /// Clear verified status for exchange (when API key changes)
+    /// ลบสถานะ verified สำหรับ exchange (เมื่อ API key เปลี่ยน)
+    /// </summary>
+    void ClearVerifiedStatus(string exchangeName);
 }
 
 /// <summary>

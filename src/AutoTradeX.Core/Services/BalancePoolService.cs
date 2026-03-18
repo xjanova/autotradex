@@ -190,15 +190,33 @@ public class BalancePoolService : IBalancePoolService
                 ? (pnl.TotalPnLUSDT / initial.TotalValueUSDT) * 100
                 : 0;
 
-            // Exchange breakdown
-            var initialA_Value = initial.CombinedBalances.Values.Sum(b =>
-                b.ExchangeA_Total * GetAssetPrice(b.Asset));
-            var initialB_Value = initial.CombinedBalances.Values.Sum(b =>
-                b.ExchangeB_Total * GetAssetPrice(b.Asset));
-            var currentA_Value = current.CombinedBalances.Values.Sum(b =>
-                b.ExchangeA_Total * GetAssetPrice(b.Asset));
-            var currentB_Value = current.CombinedBalances.Values.Sum(b =>
-                b.ExchangeB_Total * GetAssetPrice(b.Asset));
+            // Exchange breakdown — skip assets with no price data (price = 0)
+            // to avoid silently zeroing out P&L for those assets
+            var initialA_Value = 0m;
+            var initialB_Value = 0m;
+            var currentA_Value = 0m;
+            var currentB_Value = 0m;
+
+            foreach (var b in initial.CombinedBalances.Values)
+            {
+                var price = GetAssetPrice(b.Asset);
+                if (price <= 0)
+                {
+                    _logger.LogWarning("BalancePool",
+                        $"Skipping {b.Asset} in P&L exchange breakdown (no price data)");
+                    continue;
+                }
+                initialA_Value += b.ExchangeA_Total * price;
+                initialB_Value += b.ExchangeB_Total * price;
+            }
+
+            foreach (var b in current.CombinedBalances.Values)
+            {
+                var price = GetAssetPrice(b.Asset);
+                if (price <= 0) continue; // Already warned above
+                currentA_Value += b.ExchangeA_Total * price;
+                currentB_Value += b.ExchangeB_Total * price;
+            }
 
             pnl.ExchangeA_PnLUSDT = currentA_Value - initialA_Value;
             pnl.ExchangeB_PnLUSDT = currentB_Value - initialB_Value;
@@ -462,9 +480,9 @@ public class BalancePoolService : IBalancePoolService
             // Ignore errors
         }
 
-        // Default fallback - should implement proper price feed
-        return asset.Equals("BTC", StringComparison.OrdinalIgnoreCase) ? 100000m :
-               asset.Equals("ETH", StringComparison.OrdinalIgnoreCase) ? 3500m : 1m;
+        // No cached price available - log and return 0 to avoid incorrect valuations
+        _logger.LogWarning("BalancePool", $"No price data available for {asset}, valuation will be incomplete");
+        return 0m;
     }
 
     private int CountConsecutiveLosses(TradeResult[] trades)
@@ -491,4 +509,272 @@ public class BalancePoolService : IBalancePoolService
                 $"Total={balance.TotalBalance:F8}, Value={balance.ValueUSDT:F2} USDT");
         }
     }
+
+    #region Dual-Balance Mode Support / รองรับโหมดสองกระเป๋า
+
+    /// <summary>
+    /// Check if mode change is recommended based on current balances
+    /// ตรวจสอบว่าควรแนะนำให้เปลี่ยนโหมดตามยอดปัจจุบันหรือไม่
+    /// </summary>
+    public (bool ShouldChange, ArbitrageExecutionMode RecommendedMode, string Reason, string ReasonThai) CheckModeRecommendation(
+        string baseAsset,
+        string quoteAsset,
+        decimal tradeSize)
+    {
+        var readiness = CheckDualBalanceReadiness(
+            _exchangeA.ExchangeName, _exchangeB.ExchangeName,
+            baseAsset, quoteAsset, tradeSize);
+
+        // If not ready for Dual-Balance, recommend Transfer Mode
+        if (!readiness.IsReady)
+        {
+            return (true, ArbitrageExecutionMode.Transfer,
+                $"Insufficient balance for Dual-Balance: {readiness.NotReadyReason}",
+                $"ยอดไม่เพียงพอสำหรับโหมดสองกระเป๋า: {readiness.NotReadyReasonThai}");
+        }
+
+        // If balance is highly imbalanced (>70% on one side), suggest rebalancing first
+        var baseBalance = _currentSnapshot.CombinedBalances.GetValueOrDefault(baseAsset);
+        if (baseBalance != null && baseBalance.TotalBalance > 0)
+        {
+            var ratio = baseBalance.DistributionRatio;
+            if (ratio < 0.3m || ratio > 0.7m)
+            {
+                return (true, ArbitrageExecutionMode.Transfer,
+                    $"Balance imbalanced ({ratio:P0}), consider Transfer Mode for natural rebalancing",
+                    $"ยอดไม่สมดุล ({ratio:P0}), แนะนำโหมดโอนจริงเพื่อปรับสมดุลอัตโนมัติ");
+            }
+        }
+
+        return (false, ArbitrageExecutionMode.DualBalance, "Dual-Balance mode is optimal", "โหมดสองกระเป๋าเหมาะสมที่สุด");
+    }
+
+    /// <summary>
+    /// Get summary of balance distribution across exchanges for UI display
+    /// รับข้อมูลสรุปการกระจายยอดระหว่างกระดานสำหรับแสดง UI
+    /// </summary>
+    public BalanceDistributionSummary GetBalanceDistributionSummary()
+    {
+        lock (_lock)
+        {
+            var summary = new BalanceDistributionSummary
+            {
+                Timestamp = _currentSnapshot.Timestamp,
+                ExchangeAName = _exchangeA.ExchangeName,
+                ExchangeBName = _exchangeB.ExchangeName,
+                TotalValueUSDT = _currentSnapshot.TotalValueUSDT
+            };
+
+            foreach (var (asset, balance) in _currentSnapshot.CombinedBalances
+                .Where(b => b.Value.ValueUSDT >= 1m) // Only show assets worth >= $1
+                .OrderByDescending(b => b.Value.ValueUSDT))
+            {
+                summary.Assets.Add(new AssetDistribution
+                {
+                    Asset = asset,
+                    ExchangeAAmount = balance.ExchangeA_Total,
+                    ExchangeBAmount = balance.ExchangeB_Total,
+                    TotalAmount = balance.TotalBalance,
+                    ValueUSDT = balance.ValueUSDT,
+                    DistributionRatio = balance.DistributionRatio,
+                    IsBalanced = balance.DistributionRatio >= 0.3m && balance.DistributionRatio <= 0.7m
+                });
+
+                summary.ExchangeA_ValueUSDT += balance.ExchangeA_Total * GetAssetPrice(asset);
+                summary.ExchangeB_ValueUSDT += balance.ExchangeB_Total * GetAssetPrice(asset);
+            }
+
+            summary.OverallDistributionRatio = summary.TotalValueUSDT > 0
+                ? summary.ExchangeA_ValueUSDT / summary.TotalValueUSDT
+                : 0.5m;
+
+            return summary;
+        }
+    }
+
+    /// <summary>
+    /// Check if balances support Dual-Balance mode for a trading pair (interface implementation)
+    /// ตรวจสอบว่ายอดรองรับโหมดสองกระเป๋าสำหรับคู่เทรดหรือไม่
+    /// </summary>
+    public DualBalanceReadiness CheckDualBalanceReadiness(
+        string exchangeA,
+        string exchangeB,
+        string baseAsset,
+        string quoteAsset,
+        decimal requiredQuoteAmount)
+    {
+        lock (_lock)
+        {
+            // Get balances for quote asset (for buy side) and base asset (for sell side)
+            var quoteBal = _currentSnapshot.CombinedBalances.GetValueOrDefault(quoteAsset);
+            var baseBal = _currentSnapshot.CombinedBalances.GetValueOrDefault(baseAsset);
+
+            // Estimate how much base we need (using price estimation)
+            var basePrice = GetAssetPrice(baseAsset);
+            var requiredBaseAmount = basePrice > 0 ? requiredQuoteAmount / basePrice : 0;
+
+            // Direction 1: Buy on A, Sell on B
+            var dir1_BuyQuote = quoteBal?.ExchangeA_Available ?? 0;
+            var dir1_SellBase = baseBal?.ExchangeB_Available ?? 0;
+            var dir1_Ready = dir1_BuyQuote >= requiredQuoteAmount && dir1_SellBase >= requiredBaseAmount;
+
+            // Direction 2: Buy on B, Sell on A
+            var dir2_BuyQuote = quoteBal?.ExchangeB_Available ?? 0;
+            var dir2_SellBase = baseBal?.ExchangeA_Available ?? 0;
+            var dir2_Ready = dir2_BuyQuote >= requiredQuoteAmount && dir2_SellBase >= requiredBaseAmount;
+
+            // Use whichever direction has better liquidity (or is ready)
+            decimal buySideQuoteAvailable, sellSideBaseAvailable;
+            bool isReady;
+
+            if (dir1_Ready && dir2_Ready)
+            {
+                // Both directions work, pick the one with more headroom
+                var dir1_Max = Math.Min(dir1_BuyQuote, dir1_SellBase * basePrice);
+                var dir2_Max = Math.Min(dir2_BuyQuote, dir2_SellBase * basePrice);
+                if (dir1_Max >= dir2_Max)
+                {
+                    buySideQuoteAvailable = dir1_BuyQuote;
+                    sellSideBaseAvailable = dir1_SellBase;
+                }
+                else
+                {
+                    buySideQuoteAvailable = dir2_BuyQuote;
+                    sellSideBaseAvailable = dir2_SellBase;
+                }
+                isReady = true;
+            }
+            else if (dir1_Ready)
+            {
+                buySideQuoteAvailable = dir1_BuyQuote;
+                sellSideBaseAvailable = dir1_SellBase;
+                isReady = true;
+            }
+            else if (dir2_Ready)
+            {
+                buySideQuoteAvailable = dir2_BuyQuote;
+                sellSideBaseAvailable = dir2_SellBase;
+                isReady = true;
+            }
+            else
+            {
+                // Neither direction is ready; report the better of the two
+                var dir1_Max = Math.Min(dir1_BuyQuote, dir1_SellBase * basePrice);
+                var dir2_Max = Math.Min(dir2_BuyQuote, dir2_SellBase * basePrice);
+                if (dir1_Max >= dir2_Max)
+                {
+                    buySideQuoteAvailable = dir1_BuyQuote;
+                    sellSideBaseAvailable = dir1_SellBase;
+                }
+                else
+                {
+                    buySideQuoteAvailable = dir2_BuyQuote;
+                    sellSideBaseAvailable = dir2_SellBase;
+                }
+                isReady = false;
+            }
+
+            return new DualBalanceReadiness
+            {
+                ExchangeAName = exchangeA,
+                ExchangeBName = exchangeB,
+                BaseAsset = baseAsset,
+                QuoteAsset = quoteAsset,
+                BuySideQuoteRequired = requiredQuoteAmount,
+                SellSideBaseRequired = requiredBaseAmount,
+                BuySideQuoteAvailable = buySideQuoteAvailable,
+                SellSideBaseAvailable = sellSideBaseAvailable,
+                IsReady = isReady,
+                MaxTradeableQuantity = Math.Min(buySideQuoteAvailable, sellSideBaseAvailable * basePrice)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Get current balance snapshot for a trading pair
+    /// รับสแน็ปช็อตยอดปัจจุบันสำหรับคู่เทรด
+    /// </summary>
+    public TradingPairBalanceSnapshot GetCurrentBalanceSnapshot(
+        string exchangeA,
+        string exchangeB,
+        string baseAsset,
+        string quoteAsset)
+    {
+        lock (_lock)
+        {
+            var quoteBal = _currentSnapshot.CombinedBalances.GetValueOrDefault(quoteAsset);
+            var baseBal = _currentSnapshot.CombinedBalances.GetValueOrDefault(baseAsset);
+
+            return new TradingPairBalanceSnapshot
+            {
+                Timestamp = DateTime.UtcNow,
+                ExchangeA = exchangeA,
+                ExchangeB = exchangeB,
+                BaseAsset = baseAsset,
+                QuoteAsset = quoteAsset,
+                Symbol = $"{baseAsset}/{quoteAsset}",
+                ExchangeA_QuoteAvailable = quoteBal?.ExchangeA_Available ?? 0,
+                ExchangeA_BaseAvailable = baseBal?.ExchangeA_Available ?? 0,
+                ExchangeB_QuoteAvailable = quoteBal?.ExchangeB_Available ?? 0,
+                ExchangeB_BaseAvailable = baseBal?.ExchangeB_Available ?? 0,
+                CurrentPrice = GetAssetPrice(baseAsset)
+            };
+        }
+    }
+
+    /// <summary>
+    /// Calculate real P&L from balance snapshots
+    /// คำนวณกำไร/ขาดทุนจริงจากสแน็ปช็อตยอด
+    /// </summary>
+    public decimal CalculateRealPnLFromSnapshots(
+        TradingPairBalanceSnapshot before,
+        TradingPairBalanceSnapshot after,
+        decimal quotePrice)
+    {
+        // Calculate total value before (in quote currency)
+        var valueBefore = before.ExchangeA_QuoteAvailable + before.ExchangeB_QuoteAvailable
+                         + (before.ExchangeA_BaseAvailable + before.ExchangeB_BaseAvailable) * quotePrice;
+
+        // Calculate total value after
+        var valueAfter = after.ExchangeA_QuoteAvailable + after.ExchangeB_QuoteAvailable
+                        + (after.ExchangeA_BaseAvailable + after.ExchangeB_BaseAvailable) * quotePrice;
+
+        return valueAfter - valueBefore;
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// Summary of balance distribution for UI
+/// ข้อมูลสรุปการกระจายยอดสำหรับ UI
+/// </summary>
+public class BalanceDistributionSummary
+{
+    public DateTime Timestamp { get; set; }
+    public string ExchangeAName { get; set; } = string.Empty;
+    public string ExchangeBName { get; set; } = string.Empty;
+    public decimal TotalValueUSDT { get; set; }
+    public decimal ExchangeA_ValueUSDT { get; set; }
+    public decimal ExchangeB_ValueUSDT { get; set; }
+    public decimal OverallDistributionRatio { get; set; }
+    public List<AssetDistribution> Assets { get; set; } = new();
+
+    public string DistributionDisplay => $"{OverallDistributionRatio * 100:F0}% / {(1 - OverallDistributionRatio) * 100:F0}%";
+    public string DistributionDisplayThai => $"{ExchangeAName}: {OverallDistributionRatio * 100:F0}% | {ExchangeBName}: {(1 - OverallDistributionRatio) * 100:F0}%";
+}
+
+/// <summary>
+/// Individual asset distribution info
+/// ข้อมูลการกระจายของแต่ละเหรียญ
+/// </summary>
+public class AssetDistribution
+{
+    public string Asset { get; set; } = string.Empty;
+    public decimal ExchangeAAmount { get; set; }
+    public decimal ExchangeBAmount { get; set; }
+    public decimal TotalAmount { get; set; }
+    public decimal ValueUSDT { get; set; }
+    public decimal DistributionRatio { get; set; }
+    public bool IsBalanced { get; set; }
 }

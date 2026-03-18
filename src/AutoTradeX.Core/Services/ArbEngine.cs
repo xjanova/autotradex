@@ -22,6 +22,9 @@ public class ArbEngine : IArbEngine
     private readonly ConcurrentQueue<TradeResult> _tradeHistory = new();
     private const int MaxTradeHistoryCount = 1000;
 
+    // Active transfers for Transfer Mode
+    private readonly ConcurrentDictionary<string, (TradeResult Result, SpreadOpportunity Opportunity)> _activeTransfers = new();
+
     private DailyPnL _todayStats = new() { Date = DateOnly.FromDateTime(DateTime.UtcNow) };
     private DateTime _lastTradeTime = DateTime.MinValue;
     private int _consecutiveLosses = 0;
@@ -29,8 +32,8 @@ public class ArbEngine : IArbEngine
 
     public bool IsRunning { get; private set; }
     public ArbEngineStatus Status { get; private set; } = ArbEngineStatus.Idle;
-    public decimal TodayPnL => _todayStats.TotalNetPnL;
-    public int TodayTradeCount => _todayStats.TotalTrades;
+    public decimal TodayPnL { get { lock (_lock) { return _todayStats.TotalNetPnL; } } }
+    public int TodayTradeCount { get { lock (_lock) { return _todayStats.TotalTrades; } } }
     public string? LastError { get; private set; }
 
     public event EventHandler<OpportunityEventArgs>? OpportunityFound;
@@ -89,9 +92,11 @@ public class ArbEngine : IArbEngine
             var testTaskB = _exchangeB.TestConnectionAsync(cancellationToken);
             await Task.WhenAll(testTaskA, testTaskB);
 
-            if (!testTaskA.Result)
+            var resultA = await testTaskA;
+            var resultB = await testTaskB;
+            if (!resultA)
                 throw new Exception($"Cannot connect to {_exchangeA.ExchangeName}");
-            if (!testTaskB.Result)
+            if (!resultB)
                 throw new Exception($"Cannot connect to {_exchangeB.ExchangeName}");
 
             _logger.LogInfo("ArbEngine", $"Connected to {_exchangeA.ExchangeName} and {_exchangeB.ExchangeName}");
@@ -252,8 +257,8 @@ public class ArbEngine : IArbEngine
         var tickerTaskB = _exchangeB.GetTickerAsync(pair.ExchangeB_Symbol, ct);
         await Task.WhenAll(tickerTaskA, tickerTaskB);
 
-        pair.TickerA = tickerTaskA.Result;
-        pair.TickerB = tickerTaskB.Result;
+        pair.TickerA = await tickerTaskA;
+        pair.TickerB = await tickerTaskB;
         pair.LastUpdated = DateTime.UtcNow;
     }
 
@@ -306,6 +311,13 @@ public class ArbEngine : IArbEngine
             return opportunity;
         }
 
+        // Guard against zero/negative buy price to prevent DivideByZeroException
+        if (opportunity.BuyPrice <= 0)
+        {
+            opportunity.Remarks = "Invalid buy price";
+            return opportunity;
+        }
+
         decimal buyQty, sellQty;
         if (opportunity.Direction == ArbitrageDirection.BuyA_SellB)
         {
@@ -318,9 +330,14 @@ public class ArbEngine : IArbEngine
             sellQty = opportunity.ExchangeA_BidQuantity;
         }
 
-        var maxQtyByConfig = _config.Risk.MaxPositionSizePerTrade / opportunity.BuyPrice;
+        var maxQtyByConfig = opportunity.BuyPrice > 0
+            ? _config.Risk.MaxPositionSizePerTrade / opportunity.BuyPrice
+            : 0;
         opportunity.SuggestedQuantity = Math.Min(Math.Min(buyQty, sellQty), maxQtyByConfig);
-        opportunity.SuggestedQuantity = Math.Round(opportunity.SuggestedQuantity, pair.QuantityPrecision);
+
+        // Use floor-based truncation instead of Math.Round to prevent exceeding available liquidity
+        var quantityFactor = (decimal)Math.Pow(10, pair.QuantityPrecision);
+        opportunity.SuggestedQuantity = Math.Floor(opportunity.SuggestedQuantity * quantityFactor) / quantityFactor;
 
         var buyValue = opportunity.SuggestedQuantity * opportunity.BuyPrice;
         var sellValue = opportunity.SuggestedQuantity * opportunity.SellPrice;
@@ -343,10 +360,11 @@ public class ArbEngine : IArbEngine
             var balanceCheckResult = await CheckBalancesAsync(pair, opportunity, ct);
             opportunity.HasSufficientBalance = balanceCheckResult;
         }
-        catch
+        catch (Exception ex)
         {
             opportunity.HasSufficientBalance = false;
             opportunity.Remarks = "Failed to check balance";
+            _logger.LogError("ArbEngine", $"Balance check failed for {pair}: {ex.Message}");
         }
 
         if (!opportunity.ShouldTrade)
@@ -368,8 +386,8 @@ public class ArbEngine : IArbEngine
         var balanceTaskB = _exchangeB.GetBalanceAsync(ct);
         await Task.WhenAll(balanceTaskA, balanceTaskB);
 
-        var balanceA = balanceTaskA.Result;
-        var balanceB = balanceTaskB.Result;
+        var balanceA = await balanceTaskA;
+        var balanceB = await balanceTaskB;
 
         var requiredQuote = opportunity.SuggestedQuantity * opportunity.BuyPrice * 1.01m;
         var requiredBase = opportunity.SuggestedQuantity * 1.01m;
@@ -733,10 +751,25 @@ public class ArbEngine : IArbEngine
                 Quantity = difference
             };
 
-            _logger.LogInfo("ArbEngine", $"Hedge partial fill: {hedgeRequest.Side} {difference}");
-        }
+            try
+            {
+                // Place hedge on the exchange that has the imbalance
+                // buyFilled > sellFilled: excess on buy exchange, need to sell there
+                // sellFilled > buyFilled: excess on sell exchange, need to buy there
+                var hedgeExchange = buyFilled > sellFilled
+                    ? (result.Direction == ArbitrageDirection.BuyA_SellB ? _exchangeA : _exchangeB)
+                    : (result.Direction == ArbitrageDirection.BuyA_SellB ? _exchangeB : _exchangeA);
 
-        await Task.CompletedTask;
+                var hedgeOrder = await hedgeExchange.PlaceOrderAsync(hedgeRequest, ct);
+                result.Notes = $"Partial fill hedge executed: {hedgeRequest.Side} {difference:F8} on {hedgeExchange.ExchangeName}";
+                _logger.LogInfo("ArbEngine", result.Notes);
+            }
+            catch (Exception ex)
+            {
+                result.ErrorDetails.Add($"Partial fill hedge failed: {ex.Message}");
+                _logger.LogError("ArbEngine", "Partial fill hedge failed", ex);
+            }
+        }
     }
 
     private async Task CancelRemainingOrdersAsync(TradeResult result, CancellationToken ct)
@@ -777,25 +810,28 @@ public class ArbEngine : IArbEngine
 
     private bool CheckRiskLimits()
     {
-        if (-TodayPnL >= _config.Risk.MaxDailyLoss)
+        lock (_lock)
         {
-            LastError = $"Max daily loss exceeded: {TodayPnL:F4}";
-            return false;
-        }
+            if (-_todayStats.TotalNetPnL >= _config.Risk.MaxDailyLoss)
+            {
+                LastError = $"Max daily loss exceeded: {_todayStats.TotalNetPnL:F4}";
+                return false;
+            }
 
-        if (TodayTradeCount >= _config.Risk.MaxTradesPerDay)
-        {
-            LastError = $"Max trades per day exceeded: {TodayTradeCount}";
-            return false;
-        }
+            if (_todayStats.TotalTrades >= _config.Risk.MaxTradesPerDay)
+            {
+                LastError = $"Max trades per day exceeded: {_todayStats.TotalTrades}";
+                return false;
+            }
 
-        if (_consecutiveLosses >= _config.Risk.MaxConsecutiveLosses)
-        {
-            LastError = $"Max consecutive losses exceeded: {_consecutiveLosses}";
-            return false;
-        }
+            if (_consecutiveLosses >= _config.Risk.MaxConsecutiveLosses)
+            {
+                LastError = $"Max consecutive losses exceeded: {_consecutiveLosses}";
+                return false;
+            }
 
-        return true;
+            return true;
+        }
     }
 
     private bool CanTrade()
@@ -814,29 +850,32 @@ public class ArbEngine : IArbEngine
             _tradeHistory.TryDequeue(out _);
         }
 
-        _todayStats.TotalTrades++;
-        _todayStats.TotalNetPnL += result.NetPnL;
-        _todayStats.TotalFees += result.TotalFees;
-        _todayStats.TotalVolume += result.ActualBuyValue;
+        lock (_lock)
+        {
+            _todayStats.TotalTrades++;
+            _todayStats.TotalNetPnL += result.NetPnL;
+            _todayStats.TotalFees += result.TotalFees;
+            _todayStats.TotalVolume += result.ActualBuyValue;
 
-        if (result.IsFullySuccessful)
-        {
-            _todayStats.SuccessfulTrades++;
-        }
-        else
-        {
-            _todayStats.FailedTrades++;
-        }
+            if (result.IsFullySuccessful)
+            {
+                _todayStats.SuccessfulTrades++;
+            }
+            else
+            {
+                _todayStats.FailedTrades++;
+            }
 
-        if (result.NetPnL >= 0)
-        {
-            _todayStats.TotalProfit += result.NetPnL;
-            _consecutiveLosses = 0;
-        }
-        else
-        {
-            _todayStats.TotalLoss += Math.Abs(result.NetPnL);
-            _consecutiveLosses++;
+            if (result.NetPnL >= 0)
+            {
+                _todayStats.TotalProfit += result.NetPnL;
+                _consecutiveLosses = 0;
+            }
+            else
+            {
+                _todayStats.TotalLoss += Math.Abs(result.NetPnL);
+                _consecutiveLosses++;
+            }
         }
 
         pair.TodayTradeCount++;
@@ -887,14 +926,17 @@ public class ArbEngine : IArbEngine
 
     #region Statistics
 
-    public DailyPnL GetTodayStats() => _todayStats;
+    public DailyPnL GetTodayStats() { lock (_lock) { return _todayStats; } }
 
     public IReadOnlyList<TradeResult> GetTradeHistory(int count = 100) => _tradeHistory.TakeLast(count).ToList();
 
     public void ResetDailyStats()
     {
-        _todayStats = new DailyPnL { Date = DateOnly.FromDateTime(DateTime.UtcNow) };
-        _consecutiveLosses = 0;
+        lock (_lock)
+        {
+            _todayStats = new DailyPnL { Date = DateOnly.FromDateTime(DateTime.UtcNow) };
+            _consecutiveLosses = 0;
+        }
 
         foreach (var pair in _tradingPairs.Values)
         {
@@ -953,6 +995,657 @@ public class ArbEngine : IArbEngine
     {
         _cts?.Cancel();
         _cts?.Dispose();
+    }
+
+    #endregion
+
+    #region Dual-Mode Execution / การทำงานสองโหมด
+
+    /// <summary>
+    /// Execute arbitrage based on the configured execution mode
+    /// ทำ Arbitrage ตามโหมดที่ตั้งค่าไว้
+    /// </summary>
+    public async Task<TradeResult> ExecuteArbitrageWithModeAsync(
+        SpreadOpportunity opportunity,
+        ArbitrageExecutionMode mode,
+        TransferExecutionType? transferType = null,
+        CancellationToken ct = default)
+    {
+        return mode switch
+        {
+            ArbitrageExecutionMode.DualBalance => await ExecuteDualBalanceArbitrageAsync(opportunity, ct),
+            ArbitrageExecutionMode.Transfer => await ExecuteTransferArbitrageAsync(opportunity, transferType ?? TransferExecutionType.Manual, ct),
+            _ => await ExecuteDualBalanceArbitrageAsync(opportunity, ct)
+        };
+    }
+
+    /// <summary>
+    /// Execute Dual-Balance Mode arbitrage (instant, no transfer)
+    /// ทำ Arbitrage โหมดสองกระเป๋า (ทันที ไม่ต้องโอน)
+    /// </summary>
+    public async Task<TradeResult> ExecuteDualBalanceArbitrageAsync(SpreadOpportunity opportunity, CancellationToken ct = default)
+    {
+        var startTicks = Environment.TickCount64;
+        var result = new TradeResult
+        {
+            TradeId = Guid.NewGuid().ToString("N"),
+            Symbol = opportunity.Symbol,
+            Direction = opportunity.Direction,
+            Opportunity = opportunity,
+            ExecutionMode = ArbitrageExecutionMode.DualBalance,
+            StartTime = DateTime.UtcNow
+        };
+
+        _logger.LogInfo("ArbEngine", $"[DUAL-BALANCE] {opportunity.Symbol} {opportunity.Direction} Qty={opportunity.SuggestedQuantity:F8} @ Spread={opportunity.NetSpreadPercentage:F4}%");
+
+        try
+        {
+            // 1. Capture balances BEFORE trade
+            var pair = _tradingPairs.GetValueOrDefault(opportunity.Symbol);
+            var balancesBefore = await CaptureBalancesAsync(pair ?? TradingPair.FromSymbol(opportunity.Symbol), ct);
+
+            // 2. Execute buy and sell orders simultaneously (existing logic)
+            var buyRequest = CreateOrderRequest(opportunity, true);
+            var sellRequest = CreateOrderRequest(opportunity, false);
+
+            var (buyExchange, sellExchange) = opportunity.Direction == ArbitrageDirection.BuyA_SellB
+                ? (_exchangeA, _exchangeB)
+                : (_exchangeB, _exchangeA);
+
+            var buyTask = ExecuteOrderWithTimingAsync(buyExchange, buyRequest, "BUY", ct);
+            var sellTask = ExecuteOrderWithTimingAsync(sellExchange, sellRequest, "SELL", ct);
+
+            var results = await Task.WhenAll(buyTask, sellTask);
+
+            var buyResult = results[0];
+            var sellResult = results[1];
+
+            result.BuyOrder = buyResult.Order;
+            result.SellOrder = sellResult.Order;
+
+            // Log execution times
+            var totalMs = Environment.TickCount64 - startTicks;
+            _logger.LogInfo("ArbEngine", $"[TIMING] Total={totalMs}ms, Buy={buyResult.ExecutionMs}ms, Sell={sellResult.ExecutionMs}ms");
+
+            // Handle exceptions
+            if (buyResult.Exception != null)
+                result.ErrorDetails.Add($"Buy failed: {buyResult.Exception.Message}");
+            if (sellResult.Exception != null)
+                result.ErrorDetails.Add($"Sell failed: {sellResult.Exception.Message}");
+
+            result = await AnalyzeAndHandleResultAsync(result, buyResult.Exception, sellResult.Exception, ct);
+
+            // 3. Capture balances AFTER trade
+            var balancesAfter = await CaptureBalancesAsync(pair ?? TradingPair.FromSymbol(opportunity.Symbol), ct);
+
+            // 4. Calculate REAL P&L from actual balance changes
+            result.BalanceChange = CalculateBalanceChange(balancesBefore, balancesAfter, opportunity, result);
+            if (result.BalanceChange != null && opportunity.BuyPrice > 0)
+            {
+                result.BalanceChange.CalculateRealPnL(opportunity.BuyPrice);
+            }
+
+            result.EndTime = DateTime.UtcNow;
+            result.Metadata["TotalExecutionMs"] = totalMs;
+            result.Metadata["BuyExecutionMs"] = buyResult.ExecutionMs;
+            result.Metadata["SellExecutionMs"] = sellResult.ExecutionMs;
+            result.Metadata["ExecutionMode"] = "DualBalance";
+
+            _logger.LogInfo("ArbEngine", $"[DUAL-BALANCE] Complete: NetPnL={result.NetPnL:F4}, RealPnL={result.RealPnL:F4} USDT");
+            _logger.LogTradeResult(result);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            result.Status = TradeResultStatus.Error;
+            result.ErrorMessage = ex.Message;
+            result.EndTime = DateTime.UtcNow;
+            result.Metadata["TotalExecutionMs"] = Environment.TickCount64 - startTicks;
+
+            _logger.LogError("ArbEngine", "Unexpected error during Dual-Balance arbitrage execution", ex);
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Execute Transfer Mode arbitrage (with crypto transfer)
+    /// ทำ Arbitrage โหมดโอนจริง (มีการโอนเหรียญ)
+    /// </summary>
+    public async Task<TradeResult> ExecuteTransferArbitrageAsync(
+        SpreadOpportunity opportunity,
+        TransferExecutionType transferType,
+        CancellationToken ct = default)
+    {
+        var startTicks = Environment.TickCount64;
+        var result = new TradeResult
+        {
+            TradeId = Guid.NewGuid().ToString("N"),
+            Symbol = opportunity.Symbol,
+            Direction = opportunity.Direction,
+            Opportunity = opportunity,
+            ExecutionMode = ArbitrageExecutionMode.Transfer,
+            StartTime = DateTime.UtcNow
+        };
+
+        _logger.LogInfo("ArbEngine", $"[TRANSFER-MODE] {opportunity.Symbol} {opportunity.Direction} Qty={opportunity.SuggestedQuantity:F8} @ Spread={opportunity.NetSpreadPercentage:F4}% Type={transferType}");
+
+        try
+        {
+            // Phase 1: Execute buy order on source exchange
+            var buyRequest = CreateOrderRequest(opportunity, true);
+            var buyExchange = opportunity.Direction == ArbitrageDirection.BuyA_SellB ? _exchangeA : _exchangeB;
+            var sellExchange = opportunity.Direction == ArbitrageDirection.BuyA_SellB ? _exchangeB : _exchangeA;
+
+            var buyResult = await ExecuteOrderWithTimingAsync(buyExchange, buyRequest, "BUY", ct);
+            result.BuyOrder = buyResult.Order;
+
+            if (buyResult.Exception != null || buyResult.Order?.Status != OrderStatus.Filled)
+            {
+                result.Status = TradeResultStatus.Error;
+                result.ErrorMessage = buyResult.Exception?.Message ?? "Buy order not filled";
+                result.EndTime = DateTime.UtcNow;
+                return result;
+            }
+
+            // Phase 2: Initialize transfer status
+            var pair = _tradingPairs.GetValueOrDefault(opportunity.Symbol) ?? TradingPair.FromSymbol(opportunity.Symbol);
+            result.TransferDetails = new TransferStatus
+            {
+                TransferId = Guid.NewGuid().ToString("N"),
+                State = TransferState.Pending,
+                ExecutionType = transferType,
+                Asset = pair.BaseCurrency,
+                Amount = buyResult.Order.FilledQuantity,
+                FromExchange = buyExchange.ExchangeName,
+                ToExchange = sellExchange.ExchangeName,
+                Network = _config.Strategy.PreferredTransferNetwork,
+                PriceAtBuy = buyResult.Order.AverageFilledPrice ?? buyResult.Order.RequestedPrice ?? 0,
+                StartTime = DateTime.UtcNow
+            };
+
+            // Fetch real deposit address and withdrawal fees from exchange APIs
+            var preferredNetwork = _config.Strategy.PreferredTransferNetwork;
+            var network = (preferredNetwork == "Auto" || string.IsNullOrEmpty(preferredNetwork))
+                ? null : preferredNetwork;
+
+            DepositAddressInfo? depositInfo = null;
+            WithdrawalFeeInfo? feeInfo = null;
+
+            try
+            {
+                var depositTask = sellExchange.GetDepositAddressAsync(pair.BaseCurrency, network, ct);
+                var feeTask = buyExchange.GetWithdrawalFeeAsync(pair.BaseCurrency, network, ct);
+                await Task.WhenAll(depositTask, feeTask);
+
+                depositInfo = await depositTask;
+                feeInfo = await feeTask;
+
+                // Populate transfer details with real data
+                result.TransferDetails.Network = depositInfo.Network;
+                result.TransferDetails.RequiredConfirmations = depositInfo.RequiredConfirmations;
+                result.TransferDetails.TransferFee = feeInfo.Fee;
+                result.TransferDetails.NetworkFee = 0; // Included in TransferFee for most exchanges
+
+                _logger.LogInfo("ArbEngine", $"[TRANSFER-MODE] Deposit address: {depositInfo.Address}, Fee: {feeInfo.Fee} {pair.BaseCurrency}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("ArbEngine", $"[TRANSFER-MODE] Could not fetch deposit/fee info: {ex.Message}");
+            }
+
+            // For Manual mode: prepare instructions for user
+            if (transferType == TransferExecutionType.Manual)
+            {
+                result.TransferDetails.ManualInstructions = new ManualTransferInstructions
+                {
+                    Network = depositInfo?.Network ?? pair.BaseCurrency,
+                    DepositAddress = depositInfo?.Address ?? $"[Check {sellExchange.ExchangeName} website]",
+                    Memo = depositInfo?.Memo,
+                    MinDepositAmount = depositInfo?.MinDepositAmount ?? 0,
+                    WarningMessage = "กรุณาตรวจสอบ address และ network ก่อนโอน! / Double-check the address and network before transferring!",
+                    SourceWithdrawalUrl = GetExchangeWithdrawalUrl(buyExchange.ExchangeName),
+                    DestinationDepositUrl = GetExchangeDepositUrl(sellExchange.ExchangeName)
+                };
+
+                result.Status = TradeResultStatus.PartialSuccess;
+                result.Notes = "Buy order filled. Waiting for manual transfer.";
+                _logger.LogInfo("ArbEngine", $"[TRANSFER-MODE] Manual transfer required. Amount: {result.TransferDetails.Amount} {result.TransferDetails.Asset}");
+            }
+            else
+            {
+                // Auto mode: initiate withdrawal via API
+                result.TransferDetails.State = TransferState.Withdrawing;
+                _logger.LogInfo("ArbEngine", $"[TRANSFER-MODE] Auto transfer initiating. Amount: {result.TransferDetails.Amount} {result.TransferDetails.Asset}");
+
+                // Note: IExchangeClient does not yet have a WithdrawAsync method.
+                // When WithdrawAsync is added to the interface, replace this block with:
+                //   var withdrawalResult = await buyExchange.WithdrawAsync(asset, amount, address, network, memo, ct);
+                //   result.TransferDetails.WithdrawalId = withdrawalResult?.Id;
+                //   result.TransferDetails.TransactionHash = withdrawalResult?.TransactionHash;
+
+                if (depositInfo?.Address != null)
+                {
+                    result.Status = TradeResultStatus.PartialSuccess;
+                    result.Notes = $"Buy order filled. Auto withdrawal pending: WithdrawAsync not yet implemented in IExchangeClient. " +
+                                   $"Deposit address available: {depositInfo.Address} ({depositInfo.Network})";
+                    _logger.LogWarning("ArbEngine", $"[TRANSFER-MODE] Auto withdrawal not yet implemented. " +
+                                       $"Deposit address: {depositInfo.Address}, Network: {depositInfo.Network}, " +
+                                       $"Amount: {result.TransferDetails.Amount} {result.TransferDetails.Asset}");
+                }
+                else
+                {
+                    result.Status = TradeResultStatus.PartialSuccess;
+                    result.Notes = "Buy order filled. Auto transfer failed: no deposit address available.";
+                    _logger.LogWarning("ArbEngine", "[TRANSFER-MODE] Auto transfer failed: deposit address not available");
+                }
+            }
+
+            // Store for background monitoring
+            _activeTransfers.TryAdd(result.TransferDetails.TransferId, (result, opportunity));
+
+            result.EndTime = DateTime.UtcNow;
+            result.Metadata["TotalExecutionMs"] = Environment.TickCount64 - startTicks;
+            result.Metadata["BuyExecutionMs"] = buyResult.ExecutionMs;
+            result.Metadata["ExecutionMode"] = "Transfer";
+            result.Metadata["TransferType"] = transferType.ToString();
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            result.Status = TradeResultStatus.Error;
+            result.ErrorMessage = ex.Message;
+            result.EndTime = DateTime.UtcNow;
+            result.Metadata["TotalExecutionMs"] = Environment.TickCount64 - startTicks;
+
+            _logger.LogError("ArbEngine", "Unexpected error during Transfer Mode arbitrage execution", ex);
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Capture current balances for a trading pair on both exchanges
+    /// บันทึกยอดปัจจุบันของคู่เทรดบนทั้งสองกระดาน
+    /// </summary>
+    private async Task<TradingPairBalanceSnapshot> CaptureBalancesAsync(TradingPair pair, CancellationToken ct)
+    {
+        var balanceTaskA = _exchangeA.GetBalanceAsync(ct);
+        var balanceTaskB = _exchangeB.GetBalanceAsync(ct);
+        await Task.WhenAll(balanceTaskA, balanceTaskB);
+
+        var balanceA = await balanceTaskA;
+        var balanceB = await balanceTaskB;
+
+        return new TradingPairBalanceSnapshot
+        {
+            Timestamp = DateTime.UtcNow,
+            Symbol = pair.Symbol,
+            BaseAsset = pair.BaseCurrency,
+            QuoteAsset = pair.QuoteCurrency,
+            ExchangeA = _exchangeA.ExchangeName,
+            ExchangeB = _exchangeB.ExchangeName,
+            ExchangeA_QuoteAvailable = balanceA.GetAvailable(pair.QuoteCurrency),
+            ExchangeA_BaseAvailable = balanceA.GetAvailable(pair.BaseCurrency),
+            ExchangeB_QuoteAvailable = balanceB.GetAvailable(pair.QuoteCurrency),
+            ExchangeB_BaseAvailable = balanceB.GetAvailable(pair.BaseCurrency),
+            CurrentPrice = pair.TickerA?.LastPrice ?? pair.TickerB?.LastPrice ?? 0
+        };
+    }
+
+    /// <summary>
+    /// Calculate actual balance changes from before/after snapshots
+    /// คำนวณการเปลี่ยนแปลงยอดจริงจากก่อน/หลัง
+    /// </summary>
+    private TradeBalanceChange CalculateBalanceChange(
+        TradingPairBalanceSnapshot before,
+        TradingPairBalanceSnapshot after,
+        SpreadOpportunity opportunity,
+        TradeResult? tradeResult = null)
+    {
+        // Use actual fees from filled orders when available, otherwise estimate
+        var actualFees = tradeResult?.TotalFees ?? 0;
+        var estimatedFees = (opportunity.ExchangeA_FeePercent + opportunity.ExchangeB_FeePercent) / 100
+            * opportunity.SuggestedQuantity * opportunity.BuyPrice;
+
+        var change = new TradeBalanceChange
+        {
+            TradeId = opportunity.Symbol + "_" + DateTime.UtcNow.Ticks,
+            SnapshotBeforeTime = before.Timestamp,
+            SnapshotAfterTime = after.Timestamp,
+            BaseAsset = before.BaseAsset,
+            QuoteAsset = before.QuoteAsset,
+            ExchangeAName = before.ExchangeA,
+            ExchangeBName = before.ExchangeB,
+
+            ExchangeA_QuoteBefore = before.ExchangeA_QuoteAvailable,
+            ExchangeA_QuoteAfter = after.ExchangeA_QuoteAvailable,
+            ExchangeA_BaseBefore = before.ExchangeA_BaseAvailable,
+            ExchangeA_BaseAfter = after.ExchangeA_BaseAvailable,
+
+            ExchangeB_QuoteBefore = before.ExchangeB_QuoteAvailable,
+            ExchangeB_QuoteAfter = after.ExchangeB_QuoteAvailable,
+            ExchangeB_BaseBefore = before.ExchangeB_BaseAvailable,
+            ExchangeB_BaseAfter = after.ExchangeB_BaseAvailable,
+
+            TotalFees = actualFees > 0 ? actualFees : estimatedFees
+        };
+
+        return change;
+    }
+
+    /// <summary>
+    /// Check if balances support Dual-Balance mode for a trading pair
+    /// ตรวจสอบว่ายอดพร้อมสำหรับโหมดสองกระเป๋าหรือไม่
+    /// </summary>
+    public async Task<DualBalanceReadiness> CheckDualBalanceReadinessAsync(
+        TradingPair pair,
+        decimal quantity,
+        decimal price,
+        ArbitrageDirection direction,
+        CancellationToken ct = default)
+    {
+        var readiness = new DualBalanceReadiness
+        {
+            BaseAsset = pair.BaseCurrency,
+            QuoteAsset = pair.QuoteCurrency
+        };
+
+        try
+        {
+            var balanceTaskA = _exchangeA.GetBalanceAsync(ct);
+            var balanceTaskB = _exchangeB.GetBalanceAsync(ct);
+            await Task.WhenAll(balanceTaskA, balanceTaskB);
+
+            var balanceA = await balanceTaskA;
+            var balanceB = await balanceTaskB;
+
+            var requiredQuote = quantity * price * 1.01m; // 1% buffer for fees
+            var requiredBase = quantity * 1.01m;
+
+            if (direction == ArbitrageDirection.BuyA_SellB)
+            {
+                readiness.ExchangeAName = _exchangeA.ExchangeName;
+                readiness.ExchangeBName = _exchangeB.ExchangeName;
+                readiness.BuySideQuoteAvailable = balanceA.GetAvailable(pair.QuoteCurrency);
+                readiness.BuySideQuoteRequired = requiredQuote;
+                readiness.SellSideBaseAvailable = balanceB.GetAvailable(pair.BaseCurrency);
+                readiness.SellSideBaseRequired = requiredBase;
+            }
+            else
+            {
+                readiness.ExchangeAName = _exchangeB.ExchangeName;
+                readiness.ExchangeBName = _exchangeA.ExchangeName;
+                readiness.BuySideQuoteAvailable = balanceB.GetAvailable(pair.QuoteCurrency);
+                readiness.BuySideQuoteRequired = requiredQuote;
+                readiness.SellSideBaseAvailable = balanceA.GetAvailable(pair.BaseCurrency);
+                readiness.SellSideBaseRequired = requiredBase;
+            }
+
+            readiness.IsReady = readiness.BuySideReady && readiness.SellSideReady;
+
+            // Calculate max tradeable quantity
+            var maxByQuote = readiness.BuySideQuoteAvailable / (price * 1.01m);
+            var maxByBase = readiness.SellSideBaseAvailable / 1.01m;
+            readiness.MaxTradeableQuantity = Math.Min(maxByQuote, maxByBase);
+
+            if (!readiness.IsReady)
+            {
+                if (!readiness.BuySideReady)
+                {
+                    readiness.NotReadyReason = $"Insufficient {pair.QuoteCurrency} on {readiness.ExchangeAName}";
+                    readiness.NotReadyReasonThai = $"ยอด {pair.QuoteCurrency} ไม่เพียงพอบน {readiness.ExchangeAName}";
+                }
+                else if (!readiness.SellSideReady)
+                {
+                    readiness.NotReadyReason = $"Insufficient {pair.BaseCurrency} on {readiness.ExchangeBName}";
+                    readiness.NotReadyReasonThai = $"ยอด {pair.BaseCurrency} ไม่เพียงพอบน {readiness.ExchangeBName}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            readiness.IsReady = false;
+            readiness.NotReadyReason = $"Failed to check balances: {ex.Message}";
+            readiness.NotReadyReasonThai = $"ไม่สามารถตรวจสอบยอดได้: {ex.Message}";
+        }
+
+        return readiness;
+    }
+
+    /// <summary>
+    /// Get active transfers in progress
+    /// รับรายการโอนที่กำลังดำเนินการ
+    /// </summary>
+    public IReadOnlyList<TransferStatus> GetActiveTransfers()
+    {
+        return _activeTransfers.Values
+            .Where(t => t.Result.TransferDetails?.IsActive == true)
+            .Select(t => t.Result.TransferDetails!)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Update transfer status (called after user confirms manual transfer or auto-transfer completes)
+    /// อัปเดตสถานะการโอน (เรียกหลังจากผู้ใช้ยืนยันการโอนเองหรือการโอนอัตโนมัติสำเร็จ)
+    /// </summary>
+    public async Task<TransferStatus?> UpdateTransferStatusAsync(
+        string transferId,
+        CancellationToken ct = default)
+    {
+        if (!_activeTransfers.TryGetValue(transferId, out var transfer))
+        {
+            _logger.LogWarning("ArbEngine", $"Transfer not found: {transferId}");
+            return null;
+        }
+
+        var result = transfer.Result;
+        var opportunity = transfer.Opportunity;
+        if (result.TransferDetails == null) return null;
+
+        try
+        {
+            // Update current price at destination exchange for unrealized P&L
+            var sellExchange = opportunity.Direction == ArbitrageDirection.BuyA_SellB ? _exchangeB : _exchangeA;
+            // Use exchange-specific symbol format instead of manual replacement
+            var transferPair = _tradingPairs.GetValueOrDefault(opportunity.Symbol) ?? TradingPair.FromSymbol(opportunity.Symbol);
+            var symbol = opportunity.Direction == ArbitrageDirection.BuyA_SellB
+                ? transferPair.ExchangeB_Symbol : transferPair.ExchangeA_Symbol;
+            var ticker = await sellExchange.GetTickerAsync(symbol, ct);
+            if (ticker != null && ticker.BidPrice > 0)
+            {
+                result.TransferDetails.CurrentPrice = ticker.BidPrice;
+            }
+
+            // For Manual mode: state advances when user confirms
+            // For Auto mode: query exchange for withdrawal status
+            // Note: Full blockchain monitoring would require additional infrastructure
+            // For now, we track the state and update current price
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("ArbEngine", $"Error updating transfer status: {ex.Message}");
+        }
+
+        return result.TransferDetails;
+    }
+
+    /// <summary>
+    /// Update transfer status with new state (internal use)
+    /// อัปเดตสถานะการโอนด้วยสถานะใหม่ (ใช้ภายใน)
+    /// </summary>
+    internal async Task<TradeResult?> UpdateTransferStateAsync(
+        string transferId,
+        TransferState newState,
+        string? transactionHash = null,
+        CancellationToken ct = default)
+    {
+        if (!_activeTransfers.TryGetValue(transferId, out var transfer))
+        {
+            _logger.LogWarning("ArbEngine", $"Transfer not found: {transferId}");
+            return null;
+        }
+
+        var result = transfer.Result;
+        var opportunity = transfer.Opportunity;
+
+        if (result.TransferDetails == null) return null;
+
+        result.TransferDetails.State = newState;
+        if (transactionHash != null)
+            result.TransferDetails.TransactionHash = transactionHash;
+
+        _logger.LogInfo("ArbEngine", $"[TRANSFER-MODE] Status updated: {transferId} -> {newState}");
+
+        // If transfer completed, execute sell order
+        if (newState == TransferState.Completed)
+        {
+            return await CompleteTransferInternalAsync(result, opportunity, ct);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Complete transfer arbitrage (sell side after deposit complete)
+    /// ดำเนินการ Arbitrage แบบโอนให้สมบูรณ์ (ขายหลังจากฝากเสร็จ)
+    /// </summary>
+    public async Task<TradeResult?> CompleteTransferArbitrageAsync(string transferId, CancellationToken ct = default)
+    {
+        if (!_activeTransfers.TryGetValue(transferId, out var transfer))
+        {
+            _logger.LogWarning("ArbEngine", $"Transfer not found: {transferId}");
+            return null;
+        }
+
+        return await CompleteTransferInternalAsync(transfer.Result, transfer.Opportunity, ct);
+    }
+
+    /// <summary>
+    /// Complete a Transfer Mode trade by executing the sell order (internal)
+    /// เสร็จสิ้นการเทรดโหมดโอนจริงโดยทำคำสั่งขาย (ภายใน)
+    /// </summary>
+    private async Task<TradeResult> CompleteTransferInternalAsync(
+        TradeResult result,
+        SpreadOpportunity opportunity,
+        CancellationToken ct)
+    {
+        _logger.LogInfo("ArbEngine", $"[TRANSFER-MODE] Completing trade. Executing sell order...");
+
+        try
+        {
+            var sellExchange = opportunity.Direction == ArbitrageDirection.BuyA_SellB ? _exchangeB : _exchangeA;
+
+            var sellRequest = new OrderRequest
+            {
+                Symbol = opportunity.Symbol,
+                Side = OrderSide.Sell,
+                Type = OrderType.Market,
+                Quantity = result.TransferDetails!.Amount
+            };
+
+            var sellResult = await ExecuteOrderWithTimingAsync(sellExchange, sellRequest, "SELL", ct);
+            result.SellOrder = sellResult.Order;
+
+            if (sellResult.Exception != null)
+            {
+                result.ErrorDetails.Add($"Sell failed: {sellResult.Exception.Message}");
+                result.Status = TradeResultStatus.OneSideFailed;
+            }
+            else
+            {
+                result.Status = TradeResultStatus.Success;
+                result.NetPnL = CalculateNetPnL(result);
+
+                // Calculate transfer fees impact
+                var transferFees = result.TransferDetails.TotalFees;
+                result.NetPnL -= transferFees;
+            }
+
+            result.TransferDetails.State = TransferState.Completed;
+            result.TransferDetails.CompletedTime = DateTime.UtcNow;
+            result.EndTime = DateTime.UtcNow;
+
+            // Remove from active transfers
+            _activeTransfers.TryRemove(result.TransferDetails.TransferId, out _);
+
+            _logger.LogInfo("ArbEngine", $"[TRANSFER-MODE] Complete: NetPnL={result.NetPnL:F4} USDT (after transfer fees)");
+            _logger.LogTradeResult(result);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            result.Status = TradeResultStatus.Error;
+            result.ErrorMessage = ex.Message;
+            result.EndTime = DateTime.UtcNow;
+
+            _logger.LogError("ArbEngine", "Error completing Transfer Mode trade", ex);
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Cancel a pending transfer
+    /// ยกเลิกการโอนที่รอดำเนินการ
+    /// </summary>
+    public Task CancelTransferAsync(string transferId, CancellationToken ct = default)
+    {
+        if (!_activeTransfers.TryRemove(transferId, out var transfer))
+        {
+            _logger.LogWarning("ArbEngine", $"Transfer not found: {transferId}");
+            return Task.CompletedTask;
+        }
+
+        var result = transfer.Result;
+        if (result.TransferDetails != null)
+        {
+            result.TransferDetails.State = TransferState.Cancelled;
+            result.TransferDetails.CompletedTime = DateTime.UtcNow;
+        }
+
+        result.Status = TradeResultStatus.Cancelled;
+        result.Notes = "Transfer cancelled by user";
+        result.EndTime = DateTime.UtcNow;
+
+        _logger.LogInfo("ArbEngine", $"[TRANSFER-MODE] Cancelled: {transferId}");
+
+        // Note: In production, may need to hedge the bought position
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Get exchange withdrawal page URL
+    /// </summary>
+    private static string GetExchangeWithdrawalUrl(string exchangeName)
+    {
+        return exchangeName.ToLower() switch
+        {
+            "binance" => "https://www.binance.com/en/my/wallet/account/main/withdrawal/crypto",
+            "kucoin" => "https://www.kucoin.com/assets/withdraw",
+            "okx" => "https://www.okx.com/balance/withdrawal",
+            "bybit" => "https://www.bybit.com/user/assets/home/withdraw",
+            "gateio" or "gate.io" => "https://www.gate.io/myaccount/withdraw",
+            "bitkub" => "https://www.bitkub.com/wallet",
+            _ => ""
+        };
+    }
+
+    /// <summary>
+    /// Get exchange deposit page URL
+    /// </summary>
+    private static string GetExchangeDepositUrl(string exchangeName)
+    {
+        return exchangeName.ToLower() switch
+        {
+            "binance" => "https://www.binance.com/en/my/wallet/account/main/deposit/crypto",
+            "kucoin" => "https://www.kucoin.com/assets/deposit",
+            "okx" => "https://www.okx.com/balance/recharge",
+            "bybit" => "https://www.bybit.com/user/assets/home/deposit",
+            "gateio" or "gate.io" => "https://www.gate.io/myaccount/deposit",
+            "bitkub" => "https://www.bitkub.com/wallet",
+            _ => ""
+        };
     }
 
     #endregion

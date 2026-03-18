@@ -227,7 +227,10 @@ public partial class ExchangeIcon : UserControl
                         return;
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ExchangeIcon] Failed to load icon: {ex.Message}");
+                }
             }
         }
 

@@ -2,10 +2,12 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Extensions.DependencyInjection;
 using AutoTradeX.Core.Interfaces;
 using AutoTradeX.Core.Models;
+using AutoTradeX.Infrastructure.Services;
 
 namespace AutoTradeX.UI.Views;
 
@@ -14,33 +16,42 @@ public partial class SettingsPage : UserControl
     private IConfigService? _configService;
     private ILoggingService? _logger;
     private IExchangeClientFactory? _exchangeFactory;
-    private readonly string _credentialsPath;
+    private IConnectionStatusService? _connectionStatusService;
+    private IApiCredentialsService? _apiCredentialsService;
+
+    // Legacy path for migration only (will be removed in future versions)
+    private readonly string _legacyCredentialsPath;
 
     public SettingsPage()
     {
         InitializeComponent();
-        _credentialsPath = Path.Combine(
+        _legacyCredentialsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "AutoTradeX",
             "credentials.encrypted.json"
         );
 
-        // Defer service initialization until Loaded event
         Loaded += SettingsPage_Loaded;
     }
 
-    private void SettingsPage_Loaded(object sender, RoutedEventArgs e)
+    private async void SettingsPage_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
             _configService = App.Services?.GetService<IConfigService>();
             _logger = App.Services?.GetService<ILoggingService>();
             _exchangeFactory = App.Services?.GetService<IExchangeClientFactory>();
+            _connectionStatusService = App.Services?.GetService<IConnectionStatusService>();
+            _apiCredentialsService = App.Services?.GetService<IApiCredentialsService>();
+
             LoadSettings();
-            LoadSavedCredentials();
+            await LoadSavedCredentialsAsync();
             LoadTradingSettings();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger?.LogError("Settings", $"Error loading settings: {ex.Message}");
+        }
     }
 
     private void LoadSettings()
@@ -61,56 +72,18 @@ public partial class SettingsPage : UserControl
         }
     }
 
-    private void LoadSavedCredentials()
+    private async Task LoadSavedCredentialsAsync()
     {
         try
         {
-            // Try to load from environment variables first
-            LoadFromEnvironment();
-
-            // Also check if there are saved credentials
-            if (File.Exists(_credentialsPath))
+            // Primary: Load from database (encrypted storage)
+            if (_apiCredentialsService != null)
             {
-                var json = File.ReadAllText(_credentialsPath);
-                var credentials = JsonSerializer.Deserialize<SavedCredentials>(json);
-
-                if (credentials != null)
-                {
-                    // Only load if not already set from environment
-                    if (string.IsNullOrEmpty(BinanceApiKey.Text))
-                    {
-                        BinanceApiKey.Text = credentials.BinanceApiKey ?? "";
-                        BinanceApiSecret.Password = credentials.BinanceApiSecret ?? "";
-                    }
-                    if (string.IsNullOrEmpty(KuCoinApiKey.Text))
-                    {
-                        KuCoinApiKey.Text = credentials.KuCoinApiKey ?? "";
-                        KuCoinApiSecret.Password = credentials.KuCoinApiSecret ?? "";
-                        KuCoinPassphrase.Password = credentials.KuCoinPassphrase ?? "";
-                    }
-                    if (string.IsNullOrEmpty(BitkubApiKey.Text))
-                    {
-                        BitkubApiKey.Text = credentials.BitkubApiKey ?? "";
-                        BitkubApiSecret.Password = credentials.BitkubApiSecret ?? "";
-                    }
-                    if (string.IsNullOrEmpty(OKXApiKey.Text))
-                    {
-                        OKXApiKey.Text = credentials.OKXApiKey ?? "";
-                        OKXApiSecret.Password = credentials.OKXApiSecret ?? "";
-                        OKXPassphrase.Password = credentials.OKXPassphrase ?? "";
-                    }
-                    if (string.IsNullOrEmpty(BybitApiKey.Text))
-                    {
-                        BybitApiKey.Text = credentials.BybitApiKey ?? "";
-                        BybitApiSecret.Password = credentials.BybitApiSecret ?? "";
-                    }
-                    if (string.IsNullOrEmpty(GateIOApiKey.Text))
-                    {
-                        GateIOApiKey.Text = credentials.GateIOApiKey ?? "";
-                        GateIOApiSecret.Password = credentials.GateIOApiSecret ?? "";
-                    }
-                }
+                await LoadCredentialsFromDatabaseAsync();
             }
+
+            // Fallback: Load from legacy JSON file (for migration to database)
+            await LoadFromLegacyFileAsync();
         }
         catch (Exception ex)
         {
@@ -118,128 +91,184 @@ public partial class SettingsPage : UserControl
         }
     }
 
-    private void LoadFromEnvironment()
+    private async Task LoadCredentialsFromDatabaseAsync()
     {
+        if (_apiCredentialsService == null) return;
+
         // Binance
-        var binanceKey = Environment.GetEnvironmentVariable("AUTOTRADEX_BINANCE_API_KEY");
-        var binanceSecret = Environment.GetEnvironmentVariable("AUTOTRADEX_BINANCE_API_SECRET");
-        if (!string.IsNullOrEmpty(binanceKey)) BinanceApiKey.Text = binanceKey;
-        if (!string.IsNullOrEmpty(binanceSecret)) BinanceApiSecret.Password = binanceSecret;
+        var binance = await _apiCredentialsService.GetCredentialsAsync("Binance");
+        if (binance != null && string.IsNullOrEmpty(BinanceApiKey.Text))
+        {
+            BinanceApiKey.Text = binance.ApiKey;
+            BinanceApiSecret.Password = binance.ApiSecret;
+        }
 
         // KuCoin
-        var kucoinKey = Environment.GetEnvironmentVariable("AUTOTRADEX_KUCOIN_API_KEY");
-        var kucoinSecret = Environment.GetEnvironmentVariable("AUTOTRADEX_KUCOIN_API_SECRET");
-        var kucoinPass = Environment.GetEnvironmentVariable("AUTOTRADEX_KUCOIN_API_KEY_PASSPHRASE");
-        if (!string.IsNullOrEmpty(kucoinKey)) KuCoinApiKey.Text = kucoinKey;
-        if (!string.IsNullOrEmpty(kucoinSecret)) KuCoinApiSecret.Password = kucoinSecret;
-        if (!string.IsNullOrEmpty(kucoinPass)) KuCoinPassphrase.Password = kucoinPass;
+        var kucoin = await _apiCredentialsService.GetCredentialsAsync("KuCoin");
+        if (kucoin != null && string.IsNullOrEmpty(KuCoinApiKey.Text))
+        {
+            KuCoinApiKey.Text = kucoin.ApiKey;
+            KuCoinApiSecret.Password = kucoin.ApiSecret;
+            KuCoinPassphrase.Password = kucoin.Passphrase ?? "";
+        }
 
         // Bitkub
-        var bitkubKey = Environment.GetEnvironmentVariable("AUTOTRADEX_BITKUB_API_KEY");
-        var bitkubSecret = Environment.GetEnvironmentVariable("AUTOTRADEX_BITKUB_API_SECRET");
-        if (!string.IsNullOrEmpty(bitkubKey)) BitkubApiKey.Text = bitkubKey;
-        if (!string.IsNullOrEmpty(bitkubSecret)) BitkubApiSecret.Password = bitkubSecret;
+        var bitkub = await _apiCredentialsService.GetCredentialsAsync("Bitkub");
+        if (bitkub != null && string.IsNullOrEmpty(BitkubApiKey.Text))
+        {
+            BitkubApiKey.Text = bitkub.ApiKey;
+            BitkubApiSecret.Password = bitkub.ApiSecret;
+        }
 
         // OKX
-        var okxKey = Environment.GetEnvironmentVariable("AUTOTRADEX_OKX_API_KEY");
-        var okxSecret = Environment.GetEnvironmentVariable("AUTOTRADEX_OKX_API_SECRET");
-        var okxPass = Environment.GetEnvironmentVariable("AUTOTRADEX_OKX_PASSPHRASE");
-        if (!string.IsNullOrEmpty(okxKey)) OKXApiKey.Text = okxKey;
-        if (!string.IsNullOrEmpty(okxSecret)) OKXApiSecret.Password = okxSecret;
-        if (!string.IsNullOrEmpty(okxPass)) OKXPassphrase.Password = okxPass;
+        var okx = await _apiCredentialsService.GetCredentialsAsync("OKX");
+        if (okx != null && string.IsNullOrEmpty(OKXApiKey.Text))
+        {
+            OKXApiKey.Text = okx.ApiKey;
+            OKXApiSecret.Password = okx.ApiSecret;
+            OKXPassphrase.Password = okx.Passphrase ?? "";
+        }
 
         // Bybit
-        var bybitKey = Environment.GetEnvironmentVariable("AUTOTRADEX_BYBIT_API_KEY");
-        var bybitSecret = Environment.GetEnvironmentVariable("AUTOTRADEX_BYBIT_API_SECRET");
-        if (!string.IsNullOrEmpty(bybitKey)) BybitApiKey.Text = bybitKey;
-        if (!string.IsNullOrEmpty(bybitSecret)) BybitApiSecret.Password = bybitSecret;
+        var bybit = await _apiCredentialsService.GetCredentialsAsync("Bybit");
+        if (bybit != null && string.IsNullOrEmpty(BybitApiKey.Text))
+        {
+            BybitApiKey.Text = bybit.ApiKey;
+            BybitApiSecret.Password = bybit.ApiSecret;
+        }
 
         // Gate.io
-        var gateKey = Environment.GetEnvironmentVariable("AUTOTRADEX_GATEIO_API_KEY");
-        var gateSecret = Environment.GetEnvironmentVariable("AUTOTRADEX_GATEIO_API_SECRET");
-        if (!string.IsNullOrEmpty(gateKey)) GateIOApiKey.Text = gateKey;
-        if (!string.IsNullOrEmpty(gateSecret)) GateIOApiSecret.Password = gateSecret;
+        var gateio = await _apiCredentialsService.GetCredentialsAsync("Gate.io");
+        if (gateio != null && string.IsNullOrEmpty(GateIOApiKey.Text))
+        {
+            GateIOApiKey.Text = gateio.ApiKey;
+            GateIOApiSecret.Password = gateio.ApiSecret;
+        }
     }
 
-    private void SaveCredentialsToFile()
+    private async Task LoadFromLegacyFileAsync()
     {
         try
         {
-            var credentials = new SavedCredentials
-            {
-                BinanceApiKey = BinanceApiKey.Text,
-                BinanceApiSecret = BinanceApiSecret.Password,
-                KuCoinApiKey = KuCoinApiKey.Text,
-                KuCoinApiSecret = KuCoinApiSecret.Password,
-                KuCoinPassphrase = KuCoinPassphrase.Password,
-                BitkubApiKey = BitkubApiKey.Text,
-                BitkubApiSecret = BitkubApiSecret.Password,
-                OKXApiKey = OKXApiKey.Text,
-                OKXApiSecret = OKXApiSecret.Password,
-                OKXPassphrase = OKXPassphrase.Password,
-                BybitApiKey = BybitApiKey.Text,
-                BybitApiSecret = BybitApiSecret.Password,
-                GateIOApiKey = GateIOApiKey.Text,
-                GateIOApiSecret = GateIOApiSecret.Password
-            };
+            if (!File.Exists(_legacyCredentialsPath)) return;
 
-            var directory = Path.GetDirectoryName(_credentialsPath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            var json = await File.ReadAllTextAsync(_legacyCredentialsPath);
+            var credentials = JsonSerializer.Deserialize<SavedCredentials>(json);
+
+            if (credentials == null) return;
+
+            // Only load if not already set
+            if (string.IsNullOrEmpty(BinanceApiKey.Text))
             {
-                Directory.CreateDirectory(directory);
+                BinanceApiKey.Text = credentials.BinanceApiKey ?? "";
+                BinanceApiSecret.Password = credentials.BinanceApiSecret ?? "";
+            }
+            if (string.IsNullOrEmpty(KuCoinApiKey.Text))
+            {
+                KuCoinApiKey.Text = credentials.KuCoinApiKey ?? "";
+                KuCoinApiSecret.Password = credentials.KuCoinApiSecret ?? "";
+                KuCoinPassphrase.Password = credentials.KuCoinPassphrase ?? "";
+            }
+            if (string.IsNullOrEmpty(BitkubApiKey.Text))
+            {
+                BitkubApiKey.Text = credentials.BitkubApiKey ?? "";
+                BitkubApiSecret.Password = credentials.BitkubApiSecret ?? "";
+            }
+            if (string.IsNullOrEmpty(OKXApiKey.Text))
+            {
+                OKXApiKey.Text = credentials.OKXApiKey ?? "";
+                OKXApiSecret.Password = credentials.OKXApiSecret ?? "";
+                OKXPassphrase.Password = credentials.OKXPassphrase ?? "";
+            }
+            if (string.IsNullOrEmpty(BybitApiKey.Text))
+            {
+                BybitApiKey.Text = credentials.BybitApiKey ?? "";
+                BybitApiSecret.Password = credentials.BybitApiSecret ?? "";
+            }
+            if (string.IsNullOrEmpty(GateIOApiKey.Text))
+            {
+                GateIOApiKey.Text = credentials.GateIOApiKey ?? "";
+                GateIOApiSecret.Password = credentials.GateIOApiSecret ?? "";
             }
 
-            var json = JsonSerializer.Serialize(credentials, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_credentialsPath, json);
+            // Migrate legacy credentials to database
+            if (_apiCredentialsService != null)
+            {
+                _logger?.LogInfo("Settings", "Migrating legacy credentials to database...");
+                await MigrateCredentialsToDatabaseAsync(credentials);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning("Settings", $"Could not load legacy credentials: {ex.Message}");
+        }
+    }
 
-            // Also set environment variables for current session
-            SetEnvironmentVariables(credentials);
+    private async Task MigrateCredentialsToDatabaseAsync(SavedCredentials credentials)
+    {
+        if (_apiCredentialsService == null) return;
 
-            _logger?.LogInfo("Settings", "API credentials saved successfully");
+        if (!string.IsNullOrEmpty(credentials.BinanceApiKey))
+            await _apiCredentialsService.SaveCredentialsAsync("Binance", credentials.BinanceApiKey, credentials.BinanceApiSecret ?? "");
+
+        if (!string.IsNullOrEmpty(credentials.KuCoinApiKey))
+            await _apiCredentialsService.SaveCredentialsAsync("KuCoin", credentials.KuCoinApiKey, credentials.KuCoinApiSecret ?? "", credentials.KuCoinPassphrase);
+
+        if (!string.IsNullOrEmpty(credentials.BitkubApiKey))
+            await _apiCredentialsService.SaveCredentialsAsync("Bitkub", credentials.BitkubApiKey, credentials.BitkubApiSecret ?? "");
+
+        if (!string.IsNullOrEmpty(credentials.OKXApiKey))
+            await _apiCredentialsService.SaveCredentialsAsync("OKX", credentials.OKXApiKey, credentials.OKXApiSecret ?? "", credentials.OKXPassphrase);
+
+        if (!string.IsNullOrEmpty(credentials.BybitApiKey))
+            await _apiCredentialsService.SaveCredentialsAsync("Bybit", credentials.BybitApiKey, credentials.BybitApiSecret ?? "");
+
+        if (!string.IsNullOrEmpty(credentials.GateIOApiKey))
+            await _apiCredentialsService.SaveCredentialsAsync("Gate.io", credentials.GateIOApiKey, credentials.GateIOApiSecret ?? "");
+
+        _logger?.LogInfo("Settings", "Legacy credentials migrated to database");
+    }
+
+    private async void SaveCredentialsToDatabase()
+    {
+        try
+        {
+            if (_apiCredentialsService == null)
+            {
+                MessageBox.Show("ระบบยังไม่พร้อม กรุณาลองใหม่", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            _logger?.LogInfo("Settings", "Saving credentials to database...");
+
+            // Save credentials and invalidate connection cache for each exchange
+            var exchangesToSave = new (string name, string key, string secret, string? passphrase)[]
+            {
+                ("Binance", BinanceApiKey.Text, BinanceApiSecret.Password, null),
+                ("KuCoin", KuCoinApiKey.Text, KuCoinApiSecret.Password, KuCoinPassphrase.Password),
+                ("Bitkub", BitkubApiKey.Text, BitkubApiSecret.Password, null),
+                ("OKX", OKXApiKey.Text, OKXApiSecret.Password, OKXPassphrase.Password),
+                ("Bybit", BybitApiKey.Text, BybitApiSecret.Password, null),
+                ("Gate.io", GateIOApiKey.Text, GateIOApiSecret.Password, null)
+            };
+
+            foreach (var (name, key, secret, passphrase) in exchangesToSave)
+            {
+                if (!string.IsNullOrEmpty(key))
+                {
+                    await _apiCredentialsService.SaveCredentialsAsync(name, key, secret, passphrase);
+                    // Invalidate cached connection status so it will be re-tested
+                    _connectionStatusService?.ClearVerifiedStatus(name);
+                }
+            }
+
+            _logger?.LogInfo("Settings", "API credentials saved to database successfully");
         }
         catch (Exception ex)
         {
             _logger?.LogError("Settings", $"Error saving credentials: {ex.Message}");
-            throw;
+            MessageBox.Show($"ไม่สามารถบันทึก credentials:\n{ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
-    }
-
-    private void SetEnvironmentVariables(SavedCredentials credentials)
-    {
-        // Set for current process
-        if (!string.IsNullOrEmpty(credentials.BinanceApiKey))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_BINANCE_API_KEY", credentials.BinanceApiKey);
-        if (!string.IsNullOrEmpty(credentials.BinanceApiSecret))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_BINANCE_API_SECRET", credentials.BinanceApiSecret);
-
-        if (!string.IsNullOrEmpty(credentials.KuCoinApiKey))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_KUCOIN_API_KEY", credentials.KuCoinApiKey);
-        if (!string.IsNullOrEmpty(credentials.KuCoinApiSecret))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_KUCOIN_API_SECRET", credentials.KuCoinApiSecret);
-        if (!string.IsNullOrEmpty(credentials.KuCoinPassphrase))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_KUCOIN_API_KEY_PASSPHRASE", credentials.KuCoinPassphrase);
-
-        if (!string.IsNullOrEmpty(credentials.BitkubApiKey))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_BITKUB_API_KEY", credentials.BitkubApiKey);
-        if (!string.IsNullOrEmpty(credentials.BitkubApiSecret))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_BITKUB_API_SECRET", credentials.BitkubApiSecret);
-
-        if (!string.IsNullOrEmpty(credentials.OKXApiKey))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_OKX_API_KEY", credentials.OKXApiKey);
-        if (!string.IsNullOrEmpty(credentials.OKXApiSecret))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_OKX_API_SECRET", credentials.OKXApiSecret);
-        if (!string.IsNullOrEmpty(credentials.OKXPassphrase))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_OKX_PASSPHRASE", credentials.OKXPassphrase);
-
-        if (!string.IsNullOrEmpty(credentials.BybitApiKey))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_BYBIT_API_KEY", credentials.BybitApiKey);
-        if (!string.IsNullOrEmpty(credentials.BybitApiSecret))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_BYBIT_API_SECRET", credentials.BybitApiSecret);
-
-        if (!string.IsNullOrEmpty(credentials.GateIOApiKey))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_GATEIO_API_KEY", credentials.GateIOApiKey);
-        if (!string.IsNullOrEmpty(credentials.GateIOApiSecret))
-            Environment.SetEnvironmentVariable("AUTOTRADEX_GATEIO_API_SECRET", credentials.GateIOApiSecret);
     }
 
     private async void TestBinance_Click(object sender, RoutedEventArgs e)
@@ -274,7 +303,12 @@ public partial class SettingsPage : UserControl
 
     private async Task TestExchangeConnection(string exchangeName, TextBlock statusBlock, string apiKey, string apiSecret, string? passphrase = null)
     {
+        _logger?.LogInfo("Settings", $"Testing connection for: {exchangeName}");
+
         UpdateStatus(statusBlock, "Testing...", "#F59E0B");
+
+        // Hide permissions panel initially
+        GetPermissionsPanel(exchangeName)?.SetValue(VisibilityProperty, Visibility.Collapsed);
 
         try
         {
@@ -290,7 +324,7 @@ public partial class SettingsPage : UserControl
                 return;
             }
 
-            // Set temporary environment variables for testing
+            // Set environment variables for the credentials
             var keyEnv = $"AUTOTRADEX_{exchangeName.ToUpper().Replace(".", "")}_API_KEY";
             var secretEnv = $"AUTOTRADEX_{exchangeName.ToUpper().Replace(".", "")}_API_SECRET";
             Environment.SetEnvironmentVariable(keyEnv, apiKey);
@@ -303,34 +337,61 @@ public partial class SettingsPage : UserControl
                 Environment.SetEnvironmentVariable(passEnv, passphrase);
             }
 
-            // Try to create client and test connection
             if (_exchangeFactory != null)
             {
                 try
                 {
-                    var client = _exchangeFactory.CreateClient(exchangeName);
+                    var client = _exchangeFactory.CreateRealClient(exchangeName);
                     var connected = await client.TestConnectionAsync();
 
                     if (connected)
                     {
-                        UpdateStatus(statusBlock, "Connected", "#10B981");
+                        UpdateStatus(statusBlock, "Connected ✓", "#10B981");
                         _logger?.LogInfo("Settings", $"{exchangeName} connection test successful");
+
+                        // Mark exchange as verified so other pages will remember this
+                        // บันทึกสถานะ verified ให้หน้าอื่นใช้ได้
+                        if (_connectionStatusService != null)
+                        {
+                            _logger?.LogInfo("Settings", $"Calling MarkExchangeAsVerified for {exchangeName}...");
+                            _connectionStatusService.MarkExchangeAsVerified(exchangeName);
+                            _logger?.LogInfo("Settings", $"MarkExchangeAsVerified completed for {exchangeName}");
+                        }
+                        else
+                        {
+                            _logger?.LogError("Settings", $"_connectionStatusService is NULL! Cannot mark {exchangeName} as verified");
+                        }
+
+                        // Fetch and display API permissions
+                        await FetchAndDisplayPermissions(exchangeName, client);
                     }
                     else
                     {
-                        UpdateStatus(statusBlock, "Connection failed", "#EF4444");
+                        UpdateStatus(statusBlock, "Connection failed ✗", "#EF4444");
                         _logger?.LogWarning("Settings", $"{exchangeName} connection test failed");
                     }
                 }
                 catch (Exception ex)
                 {
-                    UpdateStatus(statusBlock, "Error: " + ex.Message.Substring(0, Math.Min(30, ex.Message.Length)), "#EF4444");
+                    // Show short error in status, full error in log and popup
+                    var shortError = ex.Message.Length > 50
+                        ? ex.Message.Substring(0, 50) + "..."
+                        : ex.Message;
+                    UpdateStatus(statusBlock, $"Error: {shortError}", "#EF4444");
                     _logger?.LogError("Settings", $"{exchangeName} test error: {ex.Message}");
+
+                    // Show full error in message box for user to see
+                    MessageBox.Show(
+                        $"การเชื่อมต่อ {exchangeName} ล้มเหลว:\n\n{ex.Message}\n\nกรุณาตรวจสอบ:\n• API Key และ Secret ถูกต้อง\n• IP ของคุณอยู่ใน whitelist (ถ้า exchange ต้องการ)\n• API มีสิทธิ์เข้าถึง wallet/balance",
+                        $"{exchangeName} Connection Error",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
                 }
             }
             else
             {
                 // Fallback: Test by making a simple public API call
+                _logger?.LogWarning("Settings", $"ExchangeFactory is NULL! Using fallback HTTP test for {exchangeName}");
                 using var httpClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(10) };
                 var testUrl = exchangeName switch
                 {
@@ -362,14 +423,110 @@ public partial class SettingsPage : UserControl
         }
     }
 
-    private void ResetDemo_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Fetch API permissions from exchange and display them
+    /// </summary>
+    private async Task FetchAndDisplayPermissions(string exchangeName, Core.Interfaces.IExchangeClient client)
+    {
+        try
+        {
+            var permissionInfo = await client.GetApiPermissionsAsync();
+
+            var permissions = new ApiPermissions
+            {
+                CanRead = permissionInfo.CanRead,
+                CanTrade = permissionInfo.CanTrade,
+                CanWithdraw = permissionInfo.CanWithdraw,
+                CanDeposit = permissionInfo.CanDeposit,
+                IpRestriction = permissionInfo.IpRestriction
+            };
+
+            var permissionsPanel = GetPermissionsPanel(exchangeName);
+            var tagsPanel = GetPermissionTagsPanel(exchangeName);
+
+            if (permissionsPanel != null && tagsPanel != null)
+            {
+                DisplayApiPermissions(exchangeName, permissionsPanel, tagsPanel, permissions);
+            }
+
+            _logger?.LogInfo("Settings", $"{exchangeName} permissions: Read={permissions.CanRead}, Trade={permissions.CanTrade}, Withdraw={permissions.CanWithdraw}");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning("Settings", $"Failed to fetch {exchangeName} permissions: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Get the permissions panel Border for an exchange
+    /// </summary>
+    private Border? GetPermissionsPanel(string exchangeName)
+    {
+        return exchangeName switch
+        {
+            "Binance" => BinancePermissions,
+            "KuCoin" => KuCoinPermissions,
+            "Bitkub" => BitkubPermissions,
+            "OKX" => OKXPermissions,
+            "Bybit" => BybitPermissions,
+            "Gate.io" => GateIOPermissions,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Get the permission tags WrapPanel for an exchange
+    /// </summary>
+    private WrapPanel? GetPermissionTagsPanel(string exchangeName)
+    {
+        return exchangeName switch
+        {
+            "Binance" => BinancePermissionTags,
+            "KuCoin" => KuCoinPermissionTags,
+            "Bitkub" => BitkubPermissionTags,
+            "OKX" => OKXPermissionTags,
+            "Bybit" => BybitPermissionTags,
+            "Gate.io" => GateIOPermissionTags,
+            _ => null
+        };
+    }
+
+    private async void ResetDemo_Click(object sender, RoutedEventArgs e)
     {
         if (decimal.TryParse(DemoBalance.Text, out var balance))
         {
-            // Reset demo wallet
-            _logger?.LogInfo("Settings", $"Demo wallet reset to ${balance:N2}");
-            MessageBox.Show($"Demo wallet has been reset to ${balance:N2}", "Demo Reset",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            var result = MessageBox.Show(
+                $"Reset demo wallet to ${balance:N2}?\n\nThis will clear all demo trading history and positions.",
+                "Confirm Reset",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    var demoWallet = App.Services?.GetService<AutoTradeX.Infrastructure.Services.DemoWalletService>();
+                    if (demoWallet != null)
+                    {
+                        await demoWallet.ResetWalletAsync(balance);
+                        _logger?.LogInfo("Settings", $"Demo wallet reset to ${balance:N2}");
+                        MessageBox.Show($"Demo wallet has been reset to ${balance:N2}\n\nAll positions and history cleared.", "Demo Reset",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        _logger?.LogInfo("Settings", $"Demo wallet reset to ${balance:N2} (service not available)");
+                        MessageBox.Show($"Demo wallet reset to ${balance:N2}", "Demo Reset",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError("Settings", $"Failed to reset demo wallet: {ex.Message}");
+                    MessageBox.Show($"Failed to reset demo wallet: {ex.Message}", "Error",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
         }
         else
         {
@@ -385,8 +542,8 @@ public partial class SettingsPage : UserControl
             SaveStatus.Text = "Saving...";
             SaveStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B"));
 
-            // Save API credentials
-            SaveCredentialsToFile();
+            // Save API credentials to database
+            SaveCredentialsToDatabase();
 
             // Save trading settings
             SaveTradingSettings();
@@ -432,6 +589,160 @@ public partial class SettingsPage : UserControl
         statusBlock.Text = text;
         statusBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
     }
+
+    #region API Documentation Links
+
+    // API Documentation URLs for each exchange
+    private static readonly Dictionary<string, string> ApiDocUrls = new()
+    {
+        ["Binance"] = "https://www.binance.com/th/support/faq/วิธีสร้าง-api-key-360002502072",
+        ["KuCoin"] = "https://www.kucoin.com/support/900004829406-วิธีสร้าง-api",
+        ["Bitkub"] = "https://api.bitkub.com/",
+        ["OKX"] = "https://www.okx.com/help/how-to-create-api-keys",
+        ["Bybit"] = "https://www.bybit.com/th-TH/help-center/article/How-to-create-API-key",
+        ["Gate.io"] = "https://www.gate.io/help/guide/guide/17521/how-to-create-an-api-key"
+    };
+
+    private void OpenBinanceApiDocs_Click(object sender, MouseButtonEventArgs e)
+    {
+        OpenUrl(ApiDocUrls["Binance"]);
+    }
+
+    private void OpenKuCoinApiDocs_Click(object sender, MouseButtonEventArgs e)
+    {
+        OpenUrl(ApiDocUrls["KuCoin"]);
+    }
+
+    private void OpenBitkubApiDocs_Click(object sender, MouseButtonEventArgs e)
+    {
+        OpenUrl(ApiDocUrls["Bitkub"]);
+    }
+
+    private void OpenOKXApiDocs_Click(object sender, MouseButtonEventArgs e)
+    {
+        OpenUrl(ApiDocUrls["OKX"]);
+    }
+
+    private void OpenBybitApiDocs_Click(object sender, MouseButtonEventArgs e)
+    {
+        OpenUrl(ApiDocUrls["Bybit"]);
+    }
+
+    private void OpenGateIOApiDocs_Click(object sender, MouseButtonEventArgs e)
+    {
+        OpenUrl(ApiDocUrls["Gate.io"]);
+    }
+
+    private void OpenUrl(string url)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+            _logger?.LogInfo("Settings", $"Opened URL: {url}");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("Settings", $"Failed to open URL: {ex.Message}");
+            MessageBox.Show($"ไม่สามารถเปิดลิงก์ได้: {url}", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    #endregion
+
+    #region API Permissions Display
+
+    /// <summary>
+    /// Display API permissions after successful connection test
+    /// </summary>
+    private void DisplayApiPermissions(string exchangeName, Border permissionsPanel, WrapPanel tagsPanel, ApiPermissions permissions)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            tagsPanel.Children.Clear();
+
+            // Add permission tags
+            AddPermissionTag(tagsPanel, "📖 Read", permissions.CanRead, "#3B82F6");
+            AddPermissionTag(tagsPanel, "💰 Trade", permissions.CanTrade, "#10B981");
+            AddPermissionTag(tagsPanel, "💸 Withdraw", permissions.CanWithdraw, "#EF4444");
+            AddPermissionTag(tagsPanel, "📥 Deposit", permissions.CanDeposit, "#F59E0B");
+
+            // Add IP restriction info if available
+            if (!string.IsNullOrEmpty(permissions.IpRestriction))
+            {
+                AddInfoTag(tagsPanel, $"🌐 IP: {permissions.IpRestriction}", "#6B7280");
+            }
+
+            permissionsPanel.Visibility = Visibility.Visible;
+        });
+    }
+
+    private void AddPermissionTag(WrapPanel panel, string text, bool enabled, string color)
+    {
+        var tag = new Border
+        {
+            Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(enabled ? $"#20{color.Substring(1)}" : "#15FFFFFF")),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 4, 8, 4),
+            Margin = new Thickness(0, 0, 6, 6)
+        };
+
+        var content = new StackPanel { Orientation = Orientation.Horizontal };
+        content.Children.Add(new TextBlock
+        {
+            Text = enabled ? "✓" : "✗",
+            FontSize = 10,
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(enabled ? color : "#6B7280")),
+            Margin = new Thickness(0, 0, 4, 0)
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = text,
+            FontSize = 10,
+            FontWeight = FontWeights.Medium,
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(enabled ? color : "#6B7280"))
+        });
+
+        tag.Child = content;
+        panel.Children.Add(tag);
+    }
+
+    private void AddInfoTag(WrapPanel panel, string text, string color)
+    {
+        var tag = new Border
+        {
+            Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10FFFFFF")),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 4, 8, 4),
+            Margin = new Thickness(0, 0, 6, 6)
+        };
+
+        tag.Child = new TextBlock
+        {
+            Text = text,
+            FontSize = 10,
+            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color))
+        };
+
+        panel.Children.Add(tag);
+    }
+
+    /// <summary>
+    /// API permissions data class
+    /// </summary>
+    public class ApiPermissions
+    {
+        public bool CanRead { get; set; }
+        public bool CanTrade { get; set; }
+        public bool CanWithdraw { get; set; }
+        public bool CanDeposit { get; set; }
+        public string? IpRestriction { get; set; }
+    }
+
+    #endregion
 
     // Slider value changed handlers
     private void MinSpreadSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

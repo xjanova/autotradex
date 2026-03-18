@@ -47,4 +47,16 @@ public interface ICurrencyConverterService
     /// Current rate source (e.g., "Bitkub", "ExchangeRate-API")
     /// </summary>
     string RateSource { get; }
+
+    /// <summary>
+    /// Whether the rate has been successfully fetched from an API at least once
+    /// อัตราแลกเปลี่ยนถูกดึงจาก API สำเร็จอย่างน้อยหนึ่งครั้งหรือยัง
+    /// </summary>
+    bool IsRateValid { get; }
+
+    /// <summary>
+    /// Whether the cached rate is stale (too old or never fetched)
+    /// อัตราแลกเปลี่ยนที่เก็บไว้เก่าเกินไปหรือยังไม่เคยดึงมา
+    /// </summary>
+    bool IsRateStale { get; }
 }

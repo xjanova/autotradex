@@ -4,7 +4,13 @@
              xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF">
 
     <UserControl.Resources>
-        <!-- Card Style -->
+        <!-- RGB Glow Animation Colors (Soft, Professional) -->
+        <Color x:Key="RgbPurple">#7C3AED</Color>
+        <Color x:Key="RgbBlue">#2563EB</Color>
+        <Color x:Key="RgbCyan">#06B6D4</Color>
+        <Color x:Key="RgbGreen">#10B981</Color>
+
+        <!-- Card Style with subtle RGB border glow -->
         <Style x:Key="AnalyticsCard" TargetType="Border">
             <Setter Property="Background">
                 <Setter.Value>
@@ -15,30 +21,169 @@
                 </Setter.Value>
             </Setter>
             <Setter Property="CornerRadius" Value="16"/>
-            <Setter Property="BorderBrush" Value="#20FFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="20"/>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#307C3AED" Offset="0"/>
+                        <GradientStop Color="#202563EB" Offset="0.5"/>
+                        <GradientStop Color="#3010B981" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
         </Style>
 
-        <!-- Header Style -->
+        <!-- RGB Accent Card (for highlighted sections) -->
+        <Style x:Key="RgbAccentCard" TargetType="Border">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#1A1A2E" Offset="0"/>
+                        <GradientStop Color="#181830" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#507C3AED" Offset="0"/>
+                        <GradientStop Color="#402563EB" Offset="0.33"/>
+                        <GradientStop Color="#3006B6D4" Offset="0.66"/>
+                        <GradientStop Color="#4010B981" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.15" Color="#7C3AED"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Header Style with subtle RGB gradient -->
         <Style x:Key="SectionHeader" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#FFFFFF"/>
             <Setter Property="FontSize" Value="18"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#FFFFFF" Offset="0"/>
+                        <GradientStop Color="#E0E0FF" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
         </Style>
 
-        <!-- ComboBox Style -->
+        <!-- ComboBox Style with clear text -->
         <Style x:Key="FilterComboBox" TargetType="ComboBox">
-            <Setter Property="Background" Value="#20FFFFFF"/>
+            <Setter Property="Background" Value="#2A2A45"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#30FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#507C3AED"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="MinWidth" Value="140"/>
-            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="border" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="30"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter Grid.Column="0"
+                                                     Content="{TemplateBinding SelectionBoxItem}"
+                                                     ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                     VerticalAlignment="Center"
+                                                     Margin="12,0,0,0"
+                                                     TextBlock.Foreground="White"
+                                                     TextBlock.FontWeight="Medium"/>
+                                    <Path Grid.Column="1"
+                                          Data="M0,0 L4,4 L8,0"
+                                          Stroke="#A78BFA"
+                                          StrokeThickness="2"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                                    <ToggleButton Grid.ColumnSpan="2"
+                                                 IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                                 Background="Transparent"
+                                                 BorderThickness="0"
+                                                 Focusable="False"
+                                                 ClickMode="Press"/>
+                                </Grid>
+                            </Border>
+                            <Popup x:Name="PART_Popup"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Placement="Bottom"
+                                   AllowsTransparency="True"
+                                   PopupAnimation="Slide">
+                                <Border Background="#1E1E38"
+                                        BorderBrush="#507C3AED"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Margin="0,4,0,0">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="20" ShadowDepth="5" Opacity="0.5" Color="#7C3AED"/>
+                                    </Border.Effect>
+                                    <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="#7C3AED"/>
+                                <Setter TargetName="border" Property="Background" Value="#353555"/>
+                            </Trigger>
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="#A78BFA"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
-        <!-- Time Button Style -->
+        <!-- ComboBoxItem Style -->
+        <Style x:Key="FilterComboBoxItem" TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#2A2A55"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#353565"/>
+                                <Setter Property="Foreground" Value="#A78BFA"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Time Button Style with RGB hover -->
         <Style x:Key="TimeButton" TargetType="Border">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="CornerRadius" Value="6"/>
@@ -47,7 +192,7 @@
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
 
-        <!-- Action Button Style -->
+        <!-- Action Button Style with RGB glow on hover -->
         <Style x:Key="ActionButton" TargetType="Border">
             <Setter Property="Background" Value="#20FFFFFF"/>
             <Setter Property="CornerRadius" Value="8"/>
@@ -60,11 +205,52 @@
             </Style.Triggers>
         </Style>
 
+        <!-- RGB Action Button (special style) -->
+        <Style x:Key="RgbActionButton" TargetType="Border">
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#207C3AED" Offset="0"/>
+                        <GradientStop Color="#202563EB" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background">
+                        <Setter.Value>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#357C3AED" Offset="0"/>
+                                <GradientStop Color="#352563EB" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Setter.Value>
+                    </Setter>
+                    <Setter Property="Effect">
+                        <Setter.Value>
+                            <DropShadowEffect BlurRadius="10" ShadowDepth="0" Opacity="0.4" Color="#7C3AED"/>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- Legend Item Style -->
         <Style x:Key="LegendDot" TargetType="Ellipse">
             <Setter Property="Width" Value="10"/>
             <Setter Property="Height" Value="10"/>
             <Setter Property="Margin" Value="0,0,6,0"/>
+        </Style>
+
+        <!-- Stat Card Style with RGB accent -->
+        <Style x:Key="StatCard" TargetType="Border">
+            <Setter Property="Background" Value="#10FFFFFF"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="15,12"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#15FFFFFF"/>
         </Style>
 
         <!-- Premium ScrollBar Thumb Style -->
@@ -222,15 +408,16 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header with Filters -->
+        <!-- Header with RGB Accent Line -->
         <Border Grid.Row="0" Padding="0,0,0,20">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Title Row -->
+                <!-- Title Row with RGB underline -->
                 <Grid Grid.Row="0" Margin="0,0,0,15">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -238,14 +425,62 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="📊 Trade Analytics" FontSize="24" FontWeight="Bold" Foreground="White"/>
-                        <TextBlock x:Name="SubtitleText" Text="Select a trading pair to analyze"
-                                   FontSize="12" Foreground="#60FFFFFF" Margin="0,4,0,0"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📊" FontSize="26" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <TextBlock Text="Trade Analytics" FontSize="26" FontWeight="Bold">
+                                <TextBlock.Foreground>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#FFFFFF" Offset="0"/>
+                                        <GradientStop Color="#C4B5FD" Offset="0.5"/>
+                                        <GradientStop Color="#93C5FD" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </TextBlock.Foreground>
+                            </TextBlock>
+                            <!-- Mode Badge -->
+                            <Border x:Name="ModeBadge" CornerRadius="6" Padding="10,4" Margin="15,0,0,0" VerticalAlignment="Center">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#2010B981" Offset="0"/>
+                                        <GradientStop Color="#207C3AED" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="ModeIcon" Text="⚡" FontSize="12" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="ModeName" Text="Dual-Balance" FontSize="11" FontWeight="Medium" Margin="5,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock.Foreground>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                <GradientStop Color="#10B981" Offset="0"/>
+                                                <GradientStop Color="#7C3AED" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </TextBlock.Foreground>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="SubtitleText" Text="วิเคราะห์ผลการเทรด Arbitrage / Analyze your arbitrage trades"
+                                   FontSize="12" Foreground="#60FFFFFF" Margin="0,6,0,0"/>
+                        <!-- RGB Accent Line -->
+                        <Border Height="2" Margin="0,10,0,0" CornerRadius="1" Width="200" HorizontalAlignment="Left">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#7C3AED" Offset="0"/>
+                                    <GradientStop Color="#2563EB" Offset="0.33"/>
+                                    <GradientStop Color="#06B6D4" Offset="0.66"/>
+                                    <GradientStop Color="#10B981" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
                     </StackPanel>
 
                     <!-- Database Info & Cleanup -->
-                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Border Background="#10F59E0B" CornerRadius="8" Padding="10,6" Margin="0,0,10,0">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                        <Border CornerRadius="8" Padding="10,6" Margin="0,0,10,0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#15F59E0B" Offset="0"/>
+                                    <GradientStop Color="#10F59E0B" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="💾 DB: " FontSize="11" Foreground="#F59E0B"/>
                                 <TextBlock x:Name="DbSizeText" Text="0 KB" FontSize="11" Foreground="#F59E0B" FontWeight="Medium"/>
@@ -261,8 +496,22 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Filter Row -->
-                <Border Grid.Row="1" Background="#10FFFFFF" CornerRadius="12" Padding="15,12">
+                <!-- Filter Row with RGB border -->
+                <Border Grid.Row="1" CornerRadius="12" Padding="15,12">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#15FFFFFF" Offset="0"/>
+                            <GradientStop Color="#10FFFFFF" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Border.BorderBrush>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#207C3AED" Offset="0"/>
+                            <GradientStop Color="#202563EB" Offset="0.5"/>
+                            <GradientStop Color="#2010B981" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.BorderBrush>
+                    <Border.BorderThickness>1</Border.BorderThickness>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -284,23 +533,32 @@
 
                         <!-- Date Range -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,20,0">
-                            <TextBlock Text="From:" FontSize="12" Foreground="#80FFFFFF"
+                            <TextBlock Text="From:" FontSize="12" Foreground="#A0FFFFFF" FontWeight="Medium"
                                        VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <DatePicker x:Name="FromDatePicker" Width="120" Background="#20FFFFFF"
-                                        Foreground="White" BorderBrush="#30FFFFFF"
-                                        SelectedDateChanged="DatePicker_SelectedDateChanged"/>
-                            <TextBlock Text="To:" FontSize="12" Foreground="#80FFFFFF"
+                            <Border CornerRadius="8" BorderThickness="1" BorderBrush="#507C3AED" Background="#2A2A45">
+                                <DatePicker x:Name="FromDatePicker" Width="115" Background="Transparent"
+                                            Foreground="White" BorderThickness="0" Padding="8,6"
+                                            SelectedDateChanged="DatePicker_SelectedDateChanged"/>
+                            </Border>
+                            <TextBlock Text="To:" FontSize="12" Foreground="#A0FFFFFF" FontWeight="Medium"
                                        VerticalAlignment="Center" Margin="15,0,8,0"/>
-                            <DatePicker x:Name="ToDatePicker" Width="120" Background="#20FFFFFF"
-                                        Foreground="White" BorderBrush="#30FFFFFF"
-                                        SelectedDateChanged="DatePicker_SelectedDateChanged"/>
+                            <Border CornerRadius="8" BorderThickness="1" BorderBrush="#507C3AED" Background="#2A2A45">
+                                <DatePicker x:Name="ToDatePicker" Width="115" Background="Transparent"
+                                            Foreground="White" BorderThickness="0" Padding="8,6"
+                                            SelectedDateChanged="DatePicker_SelectedDateChanged"/>
+                            </Border>
                         </StackPanel>
 
-                        <!-- Quick Time Range -->
+                        <!-- Quick Time Range with RGB selected -->
                         <Border Grid.Column="2" Background="#10FFFFFF" CornerRadius="8" Padding="4" HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="Time1D" Style="{StaticResource TimeButton}" Background="#7C3AED"
-                                        MouseLeftButtonDown="TimeRange_Click" Tag="1D">
+                                <Border x:Name="Time1D" Style="{StaticResource TimeButton}" MouseLeftButtonDown="TimeRange_Click" Tag="1D">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#7C3AED" Offset="0"/>
+                                            <GradientStop Color="#6D28D9" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
                                     <TextBlock Text="1D" FontSize="11" Foreground="White" FontWeight="Medium"/>
                                 </Border>
                                 <Border x:Name="Time7D" Style="{StaticResource TimeButton}"
@@ -322,12 +580,18 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Refresh Button -->
-                        <Border Grid.Column="3" Style="{StaticResource ActionButton}" MouseLeftButtonDown="Refresh_Click"
-                                Background="#207C3AED" Margin="0,0,8,0">
+                        <!-- Refresh Button with RGB style -->
+                        <Border Grid.Column="3" Style="{StaticResource RgbActionButton}" MouseLeftButtonDown="Refresh_Click" Margin="0,0,8,0">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="🔄" FontSize="12" Margin="0,0,6,0"/>
-                                <TextBlock Text="Refresh" FontSize="11" Foreground="#7C3AED"/>
+                                <TextBlock Text="Refresh" FontSize="11">
+                                    <TextBlock.Foreground>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#A78BFA" Offset="0"/>
+                                            <GradientStop Color="#93C5FD" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </TextBlock.Foreground>
+                                </TextBlock>
                             </StackPanel>
                         </Border>
 
@@ -353,8 +617,8 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Per-Pair P&L Summary Section -->
-            <Border Grid.Row="0" Style="{StaticResource AnalyticsCard}" Margin="0,0,0,15">
+            <!-- Per-Pair P&L Summary Section with RGB accent -->
+            <Border Grid.Row="0" Style="{StaticResource RgbAccentCard}" Margin="0,0,0,15">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -369,7 +633,9 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" Orientation="Horizontal">
-                            <TextBlock Text="💰 P&amp;L by Trading Pair" Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Text="💰" FontSize="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="P&amp;L by Trading Pair" Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Text=" / กำไร-ขาดทุนแยกตามคู่เทรด" FontSize="12" Foreground="#50FFFFFF" VerticalAlignment="Bottom" Margin="5,0,0,2"/>
                             <TextBlock x:Name="PairSummaryCount" Text="(0 pairs)" FontSize="12" Foreground="#60FFFFFF"
                                        VerticalAlignment="Bottom" Margin="10,0,0,2"/>
                         </StackPanel>
@@ -392,8 +658,15 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Column Headers -->
-                            <Border Grid.Row="0" Background="#10FFFFFF" CornerRadius="8" Padding="12,10" Margin="0,0,0,8">
+                            <!-- Column Headers with RGB gradient -->
+                            <Border Grid.Row="0" CornerRadius="8" Padding="12,10" Margin="0,0,0,8">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#157C3AED" Offset="0"/>
+                                        <GradientStop Color="#102563EB" Offset="0.5"/>
+                                        <GradientStop Color="#1510B981" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="2*"/>
@@ -404,12 +677,12 @@
                                         <ColumnDefinition Width="1.5*"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBlock Grid.Column="0" Text="Trading Pair" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF"/>
-                                    <TextBlock Grid.Column="1" Text="Trades" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF" HorizontalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2" Text="Win Rate" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF" HorizontalAlignment="Center"/>
-                                    <TextBlock Grid.Column="3" Text="Avg P&amp;L" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF" HorizontalAlignment="Center"/>
-                                    <TextBlock Grid.Column="4" Text="Total Fees" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF" HorizontalAlignment="Center"/>
-                                    <TextBlock Grid.Column="5" Text="Net P&amp;L" FontSize="11" FontWeight="SemiBold" Foreground="#80FFFFFF" HorizontalAlignment="Right"/>
+                                    <TextBlock Grid.Column="0" Text="Trading Pair" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF"/>
+                                    <TextBlock Grid.Column="1" Text="Trades" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="Win Rate" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="3" Text="Avg P&amp;L" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="4" Text="Total Fees" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="5" Text="Net P&amp;L" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF" HorizontalAlignment="Right"/>
                                 </Grid>
                             </Border>
 
@@ -485,6 +758,8 @@
                                     <TextBlock Text="📭" FontSize="24" HorizontalAlignment="Center"/>
                                     <TextBlock Text="No trading pair data available" FontSize="12" Foreground="#60FFFFFF"
                                                HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                                    <TextBlock Text="ยังไม่มีข้อมูลคู่เทรด" FontSize="11" Foreground="#40FFFFFF"
+                                               HorizontalAlignment="Center" Margin="0,4,0,0"/>
                                 </StackPanel>
                             </Border>
                         </Grid>
@@ -492,7 +767,7 @@
                 </Grid>
             </Border>
 
-            <!-- Main Price Chart with Trade Markers -->
+            <!-- Main Price Chart with RGB border -->
             <Border Grid.Row="1" Style="{StaticResource AnalyticsCard}" Margin="0,0,0,15" MinHeight="300">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -510,32 +785,66 @@
                         <!-- Pair Info -->
                         <StackPanel Grid.Column="0">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="CurrentPairText" Text="All Pairs" FontSize="20" FontWeight="Bold" Foreground="White"/>
-                                <Border x:Name="ExchangeBadge" Background="#207C3AED" CornerRadius="4" Padding="8,2"
+                                <TextBlock Text="📈" FontSize="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock x:Name="CurrentPairText" Text="All Pairs" FontSize="20" FontWeight="Bold">
+                                    <TextBlock.Foreground>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#FFFFFF" Offset="0"/>
+                                            <GradientStop Color="#C4B5FD" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </TextBlock.Foreground>
+                                </TextBlock>
+                                <Border x:Name="ExchangeBadge" CornerRadius="4" Padding="8,2"
                                         Margin="10,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
-                                    <TextBlock x:Name="CurrentExchangeText" Text="" FontSize="10" Foreground="#7C3AED"/>
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#207C3AED" Offset="0"/>
+                                            <GradientStop Color="#202563EB" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <TextBlock x:Name="CurrentExchangeText" Text="" FontSize="10" Foreground="#A78BFA"/>
                                 </Border>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                 <TextBlock x:Name="TradeCountLabel" Text="Total Trades: " FontSize="14" Foreground="#60FFFFFF"/>
                                 <TextBlock x:Name="FilteredTradeCount" Text="0" FontSize="14" FontWeight="Bold" Foreground="White"/>
+                                <TextBlock Text=" เทรดทั้งหมด" FontSize="12" Foreground="#40FFFFFF" VerticalAlignment="Bottom" Margin="5,0,0,2"/>
                             </StackPanel>
                         </StackPanel>
 
-                        <!-- Legend -->
+                        <!-- Legend with RGB colors -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
-                            <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
-                                <Ellipse Style="{StaticResource LegendDot}" Fill="#10B981"/>
-                                <TextBlock Text="Buy" FontSize="12" Foreground="#80FFFFFF"/>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
-                                <Ellipse Style="{StaticResource LegendDot}" Fill="#EF4444"/>
-                                <TextBlock Text="Sell" FontSize="12" Foreground="#80FFFFFF"/>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Style="{StaticResource LegendDot}" Fill="#7C3AED"/>
-                                <TextBlock Text="P&amp;L" FontSize="12" Foreground="#80FFFFFF"/>
-                            </StackPanel>
+                            <Border Background="#1510B981" CornerRadius="4" Padding="8,4" Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="8" Height="8" Fill="#10B981" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Buy" FontSize="11" Foreground="#10B981"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Background="#15EF4444" CornerRadius="4" Padding="8,4" Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="8" Height="8" Fill="#EF4444" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Sell" FontSize="11" Foreground="#EF4444"/>
+                                </StackPanel>
+                            </Border>
+                            <Border CornerRadius="4" Padding="8,4">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#157C3AED" Offset="0"/>
+                                        <GradientStop Color="#152563EB" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="8" Height="8" Margin="0,0,6,0">
+                                        <Ellipse.Fill>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#7C3AED" Offset="0"/>
+                                                <GradientStop Color="#2563EB" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Ellipse.Fill>
+                                    </Ellipse>
+                                    <TextBlock Text="P&amp;L" FontSize="11" Foreground="#A78BFA"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </Grid>
 
@@ -544,14 +853,22 @@
                                         TooltipPosition="Top"
                                         ZoomMode="X"/>
 
-                    <!-- No Data Message -->
-                    <Border x:Name="NoDataOverlay" Grid.Row="1" Background="#80000000" Visibility="Collapsed">
+                    <!-- No Data Message with RGB style -->
+                    <Border x:Name="NoDataOverlay" Grid.Row="1" Visibility="Collapsed">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#E0000000" Offset="0"/>
+                                <GradientStop Color="#C0000000" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                             <TextBlock Text="📭" FontSize="48" HorizontalAlignment="Center"/>
                             <TextBlock Text="No trade data available" FontSize="16" Foreground="#80FFFFFF"
                                        HorizontalAlignment="Center" Margin="0,10,0,0"/>
-                            <TextBlock Text="Start trading to see analytics here" FontSize="12" Foreground="#50FFFFFF"
-                                       HorizontalAlignment="Center" Margin="0,5,0,0"/>
+                            <TextBlock Text="ยังไม่มีข้อมูลการเทรด" FontSize="13" Foreground="#50FFFFFF"
+                                       HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                            <TextBlock Text="Start trading to see analytics here" FontSize="12" Foreground="#40FFFFFF"
+                                       HorizontalAlignment="Center" Margin="0,8,0,0"/>
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -560,11 +877,11 @@
             <!-- Bottom Section: P&L Chart + Trade List -->
             <Grid Grid.Row="2" MinHeight="250">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="350"/>
+                    <ColumnDefinition Width="*" MinWidth="350"/>
+                    <ColumnDefinition Width="Auto" MinWidth="320" MaxWidth="420"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Cumulative P&L Chart -->
+                <!-- Cumulative P&L Chart with RGB accent -->
                 <Border Grid.Column="0" Style="{StaticResource AnalyticsCard}" Margin="0,0,15,0">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -572,13 +889,17 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Text="📈 Cumulative P&amp;L" Style="{StaticResource SectionHeader}" Margin="0,0,0,10"/>
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="📊" FontSize="18" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="Cumulative P&amp;L" Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Text=" / กำไรสะสม" FontSize="12" Foreground="#50FFFFFF" VerticalAlignment="Bottom" Margin="5,0,0,2"/>
+                        </StackPanel>
 
                         <lvc:CartesianChart x:Name="PnLChart" Grid.Row="1"/>
                     </Grid>
                 </Border>
 
-                <!-- Recent Trades List -->
+                <!-- Recent Trades List with RGB header -->
                 <Border Grid.Column="1" Style="{StaticResource AnalyticsCard}">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -586,18 +907,44 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,15">
-                            <TextBlock Text="🎯 Recent Trades" Style="{StaticResource SectionHeader}"/>
-                            <TextBlock x:Name="TradeCountText" Text="(0 trades)" FontSize="12" Foreground="#60FFFFFF"
-                                       VerticalAlignment="Bottom" Margin="10,0,0,2"/>
+                        <StackPanel Grid.Row="0" Margin="0,0,0,15">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🎯" FontSize="18" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Text="Recent Trades" Style="{StaticResource SectionHeader}"/>
+                                <TextBlock x:Name="TradeCountText" Text="(0 trades)" FontSize="12" Foreground="#60FFFFFF"
+                                           VerticalAlignment="Bottom" Margin="10,0,0,2"/>
+                            </StackPanel>
+                            <TextBlock Text="เทรดล่าสุด" FontSize="11" Foreground="#40FFFFFF" Margin="30,2,0,0"/>
                         </StackPanel>
 
                         <ScrollViewer Grid.Row="1" Style="{StaticResource PremiumScrollViewer}">
                             <ItemsControl x:Name="TradeMarkersList">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="#10FFFFFF" CornerRadius="8" Padding="12" Margin="0,0,0,8"
+                                        <Border CornerRadius="10" Padding="12" Margin="0,0,0,8"
                                                 Cursor="Hand" MouseLeftButtonDown="TradeMarker_Click">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                    <GradientStop Color="#12FFFFFF" Offset="0"/>
+                                                    <GradientStop Color="#08FFFFFF" Offset="1"/>
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background">
+                                                                <Setter.Value>
+                                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                                        <GradientStop Color="#20FFFFFF" Offset="0"/>
+                                                                        <GradientStop Color="#15FFFFFF" Offset="1"/>
+                                                                    </LinearGradientBrush>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>
@@ -606,7 +953,7 @@
                                                 </Grid.ColumnDefinitions>
 
                                                 <!-- P&L Icon -->
-                                                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="8"
+                                                <Border Grid.Column="0" Width="38" Height="38" CornerRadius="10"
                                                         Background="{Binding PnLBackground}" Margin="0,0,12,0">
                                                     <TextBlock Text="{Binding PnLIcon}" FontSize="16"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -615,19 +962,19 @@
                                                 <!-- Trade Info -->
                                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                     <StackPanel Orientation="Horizontal">
-                                                        <TextBlock Text="{Binding Symbol}" FontSize="12" FontWeight="SemiBold"
+                                                        <TextBlock Text="{Binding Symbol}" FontSize="13" FontWeight="SemiBold"
                                                                    Foreground="White"/>
-                                                        <TextBlock Text="{Binding ExchangeRoute}" FontSize="10" Foreground="#60FFFFFF"
+                                                        <TextBlock Text="{Binding ExchangeRoute}" FontSize="10" Foreground="#50FFFFFF"
                                                                    Margin="8,0,0,0" VerticalAlignment="Bottom"/>
                                                     </StackPanel>
-                                                    <TextBlock Text="{Binding TimeDisplay}" FontSize="10" Foreground="#50FFFFFF" Margin="0,2,0,0"/>
+                                                    <TextBlock Text="{Binding TimeDisplay}" FontSize="10" Foreground="#40FFFFFF" Margin="0,3,0,0"/>
                                                 </StackPanel>
 
                                                 <!-- P&L -->
-                                                <StackPanel Grid.Column="2" HorizontalAlignment="Right">
-                                                    <TextBlock Text="{Binding PnLDisplay}" FontSize="12" FontWeight="Medium"
+                                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding PnLDisplay}" FontSize="13" FontWeight="SemiBold"
                                                                Foreground="{Binding PnLColor}" HorizontalAlignment="Right"/>
-                                                    <TextBlock Text="{Binding SpreadDisplay}" FontSize="10" Foreground="#60FFFFFF"
+                                                    <TextBlock Text="{Binding SpreadDisplay}" FontSize="10" Foreground="#50FFFFFF"
                                                                HorizontalAlignment="Right" Margin="0,2,0,0"/>
                                                 </StackPanel>
                                             </Grid>
@@ -642,8 +989,25 @@
         </Grid>
         </ScrollViewer>
 
-        <!-- Stats Bar -->
-        <Border Grid.Row="2" Background="#10FFFFFF" CornerRadius="12" Padding="20,15" Margin="0,15,0,0">
+        <!-- Stats Bar with RGB gradient background -->
+        <Border Grid.Row="2" CornerRadius="14" Padding="25,18" Margin="0,15,0,0">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="#18FFFFFF" Offset="0"/>
+                    <GradientStop Color="#12FFFFFF" Offset="0.5"/>
+                    <GradientStop Color="#18FFFFFF" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <Border.BorderBrush>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="#307C3AED" Offset="0"/>
+                    <GradientStop Color="#252563EB" Offset="0.25"/>
+                    <GradientStop Color="#2006B6D4" Offset="0.5"/>
+                    <GradientStop Color="#2510B981" Offset="0.75"/>
+                    <GradientStop Color="#307C3AED" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.BorderBrush>
+            <Border.BorderThickness>1.5</Border.BorderThickness>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -655,51 +1019,96 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Total Trades -->
-                <StackPanel Grid.Column="0" HorizontalAlignment="Center">
-                    <TextBlock Text="Total Trades" FontSize="11" Foreground="#60FFFFFF"/>
-                    <TextBlock x:Name="TotalTradesText" Text="0" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,4,0,0"/>
-                </StackPanel>
+                <Border Grid.Column="0" Style="{StaticResource StatCard}" Margin="0,0,8,0">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="Total Trades" FontSize="11" Foreground="#70FFFFFF"/>
+                        <TextBlock Text="เทรดทั้งหมด" FontSize="9" Foreground="#40FFFFFF" Margin="0,1,0,0"/>
+                        <TextBlock x:Name="TotalTradesText" Text="0" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
 
                 <!-- Win Rate -->
-                <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                    <TextBlock Text="Win Rate" FontSize="11" Foreground="#60FFFFFF"/>
-                    <TextBlock x:Name="WinRateText" Text="0%" FontSize="20" FontWeight="Bold" Foreground="#10B981" Margin="0,4,0,0"/>
-                </StackPanel>
+                <Border Grid.Column="1" Style="{StaticResource StatCard}" Margin="4,0">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="Win Rate" FontSize="11" Foreground="#70FFFFFF"/>
+                        <TextBlock Text="อัตราชนะ" FontSize="9" Foreground="#40FFFFFF" Margin="0,1,0,0"/>
+                        <TextBlock x:Name="WinRateText" Text="0%" FontSize="22" FontWeight="Bold" Foreground="#10B981" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
 
                 <!-- Avg Profit -->
-                <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                    <TextBlock Text="Avg Profit" FontSize="11" Foreground="#60FFFFFF"/>
-                    <TextBlock x:Name="AvgProfitText" Text="$0.00" FontSize="20" FontWeight="Bold" Foreground="#10B981" Margin="0,4,0,0"/>
-                </StackPanel>
+                <Border Grid.Column="2" Style="{StaticResource StatCard}" Margin="4,0">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="Avg Profit" FontSize="11" Foreground="#70FFFFFF"/>
+                        <TextBlock Text="กำไรเฉลี่ย" FontSize="9" Foreground="#40FFFFFF" Margin="0,1,0,0"/>
+                        <TextBlock x:Name="AvgProfitText" Text="$0.00" FontSize="22" FontWeight="Bold" Foreground="#10B981" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
 
                 <!-- Best Trade -->
-                <StackPanel Grid.Column="3" HorizontalAlignment="Center">
-                    <TextBlock Text="Best Trade" FontSize="11" Foreground="#60FFFFFF"/>
-                    <TextBlock x:Name="BestTradeText" Text="$0.00" FontSize="20" FontWeight="Bold" Foreground="#10B981" Margin="0,4,0,0"/>
-                </StackPanel>
+                <Border Grid.Column="3" Style="{StaticResource StatCard}" Margin="4,0">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="Best Trade" FontSize="11" Foreground="#70FFFFFF"/>
+                        <TextBlock Text="เทรดดีสุด" FontSize="9" Foreground="#40FFFFFF" Margin="0,1,0,0"/>
+                        <TextBlock x:Name="BestTradeText" Text="$0.00" FontSize="22" FontWeight="Bold" Foreground="#10B981" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
 
                 <!-- Worst Trade -->
-                <StackPanel Grid.Column="4" HorizontalAlignment="Center">
-                    <TextBlock Text="Worst Trade" FontSize="11" Foreground="#60FFFFFF"/>
-                    <TextBlock x:Name="WorstTradeText" Text="$0.00" FontSize="20" FontWeight="Bold" Foreground="#EF4444" Margin="0,4,0,0"/>
-                </StackPanel>
+                <Border Grid.Column="4" Style="{StaticResource StatCard}" Margin="4,0">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="Worst Trade" FontSize="11" Foreground="#70FFFFFF"/>
+                        <TextBlock Text="เทรดแย่สุด" FontSize="9" Foreground="#40FFFFFF" Margin="0,1,0,0"/>
+                        <TextBlock x:Name="WorstTradeText" Text="$0.00" FontSize="22" FontWeight="Bold" Foreground="#EF4444" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
 
-                <!-- Total P&L -->
-                <StackPanel Grid.Column="5" HorizontalAlignment="Center">
-                    <TextBlock Text="Total P&amp;L" FontSize="11" Foreground="#60FFFFFF"/>
-                    <TextBlock x:Name="TotalPnLText" Text="$0.00" FontSize="20" FontWeight="Bold" Foreground="#10B981" Margin="0,4,0,0"/>
-                </StackPanel>
+                <!-- Total P&L with RGB gradient text -->
+                <Border Grid.Column="5" CornerRadius="12" Padding="15,12" Margin="8,0,0,0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#207C3AED" Offset="0"/>
+                            <GradientStop Color="#152563EB" Offset="0.5"/>
+                            <GradientStop Color="#2010B981" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="Total P&amp;L" FontSize="11" Foreground="#A0FFFFFF"/>
+                        <TextBlock Text="กำไร/ขาดทุนรวม" FontSize="9" Foreground="#60FFFFFF" Margin="0,1,0,0"/>
+                        <TextBlock x:Name="TotalPnLText" Text="$0.00" FontSize="22" FontWeight="Bold" Margin="0,6,0,0">
+                            <TextBlock.Foreground>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#10B981" Offset="0"/>
+                                    <GradientStop Color="#34D399" Offset="1"/>
+                                </LinearGradientBrush>
+                            </TextBlock.Foreground>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 
-        <!-- Trade Detail Popup -->
+        <!-- Trade Detail Popup with RGB styling -->
         <Grid x:Name="TradeDetailPopup" Grid.RowSpan="3" Visibility="Collapsed">
-            <Border Background="#80000000" MouseLeftButtonDown="ClosePopup_Click"/>
-            <Border Background="#1A1A2E" CornerRadius="16" Padding="25"
-                    Width="450" HorizontalAlignment="Center" VerticalAlignment="Center"
-                    BorderBrush="#30FFFFFF" BorderThickness="1">
+            <Border Background="#90000000" MouseLeftButtonDown="ClosePopup_Click"/>
+            <Border CornerRadius="20" Padding="28"
+                    Width="480" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    BorderThickness="1.5">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#1E1E38" Offset="0"/>
+                        <GradientStop Color="#1A1A30" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Border.BorderBrush>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#507C3AED" Offset="0"/>
+                        <GradientStop Color="#402563EB" Offset="0.5"/>
+                        <GradientStop Color="#4010B981" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.BorderBrush>
                 <Border.Effect>
-                    <DropShadowEffect BlurRadius="30" ShadowDepth="0" Opacity="0.5" Color="#000000"/>
+                    <DropShadowEffect BlurRadius="40" ShadowDepth="0" Opacity="0.4" Color="#7C3AED"/>
                 </Border.Effect>
                 <Grid>
                     <Grid.RowDefinitions>
@@ -709,8 +1118,19 @@
 
                     <!-- Popup Header -->
                     <Grid Grid.Row="0" Margin="0,0,0,20">
-                        <TextBlock Text="📍 Trade Details" FontSize="18" FontWeight="Bold" Foreground="White"/>
-                        <Border Background="#20FFFFFF" CornerRadius="6" Padding="8,4" HorizontalAlignment="Right"
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📍" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <TextBlock Text="Trade Details" FontSize="20" FontWeight="Bold">
+                                <TextBlock.Foreground>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#FFFFFF" Offset="0"/>
+                                        <GradientStop Color="#C4B5FD" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </TextBlock.Foreground>
+                            </TextBlock>
+                            <TextBlock Text=" / รายละเอียดเทรด" FontSize="12" Foreground="#50FFFFFF" VerticalAlignment="Bottom" Margin="5,0,0,3"/>
+                        </StackPanel>
+                        <Border Background="#25FFFFFF" CornerRadius="8" Padding="10,6" HorizontalAlignment="Right"
                                 Cursor="Hand" MouseLeftButtonDown="ClosePopup_Click">
                             <TextBlock Text="✕" FontSize="14" Foreground="#80FFFFFF"/>
                         </Border>
@@ -718,15 +1138,21 @@
 
                     <!-- Trade Details -->
                     <StackPanel Grid.Row="1">
-                        <!-- P&L Badge -->
-                        <Border x:Name="PopupPnLBadge" Background="#2010B981" CornerRadius="8" Padding="15,10" Margin="0,0,0,15">
+                        <!-- P&L Badge with RGB gradient -->
+                        <Border x:Name="PopupPnLBadge" CornerRadius="12" Padding="18,14" Margin="0,0,0,20">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#2010B981" Offset="0"/>
+                                    <GradientStop Color="#1510B981" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <TextBlock x:Name="PopupPnLIcon" Text="📈" FontSize="20" Margin="0,0,10,0"/>
-                                <TextBlock x:Name="PopupPnLText" Text="+$0.00" FontSize="18" FontWeight="Bold" Foreground="#10B981"/>
+                                <TextBlock x:Name="PopupPnLIcon" Text="📈" FontSize="24" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="PopupPnLText" Text="+$0.00" FontSize="22" FontWeight="Bold" Foreground="#10B981" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
 
-                        <!-- Details Grid -->
+                        <!-- Details Grid with styled rows -->
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -741,65 +1167,106 @@
                             </Grid.RowDefinitions>
 
                             <!-- Row 1 -->
-                            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,15">
-                                <TextBlock Text="Symbol" FontSize="11" Foreground="#60FFFFFF"/>
-                                <TextBlock x:Name="PopupSymbol" Text="-" FontSize="14" Foreground="White" FontWeight="Medium" Margin="0,4,0,0"/>
-                            </StackPanel>
-                            <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,15">
-                                <TextBlock Text="Spread" FontSize="11" Foreground="#60FFFFFF"/>
-                                <TextBlock x:Name="PopupSpread" Text="-" FontSize="14" Foreground="#7C3AED" FontWeight="Medium" Margin="0,4,0,0"/>
-                            </StackPanel>
+                            <Border Grid.Row="0" Grid.Column="0" Background="#08FFFFFF" CornerRadius="8" Padding="12,10" Margin="0,0,6,8">
+                                <StackPanel>
+                                    <TextBlock Text="Symbol" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="PopupSymbol" Text="-" FontSize="15" Foreground="White" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Row="0" Grid.Column="1" Background="#08FFFFFF" CornerRadius="8" Padding="12,10" Margin="6,0,0,8">
+                                <StackPanel>
+                                    <TextBlock Text="Spread" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="PopupSpread" Text="-" FontSize="15" FontWeight="SemiBold" Margin="0,4,0,0">
+                                        <TextBlock.Foreground>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                <GradientStop Color="#A78BFA" Offset="0"/>
+                                                <GradientStop Color="#7C3AED" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </TextBlock.Foreground>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
 
                             <!-- Row 2 -->
-                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,0,15">
-                                <TextBlock Text="Buy Exchange" FontSize="11" Foreground="#60FFFFFF"/>
-                                <TextBlock x:Name="PopupBuyExchange" Text="-" FontSize="14" Foreground="#10B981" FontWeight="Medium" Margin="0,4,0,0"/>
-                            </StackPanel>
-                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,15">
-                                <TextBlock Text="Sell Exchange" FontSize="11" Foreground="#60FFFFFF"/>
-                                <TextBlock x:Name="PopupSellExchange" Text="-" FontSize="14" Foreground="#EF4444" FontWeight="Medium" Margin="0,4,0,0"/>
-                            </StackPanel>
+                            <Border Grid.Row="1" Grid.Column="0" Background="#0810B981" CornerRadius="8" Padding="12,10" Margin="0,0,6,8">
+                                <StackPanel>
+                                    <TextBlock Text="Buy Exchange" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="PopupBuyExchange" Text="-" FontSize="15" Foreground="#10B981" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Row="1" Grid.Column="1" Background="#08EF4444" CornerRadius="8" Padding="12,10" Margin="6,0,0,8">
+                                <StackPanel>
+                                    <TextBlock Text="Sell Exchange" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="PopupSellExchange" Text="-" FontSize="15" Foreground="#EF4444" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
 
                             <!-- Row 3 -->
-                            <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,0,15">
-                                <TextBlock Text="Buy Price" FontSize="11" Foreground="#60FFFFFF"/>
-                                <TextBlock x:Name="PopupBuyPrice" Text="-" FontSize="14" Foreground="White" FontWeight="Medium" Margin="0,4,0,0"/>
-                            </StackPanel>
-                            <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,15">
-                                <TextBlock Text="Sell Price" FontSize="11" Foreground="#60FFFFFF"/>
-                                <TextBlock x:Name="PopupSellPrice" Text="-" FontSize="14" Foreground="White" FontWeight="Medium" Margin="0,4,0,0"/>
-                            </StackPanel>
+                            <Border Grid.Row="2" Grid.Column="0" Background="#08FFFFFF" CornerRadius="8" Padding="12,10" Margin="0,0,6,8">
+                                <StackPanel>
+                                    <TextBlock Text="Buy Price" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="PopupBuyPrice" Text="-" FontSize="15" Foreground="White" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Row="2" Grid.Column="1" Background="#08FFFFFF" CornerRadius="8" Padding="12,10" Margin="6,0,0,8">
+                                <StackPanel>
+                                    <TextBlock Text="Sell Price" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="PopupSellPrice" Text="-" FontSize="15" Foreground="White" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
 
                             <!-- Row 4 -->
-                            <StackPanel Grid.Row="3" Grid.Column="0" Margin="0,0,0,15">
-                                <TextBlock Text="Amount" FontSize="11" Foreground="#60FFFFFF"/>
-                                <TextBlock x:Name="PopupAmount" Text="-" FontSize="14" Foreground="White" FontWeight="Medium" Margin="0,4,0,0"/>
-                            </StackPanel>
-                            <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,0,0,15">
-                                <TextBlock Text="Fee" FontSize="11" Foreground="#60FFFFFF"/>
-                                <TextBlock x:Name="PopupFee" Text="-" FontSize="14" Foreground="#F59E0B" FontWeight="Medium" Margin="0,4,0,0"/>
-                            </StackPanel>
+                            <Border Grid.Row="3" Grid.Column="0" Background="#08FFFFFF" CornerRadius="8" Padding="12,10" Margin="0,0,6,8">
+                                <StackPanel>
+                                    <TextBlock Text="Amount" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="PopupAmount" Text="-" FontSize="15" Foreground="White" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Row="3" Grid.Column="1" Background="#08F59E0B" CornerRadius="8" Padding="12,10" Margin="6,0,0,8">
+                                <StackPanel>
+                                    <TextBlock Text="Fee" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="PopupFee" Text="-" FontSize="15" Foreground="#F59E0B" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
 
                             <!-- Row 5 -->
-                            <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,0,15">
-                                <TextBlock Text="Time" FontSize="11" Foreground="#60FFFFFF"/>
-                                <TextBlock x:Name="PopupTime" Text="-" FontSize="14" Foreground="White" FontWeight="Medium" Margin="0,4,0,0"/>
-                            </StackPanel>
-                            <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,15">
-                                <TextBlock Text="Execution" FontSize="11" Foreground="#60FFFFFF"/>
-                                <TextBlock x:Name="PopupExecution" Text="-" FontSize="14" Foreground="White" FontWeight="Medium" Margin="0,4,0,0"/>
-                            </StackPanel>
+                            <Border Grid.Row="4" Grid.Column="0" Background="#08FFFFFF" CornerRadius="8" Padding="12,10" Margin="0,0,6,0">
+                                <StackPanel>
+                                    <TextBlock Text="Time" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="PopupTime" Text="-" FontSize="14" Foreground="White" FontWeight="Medium" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Row="4" Grid.Column="1" Background="#08FFFFFF" CornerRadius="8" Padding="12,10" Margin="6,0,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="Execution" FontSize="10" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="PopupExecution" Text="-" FontSize="14" Foreground="White" FontWeight="Medium" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
                         </Grid>
                     </StackPanel>
                 </Grid>
             </Border>
         </Grid>
 
-        <!-- Loading Overlay -->
-        <Grid x:Name="LoadingOverlay" Grid.RowSpan="3" Visibility="Collapsed" Background="#80000000">
+        <!-- Loading Overlay with RGB spinner -->
+        <Grid x:Name="LoadingOverlay" Grid.RowSpan="3" Visibility="Collapsed">
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#E0000000" Offset="0"/>
+                    <GradientStop Color="#D0000000" Offset="1"/>
+                </LinearGradientBrush>
+            </Grid.Background>
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock Text="⏳" FontSize="48" HorizontalAlignment="Center"/>
-                <TextBlock Text="Loading data..." FontSize="14" Foreground="White" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+                <TextBlock Text="⏳" FontSize="52" HorizontalAlignment="Center"/>
+                <TextBlock Text="Loading data..." FontSize="15" HorizontalAlignment="Center" Margin="0,12,0,0">
+                    <TextBlock.Foreground>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#FFFFFF" Offset="0"/>
+                            <GradientStop Color="#C4B5FD" Offset="1"/>
+                        </LinearGradientBrush>
+                    </TextBlock.Foreground>
+                </TextBlock>
+                <TextBlock Text="กำลังโหลดข้อมูล..." FontSize="12" Foreground="#60FFFFFF" HorizontalAlignment="Center" Margin="0,4,0,0"/>
             </StackPanel>
         </Grid>
     </Grid>

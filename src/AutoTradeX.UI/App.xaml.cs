@@ -1,5 +1,7 @@
+using System.IO;
 using System.Net.Http;
 using System.Net.NetworkInformation;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -41,10 +43,17 @@ public partial class App : Application
             return;
         }
 
-        // Setup DI
+        // Setup DI first
         var services = new ServiceCollection();
         ConfigureServices(services);
         Services = services.BuildServiceProvider();
+
+        // Initialize database before any service accesses it
+        var db = Services.GetRequiredService<IDatabaseService>();
+        await db.InitializeAsync();
+
+        // Load saved API credentials from database and set environment variables
+        await LoadCredentialsFromDatabaseAsync();
 
         // Initialize License Service
         var licenseService = Services.GetRequiredService<ILicenseService>();
@@ -70,6 +79,26 @@ public partial class App : Application
         // Register toast notification handler with NotificationService
         var notificationService = Services.GetRequiredService<INotificationService>();
         notificationService.SetToastHandler(ShowToastNotification);
+    }
+
+    /// <summary>
+    /// Loads saved API credentials from SQLite database (new method - encrypted)
+    /// </summary>
+    private async Task LoadCredentialsFromDatabaseAsync()
+    {
+        try
+        {
+            var credentialsService = Services.GetService<IApiCredentialsService>();
+            if (credentialsService != null)
+            {
+                await credentialsService.LoadCredentialsToEnvironmentAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log but continue - user can enter credentials manually
+            System.Diagnostics.Debug.WriteLine($"Failed to load credentials from database: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -372,8 +401,24 @@ public partial class App : Application
         // Settings Database Service (SQLite)
         services.AddSingleton<ISettingsDbService, SettingsDbService>();
 
+        // API Credentials Service - encrypted storage for exchange API keys
+        services.AddSingleton<IApiCredentialsService>(sp =>
+        {
+            var database = sp.GetRequiredService<IDatabaseService>();
+            var logger = sp.GetRequiredService<ILoggingService>();
+            return new ApiCredentialsService(database, logger);
+        });
+
         // CoinGecko Service for real-time prices and coin data
         services.AddSingleton<ICoinDataService, CoinGeckoService>();
+
+        // Coin Metadata Service - fetches and caches coin icons from CoinGecko
+        services.AddSingleton<ICoinMetadataService>(sp =>
+        {
+            var database = sp.GetRequiredService<IDatabaseService>();
+            var logger = sp.GetRequiredService<ILoggingService>();
+            return new CoinMetadataService(database, logger);
+        });
 
         // Currency Converter Service - THB/USDT rates for Bitkub
         services.AddSingleton<ICurrencyConverterService>(sp =>
@@ -529,6 +574,14 @@ public partial class App : Application
         // Project Service for trading projects (max 10 pairs)
         services.AddSingleton<IProjectService, ProjectService>();
 
+        // AI Trading Service for single-exchange AI trading
+        services.AddSingleton<IAITradingService>(sp =>
+        {
+            var exchangeFactory = sp.GetRequiredService<IExchangeClientFactory>();
+            var logger = sp.GetRequiredService<ILoggingService>();
+            return new AITradingService(exchangeFactory, logger);
+        });
+
         // Connection Status Service for monitoring API connections
         services.AddSingleton<IConnectionStatusService>(sp =>
         {
@@ -536,15 +589,12 @@ public partial class App : Application
             var configService = sp.GetRequiredService<IConfigService>();
             var strategyService = sp.GetRequiredService<IStrategyService>();
             var logger = sp.GetRequiredService<ILoggingService>();
-            return new ConnectionStatusService(exchangeFactory, configService, strategyService, logger);
+            var apiCredentialsService = sp.GetRequiredService<IApiCredentialsService>();
+            return new ConnectionStatusService(exchangeFactory, configService, strategyService, logger, apiCredentialsService);
         });
 
-        // Initialize database on startup
-        Task.Run(async () =>
-        {
-            var db = Services.GetRequiredService<IDatabaseService>();
-            await db.InitializeAsync();
-        });
+        // Note: Database initialization moved to OnStartup (after BuildServiceProvider)
+        // to ensure tables are created before any service accesses the DB
     }
 
     /// <summary>

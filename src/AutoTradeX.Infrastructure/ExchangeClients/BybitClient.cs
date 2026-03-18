@@ -9,6 +9,7 @@
 
 using AutoTradeX.Core.Interfaces;
 using AutoTradeX.Core.Models;
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -62,12 +63,12 @@ public class BybitClient : BaseExchangeClient
             {
                 Symbol = symbol,
                 Exchange = ExchangeName,
-                BidPrice = decimal.Parse(ticker.Bid1Price),
-                AskPrice = decimal.Parse(ticker.Ask1Price),
-                BidQuantity = decimal.Parse(ticker.Bid1Size),
-                AskQuantity = decimal.Parse(ticker.Ask1Size),
-                LastPrice = decimal.Parse(ticker.LastPrice),
-                Volume24h = decimal.Parse(ticker.Volume24h),
+                BidPrice = decimal.Parse(ticker.Bid1Price, CultureInfo.InvariantCulture),
+                AskPrice = decimal.Parse(ticker.Ask1Price, CultureInfo.InvariantCulture),
+                BidQuantity = decimal.Parse(ticker.Bid1Size, CultureInfo.InvariantCulture),
+                AskQuantity = decimal.Parse(ticker.Ask1Size, CultureInfo.InvariantCulture),
+                LastPrice = decimal.Parse(ticker.LastPrice, CultureInfo.InvariantCulture),
+                Volume24h = decimal.Parse(ticker.Volume24h, CultureInfo.InvariantCulture),
                 Timestamp = DateTime.UtcNow
             };
         }
@@ -112,8 +113,8 @@ public class BybitClient : BaseExchangeClient
             foreach (var bid in response.Result.B)
             {
                 if (bid.Length >= 2 &&
-                    decimal.TryParse(bid[0], out var price) &&
-                    decimal.TryParse(bid[1], out var quantity))
+                    decimal.TryParse(bid[0], NumberStyles.Any, CultureInfo.InvariantCulture, out var price) &&
+                    decimal.TryParse(bid[1], NumberStyles.Any, CultureInfo.InvariantCulture, out var quantity))
                 {
                     orderBook.Bids.Add(new OrderBookEntry(price, quantity));
                 }
@@ -123,8 +124,8 @@ public class BybitClient : BaseExchangeClient
             foreach (var ask in response.Result.A)
             {
                 if (ask.Length >= 2 &&
-                    decimal.TryParse(ask[0], out var price) &&
-                    decimal.TryParse(ask[1], out var quantity))
+                    decimal.TryParse(ask[0], NumberStyles.Any, CultureInfo.InvariantCulture, out var price) &&
+                    decimal.TryParse(ask[1], NumberStyles.Any, CultureInfo.InvariantCulture, out var quantity))
                 {
                     orderBook.Asks.Add(new OrderBookEntry(price, quantity));
                 }
@@ -161,12 +162,12 @@ public class BybitClient : BaseExchangeClient
                     {
                         Symbol = ticker.Symbol,
                         Exchange = ExchangeName,
-                        BidPrice = decimal.Parse(ticker.Bid1Price),
-                        AskPrice = decimal.Parse(ticker.Ask1Price),
-                        BidQuantity = decimal.Parse(ticker.Bid1Size),
-                        AskQuantity = decimal.Parse(ticker.Ask1Size),
-                        LastPrice = decimal.Parse(ticker.LastPrice),
-                        Volume24h = decimal.Parse(ticker.Volume24h),
+                        BidPrice = decimal.Parse(ticker.Bid1Price, CultureInfo.InvariantCulture),
+                        AskPrice = decimal.Parse(ticker.Ask1Price, CultureInfo.InvariantCulture),
+                        BidQuantity = decimal.Parse(ticker.Bid1Size, CultureInfo.InvariantCulture),
+                        AskQuantity = decimal.Parse(ticker.Ask1Size, CultureInfo.InvariantCulture),
+                        LastPrice = decimal.Parse(ticker.LastPrice, CultureInfo.InvariantCulture),
+                        Volume24h = decimal.Parse(ticker.Volume24h, CultureInfo.InvariantCulture),
                         Timestamp = DateTime.UtcNow
                     };
                 }
@@ -181,7 +182,205 @@ public class BybitClient : BaseExchangeClient
         }
     }
 
+    /// <summary>
+    /// Get ALL tickers from Bybit in one API call
+    /// Endpoint: GET /v5/market/tickers?category=spot
+    /// </summary>
+    public override async Task<Dictionary<string, Ticker>> GetAllTickersAsync(
+        string? quoteAsset = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<string, Ticker>();
+
+        try
+        {
+            _logger.LogInfo(ExchangeName, "GetAllTickersAsync: Fetching all tickers...");
+
+            var response = await GetAsync<BybitResponse<BybitTickerResult>>(
+                $"{TickerEndpoint}?category=spot",
+                cancellationToken);
+
+            if (response?.Result?.List == null || response.Result.List.Count == 0)
+            {
+                _logger.LogWarning(ExchangeName, "GetAllTickersAsync: No data returned from API");
+                return result;
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Got {response.Result.List.Count} tickers from API");
+
+            foreach (var data in response.Result.List)
+            {
+                var symbol = data.Symbol;
+
+                // Filter by quote asset if specified (e.g., "USDT")
+                // Bybit format: BASEUSDT (e.g., BTCUSDT)
+                if (!string.IsNullOrEmpty(quoteAsset))
+                {
+                    if (!symbol.EndsWith(quoteAsset, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
+
+                // Skip pairs with zero volume (inactive)
+                var volume = decimal.TryParse(data.Volume24h, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0;
+                var lastPrice = decimal.TryParse(data.LastPrice, NumberStyles.Any, CultureInfo.InvariantCulture, out var p) ? p : 0;
+
+                if (volume <= 0 && lastPrice <= 0)
+                    continue;
+
+                result[symbol] = new Ticker
+                {
+                    Symbol = symbol,
+                    Exchange = ExchangeName,
+                    BidPrice = decimal.TryParse(data.Bid1Price, NumberStyles.Any, CultureInfo.InvariantCulture, out var bid) ? bid : 0,
+                    AskPrice = decimal.TryParse(data.Ask1Price, NumberStyles.Any, CultureInfo.InvariantCulture, out var ask) ? ask : 0,
+                    BidQuantity = decimal.TryParse(data.Bid1Size, NumberStyles.Any, CultureInfo.InvariantCulture, out var bidSz) ? bidSz : 0,
+                    AskQuantity = decimal.TryParse(data.Ask1Size, NumberStyles.Any, CultureInfo.InvariantCulture, out var askSz) ? askSz : 0,
+                    LastPrice = lastPrice,
+                    Volume24h = volume,
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Returning {result.Count} active tickers");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetAllTickersAsync error: {ex.Message}");
+        }
+
+        return result;
+    }
+
     #endregion
+
+    #region API Permissions
+
+    /// <summary>
+    /// Get API key permissions from Bybit
+    /// Bybit /v5/user/query-api endpoint returns API key info
+    /// </summary>
+    public override async Task<ApiPermissionInfo> GetApiPermissionsAsync(CancellationToken cancellationToken = default)
+    {
+        var permissions = new ApiPermissionInfo();
+
+        try
+        {
+            if (!HasCredentials())
+            {
+                permissions.AdditionalInfo = "ไม่ได้ตั้งค่า API Key";
+                return permissions;
+            }
+
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var queryString = "";
+            var headers = CreateAuthHeaders(timestamp, queryString, "");
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/v5/user/query-api");
+            foreach (var header in headers)
+            {
+                request.Headers.Add(header.Key, header.Value);
+            }
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<BybitResponse<BybitApiKeyInfo>>(_jsonOptions, cancellationToken);
+                if (result?.Result != null)
+                {
+                    permissions.CanRead = true;
+                    // Bybit permissions object
+                    var perms = result.Result.Permissions;
+                    if (perms != null)
+                    {
+                        permissions.CanTrade = perms.Spot?.Contains("SpotTrade") ?? false;
+                        permissions.CanWithdraw = perms.Wallet?.Contains("Withdraw") ?? false;
+                        permissions.CanDeposit = perms.Wallet?.Contains("AccountTransfer") ?? false;
+                    }
+                    permissions.IpRestriction = result.Result.IpRestrictions;
+                }
+            }
+            else
+            {
+                // Fallback: try get balance
+                try
+                {
+                    var balance = await GetBalanceAsync(cancellationToken);
+                    permissions.CanRead = balance != null;
+                    permissions.CanTrade = true; // assume if can read
+                }
+                catch
+                {
+                    permissions.CanRead = false;
+                }
+                permissions.AdditionalInfo = "กรุณาตรวจสอบสิทธิ์ที่ bybit.com";
+            }
+
+            _logger.LogInfo(ExchangeName, $"API Permissions - Read: {permissions.CanRead}, Trade: {permissions.CanTrade}, Withdraw: {permissions.CanWithdraw}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ExchangeName, $"Failed to get API permissions: {ex.Message}");
+            permissions.AdditionalInfo = $"ไม่สามารถตรวจสอบสิทธิ์: {ex.Message}";
+        }
+
+        return permissions;
+    }
+
+    #endregion
+
+    public override async Task<List<PriceCandle>> GetKlinesAsync(string symbol, string interval = "1m", int limit = 100, CancellationToken cancellationToken = default)
+    {
+        var candles = new List<PriceCandle>();
+        try
+        {
+            // Bybit uses BTCUSDT format (no separator)
+            var normalizedSymbol = symbol.Replace("/", "").Replace("-", "").ToUpperInvariant();
+
+            // Bybit V5 uses: 1, 3, 5, 15, 30, 60, 120, 240, 360, 720, D, W, M
+            var bybitInterval = interval switch
+            {
+                "1m" => "1",
+                "3m" => "3",
+                "5m" => "5",
+                "15m" => "15",
+                "30m" => "30",
+                "1h" => "60",
+                "4h" => "240",
+                "1d" => "D",
+                _ => "1"
+            };
+
+            var clampedLimit = Math.Min(limit, 1000); // Bybit max 1000
+
+            var response = await GetAsync<BybitResponse<BybitKlineResult>>(
+                $"/v5/market/kline?category=spot&symbol={normalizedSymbol}&interval={bybitInterval}&limit={clampedLimit}",
+                cancellationToken);
+
+            if (response?.Result?.List == null || response.Result.List.Count == 0) return candles;
+
+            foreach (var kline in response.Result.List)
+            {
+                if (kline.Count < 6) continue;
+                candles.Add(new PriceCandle
+                {
+                    Time = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(kline[0], CultureInfo.InvariantCulture)).UtcDateTime,
+                    Open = decimal.Parse(kline[1], CultureInfo.InvariantCulture),
+                    High = decimal.Parse(kline[2], CultureInfo.InvariantCulture),
+                    Low = decimal.Parse(kline[3], CultureInfo.InvariantCulture),
+                    Close = decimal.Parse(kline[4], CultureInfo.InvariantCulture),
+                    Volume = decimal.Parse(kline[5], CultureInfo.InvariantCulture)
+                });
+            }
+
+            // Bybit returns newest first, reverse to chronological order
+            candles.Reverse();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetKlinesAsync error for {symbol}: {ex.Message}");
+        }
+        return candles;
+    }
 
     #region Account Data
 
@@ -226,9 +425,9 @@ public class BybitClient : BaseExchangeClient
             var wallet = response.Result.List[0];
             foreach (var coin in wallet.Coin)
             {
-                var available = decimal.Parse(coin.AvailableToWithdraw);
-                var locked = decimal.Parse(coin.Locked);
-                var total = decimal.Parse(coin.WalletBalance);
+                var available = decimal.Parse(coin.AvailableToWithdraw, CultureInfo.InvariantCulture);
+                var locked = decimal.Parse(coin.Locked, CultureInfo.InvariantCulture);
+                var total = decimal.Parse(coin.WalletBalance, CultureInfo.InvariantCulture);
 
                 if (total > 0)
                 {
@@ -304,6 +503,11 @@ public class BybitClient : BaseExchangeClient
 
             var response = JsonSerializer.Deserialize<BybitResponse<BybitOrderResult>>(responseContent, _jsonOptions);
 
+            if (response?.RetCode != 0)
+            {
+                throw new Exception($"Bybit order failed (code {response?.RetCode}): {response?.RetMsg}. Response: {responseContent}");
+            }
+
             if (response?.Result == null)
             {
                 throw new Exception($"Failed to place order: {responseContent}");
@@ -363,9 +567,15 @@ public class BybitClient : BaseExchangeClient
             }
 
             var httpResponse = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var cancelContent = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
             httpResponse.EnsureSuccessStatusCode();
 
-            var response = await httpResponse.Content.ReadFromJsonAsync<BybitResponse<BybitOrderResult>>(_jsonOptions, cancellationToken);
+            var response = JsonSerializer.Deserialize<BybitResponse<BybitOrderResult>>(cancelContent, _jsonOptions);
+
+            if (response?.RetCode != 0)
+            {
+                throw new Exception($"Bybit cancel failed (code {response?.RetCode}): {response?.RetMsg}");
+            }
 
             return new Order
             {
@@ -528,13 +738,13 @@ public class BybitClient : BaseExchangeClient
             Side = order.Side.ToUpperInvariant() == "BUY" ? OrderSide.Buy : OrderSide.Sell,
             Type = order.OrderType.ToUpperInvariant() == "MARKET" ? OrderType.Market : OrderType.Limit,
             Status = MapOrderStatus(order.OrderStatus),
-            RequestedQuantity = decimal.Parse(order.Qty),
-            FilledQuantity = decimal.Parse(order.CumExecQty),
-            RequestedPrice = string.IsNullOrEmpty(order.Price) ? null : decimal.Parse(order.Price),
-            AverageFilledPrice = string.IsNullOrEmpty(order.AvgPrice) || order.AvgPrice == "0" ? null : decimal.Parse(order.AvgPrice),
-            Fee = string.IsNullOrEmpty(order.CumExecFee) ? 0 : decimal.Parse(order.CumExecFee),
-            CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(order.CreatedTime)).UtcDateTime,
-            UpdatedAt = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(order.UpdatedTime)).UtcDateTime
+            RequestedQuantity = decimal.Parse(order.Qty, CultureInfo.InvariantCulture),
+            FilledQuantity = decimal.Parse(order.CumExecQty, CultureInfo.InvariantCulture),
+            RequestedPrice = string.IsNullOrEmpty(order.Price) ? null : decimal.Parse(order.Price, CultureInfo.InvariantCulture),
+            AverageFilledPrice = string.IsNullOrEmpty(order.AvgPrice) || order.AvgPrice == "0" ? null : decimal.Parse(order.AvgPrice, CultureInfo.InvariantCulture),
+            Fee = string.IsNullOrEmpty(order.CumExecFee) ? 0 : decimal.Parse(order.CumExecFee, CultureInfo.InvariantCulture),
+            CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(order.CreatedTime, CultureInfo.InvariantCulture)).UtcDateTime,
+            UpdatedAt = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(order.UpdatedTime, CultureInfo.InvariantCulture)).UtcDateTime
         };
     }
 
@@ -737,6 +947,18 @@ internal class BybitOrderInfo
     public string UpdatedTime { get; set; } = "0";
 }
 
+internal class BybitKlineResult
+{
+    [JsonPropertyName("category")]
+    public string Category { get; set; } = "";
+
+    [JsonPropertyName("symbol")]
+    public string Symbol { get; set; } = "";
+
+    [JsonPropertyName("list")]
+    public List<List<string>> List { get; set; } = new();
+}
+
 internal class BybitTimeResult
 {
     [JsonPropertyName("timeSecond")]
@@ -744,6 +966,45 @@ internal class BybitTimeResult
 
     [JsonPropertyName("timeNano")]
     public string TimeNano { get; set; } = "";
+}
+
+internal class BybitApiKeyInfo
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("note")]
+    public string? Note { get; set; }
+
+    [JsonPropertyName("apiKey")]
+    public string? ApiKey { get; set; }
+
+    [JsonPropertyName("readOnly")]
+    public int ReadOnly { get; set; }
+
+    [JsonPropertyName("ips")]
+    public string? IpRestrictions { get; set; }
+
+    [JsonPropertyName("permissions")]
+    public BybitPermissions? Permissions { get; set; }
+}
+
+internal class BybitPermissions
+{
+    [JsonPropertyName("ContractTrade")]
+    public List<string>? ContractTrade { get; set; }
+
+    [JsonPropertyName("Spot")]
+    public List<string>? Spot { get; set; }
+
+    [JsonPropertyName("Wallet")]
+    public List<string>? Wallet { get; set; }
+
+    [JsonPropertyName("Options")]
+    public List<string>? Options { get; set; }
+
+    [JsonPropertyName("Exchange")]
+    public List<string>? Exchange { get; set; }
 }
 
 #endregion

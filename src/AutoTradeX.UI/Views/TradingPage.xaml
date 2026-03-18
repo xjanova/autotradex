@@ -15,61 +15,20 @@
             </Setter>
             <Setter Property="BorderBrush" Value="#30FFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="16"/>
-            <Setter Property="Padding" Value="20"/>
-            <Setter Property="Effect">
-                <Setter.Value>
-                    <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.3" Color="#000000"/>
-                </Setter.Value>
-            </Setter>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="15"/>
         </Style>
 
-        <!-- Dark TextBox Style for Manual Trading -->
-        <Style x:Key="DarkTextBox" TargetType="TextBox">
-            <Setter Property="Background" Value="#15FFFFFF"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#30FFFFFF"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="12,10"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="CaretBrush" Value="#00D4FF"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TextBox">
-                        <Border x:Name="border" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8" Padding="{TemplateBinding Padding}">
-                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsFocused" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="#7C3AED"/>
-                                <Setter TargetName="border" Property="Background" Value="#20FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="#50FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Small Action Button Style -->
         <Style x:Key="SmallActionButton" TargetType="Button">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontSize" Value="11"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="Padding" Value="12,8"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" CornerRadius="8" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
+                        <Border x:Name="border" CornerRadius="6" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -85,23 +44,16 @@
             </Setter>
         </Style>
 
-        <!-- Mode Tag Style -->
-        <Style x:Key="ModeTagStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="4"/>
-            <Setter Property="Padding" Value="6,3"/>
-            <Setter Property="Margin" Value="0,0,4,0"/>
-        </Style>
-
         <Style x:Key="ActionButton" TargetType="Button">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Padding" Value="20,12"/>
+            <Setter Property="Padding" Value="16,10"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" CornerRadius="10" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
+                        <Border x:Name="border" CornerRadius="8" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -117,14 +69,40 @@
             </Setter>
         </Style>
 
-        <!-- Dark ComboBox Style -->
+        <Style x:Key="DarkTextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#30FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="CaretBrush" Value="#00D4FF"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="#7C3AED"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="DarkComboBox" TargetType="ComboBox">
             <Setter Property="Background" Value="#1A1A2E"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderBrush" Value="#40FFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,8"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -133,7 +111,7 @@
                             <Border x:Name="border" Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="8">
+                                    CornerRadius="6">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -166,11 +144,8 @@
                                 <Border Background="#1A1A2E"
                                         BorderBrush="#40FFFFFF"
                                         BorderThickness="1"
-                                        CornerRadius="8"
+                                        CornerRadius="6"
                                         Margin="0,2,0,0">
-                                    <Border.Effect>
-                                        <DropShadowEffect BlurRadius="15" ShadowDepth="3" Opacity="0.5" Color="#000000"/>
-                                    </Border.Effect>
                                     <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
                                         <ItemsPresenter/>
                                     </ScrollViewer>
@@ -180,10 +155,6 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="border" Property="BorderBrush" Value="#7C3AED"/>
-                                <Setter TargetName="border" Property="Background" Value="#252540"/>
-                            </Trigger>
-                            <Trigger Property="IsDropDownOpen" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="#00D4FF"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -208,7 +179,6 @@
                                         </Trigger>
                                         <Trigger Property="IsSelected" Value="True">
                                             <Setter TargetName="border" Property="Background" Value="#353555"/>
-                                            <Setter Property="Foreground" Value="#00D4FF"/>
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
@@ -219,87 +189,40 @@
             </Setter>
         </Style>
 
-        <!-- Premium ScrollBar Thumb Style -->
+        <Style x:Key="ModeTagStyle" TargetType="Border">
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="6,3"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+        </Style>
+
+        <!-- Premium ScrollBar Styles -->
         <Style x:Key="PremiumScrollBarThumb" TargetType="Thumb">
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Thumb">
-                        <Grid>
-                            <Border x:Name="glowBorder" CornerRadius="5" MinHeight="40" Opacity="0">
-                                <Border.Background>
-                                    <RadialGradientBrush>
-                                        <GradientStop Color="#508B5CF6" Offset="0"/>
-                                        <GradientStop Color="#00000000" Offset="1"/>
-                                    </RadialGradientBrush>
-                                </Border.Background>
-                            </Border>
-                            <Border x:Name="thumb" CornerRadius="5" MinHeight="40" Width="8" HorizontalAlignment="Center">
-                                <Border.Background>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                        <GradientStop Color="#8B5CF6" Offset="0"/>
-                                        <GradientStop Color="#7C3AED" Offset="0.3"/>
-                                        <GradientStop Color="#6D28D9" Offset="0.7"/>
-                                        <GradientStop Color="#8B5CF6" Offset="1"/>
-                                    </LinearGradientBrush>
-                                </Border.Background>
-                                <Border.Effect>
-                                    <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.6" Color="#7C3AED"/>
-                                </Border.Effect>
-                            </Border>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="thumb" Property="Background">
-                                    <Setter.Value>
-                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                            <GradientStop Color="#A78BFA" Offset="0"/>
-                                            <GradientStop Color="#8B5CF6" Offset="0.3"/>
-                                            <GradientStop Color="#7C3AED" Offset="0.7"/>
-                                            <GradientStop Color="#A78BFA" Offset="1"/>
-                                        </LinearGradientBrush>
-                                    </Setter.Value>
-                                </Setter>
-                                <Setter TargetName="thumb" Property="Effect">
-                                    <Setter.Value>
-                                        <DropShadowEffect BlurRadius="12" ShadowDepth="0" Opacity="0.8" Color="#8B5CF6"/>
-                                    </Setter.Value>
-                                </Setter>
-                                <Setter TargetName="glowBorder" Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                            <Trigger Property="IsDragging" Value="True">
-                                <Setter TargetName="thumb" Property="Background">
-                                    <Setter.Value>
-                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                            <GradientStop Color="#C4B5FD" Offset="0"/>
-                                            <GradientStop Color="#A78BFA" Offset="0.3"/>
-                                            <GradientStop Color="#8B5CF6" Offset="0.7"/>
-                                            <GradientStop Color="#C4B5FD" Offset="1"/>
-                                        </LinearGradientBrush>
-                                    </Setter.Value>
-                                </Setter>
-                                <Setter TargetName="thumb" Property="Effect">
-                                    <Setter.Value>
-                                        <DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="1" Color="#A78BFA"/>
-                                    </Setter.Value>
-                                </Setter>
-                                <Setter TargetName="glowBorder" Property="Opacity" Value="0.8"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
+                        <Border CornerRadius="4" MinHeight="30" Width="6" HorizontalAlignment="Center">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#8B5CF6" Offset="0"/>
+                                    <GradientStop Color="#7C3AED" Offset="0.5"/>
+                                    <GradientStop Color="#6D28D9" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
 
-        <!-- Premium ScrollBar Style -->
         <Style x:Key="PremiumScrollBar" TargetType="ScrollBar">
-            <Setter Property="Width" Value="10"/>
+            <Setter Property="Width" Value="8"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ScrollBar">
-                        <Grid x:Name="Root" Width="10" Margin="2,4,6,4">
-                            <Border Background="#15FFFFFF" CornerRadius="5" Width="8" HorizontalAlignment="Center"/>
-                            <Track x:Name="PART_Track" IsDirectionReversed="True" Width="10">
+                        <Grid Width="8" Margin="2,4,4,4">
+                            <Border Background="#10FFFFFF" CornerRadius="4" Width="6" HorizontalAlignment="Center"/>
+                            <Track x:Name="PART_Track" IsDirectionReversed="True" Width="8">
                                 <Track.DecreaseRepeatButton>
                                     <RepeatButton Command="ScrollBar.PageUpCommand">
                                         <RepeatButton.Template>
@@ -319,7 +242,7 @@
                                     </RepeatButton>
                                 </Track.IncreaseRepeatButton>
                                 <Track.Thumb>
-                                    <Thumb Style="{StaticResource PremiumScrollBarThumb}" Width="8"/>
+                                    <Thumb Style="{StaticResource PremiumScrollBarThumb}" Width="6"/>
                                 </Track.Thumb>
                             </Track>
                         </Grid>
@@ -328,7 +251,6 @@
             </Setter>
         </Style>
 
-        <!-- Premium ScrollViewer Style -->
         <Style x:Key="PremiumScrollViewer" TargetType="ScrollViewer">
             <Setter Property="CanContentScroll" Value="False"/>
             <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
@@ -364,13 +286,13 @@
     </UserControl.Resources>
 
     <Grid>
-        <!-- Not Connected Overlay Panel -->
+        <!-- Not Connected Overlay -->
         <Border x:Name="NotConnectedOverlay" Visibility="Collapsed" Panel.ZIndex="100">
             <Border.Background>
                 <SolidColorBrush Color="#0A0A1A" Opacity="0.95"/>
             </Border.Background>
             <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
-                <Border CornerRadius="20" Padding="40,30" MaxWidth="500">
+                <Border CornerRadius="16" Padding="40,30" MaxWidth="450">
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                             <GradientStop Color="#20FFFFFF" Offset="0"/>
@@ -381,81 +303,47 @@
                         <SolidColorBrush Color="#EF4444" Opacity="0.3"/>
                     </Border.BorderBrush>
                     <Border.BorderThickness>1</Border.BorderThickness>
-                    <Border.Effect>
-                        <DropShadowEffect BlurRadius="30" ShadowDepth="0" Opacity="0.3" Color="#EF4444"/>
-                    </Border.Effect>
                     <StackPanel HorizontalAlignment="Center">
-                        <!-- Warning Icon -->
-                        <Border Background="#20EF4444" CornerRadius="50" Width="80" Height="80" HorizontalAlignment="Center" Margin="0,0,0,20">
-                            <TextBlock Text="⚠️" FontSize="40" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border Background="#20EF4444" CornerRadius="40" Width="70" Height="70" HorizontalAlignment="Center" Margin="0,0,0,15">
+                            <TextBlock Text="⚠️" FontSize="32" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-
-                        <!-- Title -->
-                        <TextBlock Text="ยังไม่ได้เชื่อมต่อ Exchange" FontSize="20" FontWeight="Bold"
-                                   Foreground="#EF4444" HorizontalAlignment="Center" Margin="0,0,0,10"/>
-
-                        <!-- Description -->
-                        <TextBlock Text="กรุณากรอก API Key ในหน้าตั้งค่าเพื่อเริ่มต้นเทรด" FontSize="13"
+                        <TextBlock Text="ยังไม่ได้เชื่อมต่อ Exchange" FontSize="18" FontWeight="Bold"
+                                   Foreground="#EF4444" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                        <TextBlock Text="กรุณากรอก API Key ในหน้าตั้งค่าเพื่อเริ่มต้นเทรด" FontSize="12"
                                    Foreground="#80FFFFFF" HorizontalAlignment="Center" TextWrapping="Wrap"
-                                   TextAlignment="Center" Margin="0,0,0,25"/>
-
-                        <!-- Exchange Icons -->
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,25">
+                                   TextAlignment="Center" Margin="0,0,0,20"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,20">
                             <Border Background="#15FFFFFF" CornerRadius="8" Padding="8" Margin="4,0">
-                                <StackPanel>
-                                    <controls:ExchangeIcon ExchangeName="Binance" Size="32"/>
-                                    <Ellipse Width="8" Height="8" Fill="#60FFFFFF" HorizontalAlignment="Center" Margin="0,5,0,0"/>
-                                </StackPanel>
+                                <controls:ExchangeIcon ExchangeName="Binance" Size="28"/>
                             </Border>
                             <Border Background="#15FFFFFF" CornerRadius="8" Padding="8" Margin="4,0">
-                                <StackPanel>
-                                    <controls:ExchangeIcon ExchangeName="KuCoin" Size="32"/>
-                                    <Ellipse Width="8" Height="8" Fill="#60FFFFFF" HorizontalAlignment="Center" Margin="0,5,0,0"/>
-                                </StackPanel>
+                                <controls:ExchangeIcon ExchangeName="KuCoin" Size="28"/>
                             </Border>
                             <Border Background="#15FFFFFF" CornerRadius="8" Padding="8" Margin="4,0">
-                                <StackPanel>
-                                    <controls:ExchangeIcon ExchangeName="OKX" Size="32"/>
-                                    <Ellipse Width="8" Height="8" Fill="#60FFFFFF" HorizontalAlignment="Center" Margin="0,5,0,0"/>
-                                </StackPanel>
+                                <controls:ExchangeIcon ExchangeName="OKX" Size="28"/>
                             </Border>
                             <Border Background="#15FFFFFF" CornerRadius="8" Padding="8" Margin="4,0">
-                                <StackPanel>
-                                    <controls:ExchangeIcon ExchangeName="Bybit" Size="32"/>
-                                    <Ellipse Width="8" Height="8" Fill="#60FFFFFF" HorizontalAlignment="Center" Margin="0,5,0,0"/>
-                                </StackPanel>
+                                <controls:ExchangeIcon ExchangeName="Bybit" Size="28"/>
                             </Border>
                         </StackPanel>
-
-                        <!-- Go to Settings Button -->
                         <Button x:Name="GoToSettingsButton" Click="GoToSettings_Click" Cursor="Hand">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
-                                    <Border x:Name="btnBorder" CornerRadius="12" Padding="30,14">
+                                    <Border x:Name="btnBorder" CornerRadius="10" Padding="25,12">
                                         <Border.Background>
                                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                                 <GradientStop Color="#7C3AED" Offset="0"/>
                                                 <GradientStop Color="#5B21B6" Offset="1"/>
                                             </LinearGradientBrush>
                                         </Border.Background>
-                                        <Border.Effect>
-                                            <DropShadowEffect BlurRadius="15" ShadowDepth="0" Opacity="0.5" Color="#7C3AED"/>
-                                        </Border.Effect>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                            <TextBlock Text="⚙️" FontSize="16" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="ไปหน้าตั้งค่า API" FontSize="14" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                                            <TextBlock Text="⚙️" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="ไปหน้าตั้งค่า API" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
                                         </StackPanel>
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="btnBorder" Property="Background">
-                                                <Setter.Value>
-                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                        <GradientStop Color="#8B5CF6" Offset="0"/>
-                                                        <GradientStop Color="#7C3AED" Offset="1"/>
-                                                    </LinearGradientBrush>
-                                                </Setter.Value>
-                                            </Setter>
+                                            <Setter TargetName="btnBorder" Property="Opacity" Value="0.9"/>
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
@@ -467,535 +355,532 @@
         </Border>
 
         <!-- Main Trading Content -->
-        <Grid x:Name="MainTradingContent">
+        <Grid x:Name="MainTradingContent" Margin="15">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="320"/>
+                <ColumnDefinition Width="280" MinWidth="250"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="350"/>
+                <ColumnDefinition Width="300" MinWidth="280"/>
             </Grid.ColumnDefinitions>
 
-        <!-- Left Panel - Active Trading Pairs -->
-        <StackPanel Grid.Column="0" Margin="0,0,10,0">
-            <!-- Active Pairs -->
-            <Border Style="{StaticResource GlassCard}" Margin="0,0,0,15">
+            <!-- Left Panel - Scanner -->
+            <ScrollViewer Grid.Column="0" Margin="0,0,10,0" Style="{StaticResource PremiumScrollViewer}">
                 <StackPanel>
-                    <Grid Margin="0,0,0,15">
-                        <TextBlock Text="ACTIVE TRADING PAIRS" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF"/>
-                        <Button x:Name="AddPairButton" Content="+ Add Pair" HorizontalAlignment="Right"
-                                Background="#7C3AED" Click="AddPairButton_Click" Style="{StaticResource ActionButton}"
-                                Padding="12,6" FontSize="11"/>
-                    </Grid>
+                    <!-- Scanner Panel -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,10">
+                                <TextBlock Text="🔍 SCANNER" FontSize="11" FontWeight="Bold" Foreground="White"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Ellipse x:Name="ScannerStatusDot" Width="6" Height="6" Fill="#808080" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="ScannerStatusText" Text="Idle" FontSize="9" Foreground="#808080"/>
+                                </StackPanel>
+                            </Grid>
 
-                    <ListBox x:Name="TradingPairsList" Background="Transparent" BorderThickness="0"
-                             SelectionChanged="TradingPairsList_SelectionChanged"
-                             ItemsSource="{Binding TradingPairs}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="#15FFFFFF" CornerRadius="10" Padding="12" Margin="0,0,0,8" Cursor="Hand">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="StartScanButton" Content="▶ START" Grid.Column="0" Margin="0,0,4,0"
+                                        Style="{StaticResource SmallActionButton}" Click="StartScanButton_Click">
+                                    <Button.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#10B981" Offset="0"/>
+                                            <GradientStop Color="#059669" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Button.Background>
+                                </Button>
+                                <Button x:Name="StopScanButton" Content="⏹ STOP" Grid.Column="1" Margin="4,0,0,0"
+                                        Visibility="Collapsed" Style="{StaticResource SmallActionButton}" Click="StopScanButton_Click">
+                                    <Button.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#EF4444" Offset="0"/>
+                                            <GradientStop Color="#DC2626" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Button.Background>
+                                </Button>
+                            </Grid>
 
-                                        <controls:CoinIcon Symbol="{Binding BaseAsset}" Size="36" Margin="0,0,12,0"/>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="Scans" FontSize="8" Foreground="#60FFFFFF" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="ScanCountDisplay" Text="0" FontSize="14" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                                    <TextBlock Text="Found" FontSize="8" Foreground="#60FFFFFF" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="OpportunityCountDisplay" Text="0" FontSize="14" FontWeight="Bold" Foreground="#10B981" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                                    <TextBlock Text="Best" FontSize="8" Foreground="#60FFFFFF" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="BestScoreDisplay" Text="0" FontSize="14" FontWeight="Bold" Foreground="#F59E0B" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
 
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Symbol}" FontWeight="SemiBold" Foreground="White" FontSize="14"/>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding ExchangeA}" FontSize="11" Foreground="#60FFFFFF"/>
-                                                <TextBlock Text=" → " FontSize="11" Foreground="#40FFFFFF"/>
-                                                <TextBlock Text="{Binding ExchangeB}" FontSize="11" Foreground="#60FFFFFF"/>
-                                            </StackPanel>
-                                        </StackPanel>
-
-                                        <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding CurrentSpread, StringFormat={}{0:F3}%}"
-                                                       FontWeight="Bold" HorizontalAlignment="Right"
-                                                       Foreground="{Binding SpreadColor}"/>
-                                            <TextBlock Text="{Binding Status}" FontSize="10"
-                                                       Foreground="{Binding StatusColor}" HorizontalAlignment="Right"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </StackPanel>
-            </Border>
-
-            <!-- Quick Actions -->
-            <Border Style="{StaticResource GlassCard}">
-                <StackPanel>
-                    <TextBlock Text="QUICK ACTIONS" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,15"/>
-
-                    <Button x:Name="ScanAllButton" Content="Scan All Pairs" Margin="0,0,0,10"
-                            Style="{StaticResource ActionButton}" Click="ScanAllButton_Click">
-                        <Button.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                <GradientStop Color="#00D4FF" Offset="0"/>
-                                <GradientStop Color="#0099CC" Offset="1"/>
-                            </LinearGradientBrush>
-                        </Button.Background>
-                    </Button>
-
-                    <Button x:Name="PauseAllButton" Content="Pause All Trading" Margin="0,0,0,10"
-                            Style="{StaticResource ActionButton}" Click="PauseAllButton_Click">
-                        <Button.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                <GradientStop Color="#F59E0B" Offset="0"/>
-                                <GradientStop Color="#D97706" Offset="1"/>
-                            </LinearGradientBrush>
-                        </Button.Background>
-                    </Button>
-
-                    <Button x:Name="EmergencyStopButton" Content="EMERGENCY STOP"
-                            Style="{StaticResource ActionButton}" Click="EmergencyStopButton_Click">
-                        <Button.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                <GradientStop Color="#EF4444" Offset="0"/>
-                                <GradientStop Color="#DC2626" Offset="1"/>
-                            </LinearGradientBrush>
-                        </Button.Background>
-                    </Button>
-                </StackPanel>
-            </Border>
-        </StackPanel>
-
-        <!-- Center Panel - Selected Pair Details -->
-        <Grid Grid.Column="1" Margin="10,0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-
-            <!-- Selected Pair Header -->
-            <Border Grid.Row="0" Style="{StaticResource GlassCard}" Margin="0,0,0,15">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Orientation="Horizontal">
-                        <controls:CoinIcon x:Name="SelectedCoinIcon" Symbol="BTC" Size="48" Margin="0,0,15,0"/>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock x:Name="SelectedPairName" Text="BTC/USDT" FontSize="24" FontWeight="Bold" Foreground="White"/>
-                            <TextBlock x:Name="SelectedPairExchanges" Text="Binance → KuCoin" FontSize="12" Foreground="#60FFFFFF"/>
+                            <TextBlock Text="Strategy:" FontSize="9" Foreground="#60FFFFFF" Margin="0,0,0,4"/>
+                            <ComboBox x:Name="StrategyCombo" SelectedIndex="0" Style="{StaticResource DarkComboBox}"
+                                      SelectionChanged="StrategyCombo_SelectionChanged">
+                                <ComboBoxItem Content="💰 Arbitrage"/>
+                                <ComboBoxItem Content="📉 Price Drop"/>
+                                <ComboBoxItem Content="📊 Volatility"/>
+                                <ComboBoxItem Content="📈 Volume"/>
+                                <ComboBoxItem Content="🚀 Momentum"/>
+                            </ComboBox>
                         </StackPanel>
-                    </StackPanel>
+                    </Border>
 
-                    <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Current Spread: " FontSize="14" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="SelectedSpread" Text="0.15%" FontSize="28" FontWeight="Bold" Foreground="#10B981"/>
-                        </StackPanel>
-                        <TextBlock x:Name="SelectedProfitEstimate" Text="Est. Profit: $12.50 per trade"
-                                   FontSize="12" Foreground="#60FFFFFF" HorizontalAlignment="Right"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <!-- Price Comparison with Bot Animation & Manual Trading -->
-            <Border Grid.Row="1" Style="{StaticResource GlassCard}">
-                <ScrollViewer Style="{StaticResource PremiumScrollViewer}" VerticalScrollBarVisibility="Auto">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- Header with Bot Status Animation -->
-                        <Grid Margin="0,0,0,15">
-                            <TextBlock Text="LIVE PRICE COMPARISON" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF"/>
-
-                            <!-- Bot Trading Animation Panel -->
-                            <Border x:Name="BotAnimationPanel" HorizontalAlignment="Right" CornerRadius="8" Padding="12,6"
-                                    Visibility="Collapsed">
-                                <Border.Background>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                        <GradientStop Color="#2010B981" Offset="0"/>
-                                        <GradientStop Color="#1010B981" Offset="1"/>
-                                    </LinearGradientBrush>
-                                </Border.Background>
+                    <!-- Scan Results -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,8">
                                 <StackPanel Orientation="Horizontal">
-                                    <!-- Animated Bot Icon -->
-                                    <Canvas Width="20" Height="20" Margin="0,0,8,0">
-                                        <Ellipse x:Name="BotPulse1" Width="20" Height="20" Opacity="0">
-                                            <Ellipse.Fill>
-                                                <RadialGradientBrush>
-                                                    <GradientStop Color="#5010B981" Offset="0"/>
-                                                    <GradientStop Color="#0010B981" Offset="1"/>
-                                                </RadialGradientBrush>
-                                            </Ellipse.Fill>
-                                        </Ellipse>
-                                        <Ellipse x:Name="BotPulse2" Width="12" Height="12" Canvas.Left="4" Canvas.Top="4" Opacity="0">
-                                            <Ellipse.Fill>
-                                                <RadialGradientBrush>
-                                                    <GradientStop Color="#8010B981" Offset="0"/>
-                                                    <GradientStop Color="#0010B981" Offset="1"/>
-                                                </RadialGradientBrush>
-                                            </Ellipse.Fill>
-                                        </Ellipse>
-                                        <Ellipse Width="8" Height="8" Canvas.Left="6" Canvas.Top="6" Fill="#10B981"/>
-                                    </Canvas>
-                                    <TextBlock x:Name="BotStatusText" Text="BOT TRADING" FontSize="11" FontWeight="Bold" Foreground="#10B981" VerticalAlignment="Center"/>
+                                    <TextBlock Text="RESULTS" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF"/>
+                                    <Border x:Name="RecommendedBadge" Background="#7C3AED" CornerRadius="6" Padding="5,2" Margin="6,0,0,0" Visibility="Collapsed">
+                                        <TextBlock Text="🔥 HOT" FontSize="7" Foreground="White" FontWeight="Bold"/>
+                                    </Border>
+                                </StackPanel>
+                                <Button x:Name="AddPairButton" Content="+" HorizontalAlignment="Right"
+                                        Background="#7C3AED" Click="AddPairButton_Click" Style="{StaticResource SmallActionButton}"
+                                        Padding="8,4" FontSize="12" Width="28" Height="28"/>
+                            </Grid>
 
-                                    <!-- Data Flow Animation -->
-                                    <Canvas x:Name="DataFlowCanvas" Width="40" Height="16" Margin="10,0,0,0">
-                                        <Ellipse x:Name="DataDot1" Width="4" Height="4" Fill="#00D4FF" Canvas.Top="6" Opacity="0"/>
-                                        <Ellipse x:Name="DataDot2" Width="4" Height="4" Fill="#7C3AED" Canvas.Top="6" Opacity="0"/>
-                                        <Ellipse x:Name="DataDot3" Width="4" Height="4" Fill="#10B981" Canvas.Top="6" Opacity="0"/>
-                                    </Canvas>
+                            <ItemsControl x:Name="ScanResultsList" MaxHeight="180">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#10FFFFFF" CornerRadius="6" Padding="8" Margin="0,0,0,4" Cursor="Hand"
+                                                MouseLeftButtonDown="ScanResult_Click" Tag="{Binding}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <controls:CoinIcon Symbol="{Binding BaseAsset}" Size="24" Margin="0,0,6,0"/>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Symbol}" FontWeight="SemiBold" Foreground="White" FontSize="11"/>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="{Binding BestBuyExchange}" FontSize="8" Foreground="#F3BA2F"/>
+                                                        <TextBlock Text=" → " FontSize="8" Foreground="#40FFFFFF"/>
+                                                        <TextBlock Text="{Binding BestSellExchange}" FontSize="8" Foreground="#23AF91"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="2" Text="{Binding SpreadDisplay}" FontSize="12" FontWeight="Bold"
+                                                           Foreground="{Binding SpreadColor}" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Border x:Name="ScanEmptyState" Background="#08FFFFFF" CornerRadius="6" Padding="12" Margin="0,4,0,0">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="🔍" FontSize="20" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Click START to scan" FontSize="10" Foreground="#60FFFFFF" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
-                        </Grid>
 
-                        <!-- Exchange Comparison Grid -->
-                        <Grid Grid.Row="1">
+                            <Border x:Name="ScanLoadingState" Visibility="Collapsed" Background="#08FFFFFF" CornerRadius="6" Padding="12" Margin="0,4,0,0">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock x:Name="ScanLoadingIcon" Text="⏳" FontSize="20" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="ScanLoadingText" Text="Scanning..." FontSize="10" Foreground="#F59E0B" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Active Pairs -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="ACTIVE PAIRS" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,8"/>
+                            <ListBox x:Name="TradingPairsList" Background="Transparent" BorderThickness="0"
+                                     SelectionChanged="TradingPairsList_SelectionChanged"
+                                     ItemsSource="{Binding TradingPairs}" MaxHeight="120">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#10FFFFFF" CornerRadius="6" Padding="8" Margin="0,0,0,4" Cursor="Hand">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <controls:CoinIcon Symbol="{Binding BaseAsset}" Size="24" Margin="0,0,6,0"/>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Symbol}" FontWeight="SemiBold" Foreground="White" FontSize="10"/>
+                                                    <TextBlock FontSize="8" Foreground="#60FFFFFF">
+                                                        <Run Text="{Binding ExchangeA}"/>
+                                                        <Run Text=" → "/>
+                                                        <Run Text="{Binding ExchangeB}"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="2" Text="{Binding CurrentSpread, StringFormat={}{0:F2}%}"
+                                                           FontWeight="Bold" FontSize="10" Foreground="{Binding SpreadColor}" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Quick Actions -->
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel>
+                            <TextBlock Text="QUICK ACTIONS" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,8"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="ScanAllButton" Content="↻ Refresh" Grid.Column="0" Margin="0,0,4,0"
+                                        Style="{StaticResource SmallActionButton}" Click="ScanAllButton_Click">
+                                    <Button.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#00D4FF" Offset="0"/>
+                                            <GradientStop Color="#0099CC" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Button.Background>
+                                </Button>
+                                <Button x:Name="PauseAllButton" Content="⏸ Pause" Grid.Column="1" Margin="4,0,0,0"
+                                        Style="{StaticResource SmallActionButton}" Click="PauseAllButton_Click">
+                                    <Button.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#F59E0B" Offset="0"/>
+                                            <GradientStop Color="#D97706" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Button.Background>
+                                </Button>
+                            </Grid>
+                            <Button x:Name="EmergencyStopButton" Content="🛑 EMERGENCY STOP" Margin="0,6,0,0"
+                                    Style="{StaticResource SmallActionButton}" Click="EmergencyStopButton_Click">
+                                <Button.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#EF4444" Offset="0"/>
+                                        <GradientStop Color="#DC2626" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Button.Background>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Center Panel - Main Trading View -->
+            <ScrollViewer Grid.Column="1" Margin="10,0" Style="{StaticResource PremiumScrollViewer}">
+                <StackPanel>
+                    <!-- Selected Pair Header -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,10">
+                        <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                                <controls:CoinIcon x:Name="SelectedCoinIcon" Symbol="BTC" Size="40" Margin="0,0,12,0"/>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock x:Name="SelectedPairName" Text="BTC/USDT" FontSize="20" FontWeight="Bold" Foreground="White"/>
+                                    <TextBlock x:Name="SelectedPairExchanges" Text="Binance → KuCoin" FontSize="11" Foreground="#60FFFFFF"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Spread: " FontSize="12" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="SelectedSpread" Text="0.15%" FontSize="22" FontWeight="Bold" Foreground="#10B981"/>
+                                </StackPanel>
+                                <TextBlock x:Name="SelectedProfitEstimate" Text="Est: $12.50/trade" FontSize="10" Foreground="#60FFFFFF" HorizontalAlignment="Right"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Exchange Comparison -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="70"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
-                            <!-- Exchange A Panel (BUY) -->
-                            <Border Grid.Column="0" CornerRadius="12" Padding="16">
-                                <Border.Background>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop Color="#15F3BA2F" Offset="0"/>
-                                        <GradientStop Color="#08F3BA2F" Offset="1"/>
-                                    </LinearGradientBrush>
-                                </Border.Background>
+                            <!-- Exchange A (Buy) -->
+                            <Border Grid.Column="0" Background="#08F3BA2F" CornerRadius="10" Padding="12">
                                 <StackPanel>
-                                    <!-- Exchange Header with Modes -->
-                                    <Grid Margin="0,0,0,12">
-                                        <StackPanel Orientation="Horizontal">
-                                            <controls:ExchangeIcon x:Name="ExchangeAIcon" ExchangeName="Binance" Size="36" Margin="0,0,10,0"/>
-                                            <StackPanel VerticalAlignment="Center">
-                                                <TextBlock x:Name="ExchangeAName" Text="BINANCE" FontSize="14" FontWeight="Bold" Foreground="#F3BA2F"/>
-                                                <TextBlock Text="BUY HERE" FontSize="10" Foreground="#10B981"/>
-                                            </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <controls:ExchangeIcon x:Name="ExchangeAIcon" ExchangeName="Binance" Size="28" Margin="0,0,8,0"/>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock x:Name="ExchangeAName" Text="BINANCE" FontSize="12" FontWeight="Bold" Foreground="#F3BA2F"/>
+                                            <TextBlock Text="BUY" FontSize="9" Foreground="#10B981"/>
                                         </StackPanel>
-                                        <Button x:Name="ExchangeAApiGuide" Content="?" HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                Width="20" Height="20" FontSize="11" FontWeight="Bold"
-                                                Background="#30FFFFFF" Foreground="#80FFFFFF" Cursor="Hand"
-                                                ToolTip="API Setup Guide" Click="ApiGuideButton_Click" Tag="A">
-                                            <Button.Template>
-                                                <ControlTemplate TargetType="Button">
-                                                    <Border Background="{TemplateBinding Background}" CornerRadius="10">
-                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    </Border>
-                                                </ControlTemplate>
-                                            </Button.Template>
-                                        </Button>
-                                    </Grid>
-
-                                    <!-- Supported Modes -->
-                                    <StackPanel x:Name="ExchangeAModesPanel" Orientation="Horizontal" Margin="0,0,0,12">
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                         <Border Style="{StaticResource ModeTagStyle}" Background="#2010B981">
-                                            <TextBlock Text="SPOT" FontSize="9" FontWeight="Bold" Foreground="#10B981"/>
+                                            <TextBlock Text="SPOT" FontSize="8" FontWeight="Bold" Foreground="#10B981"/>
                                         </Border>
                                         <Border x:Name="ExchangeAFutures" Style="{StaticResource ModeTagStyle}" Background="#20F59E0B">
-                                            <TextBlock Text="FUTURES" FontSize="9" FontWeight="Bold" Foreground="#F59E0B"/>
+                                            <TextBlock Text="FUTURES" FontSize="8" FontWeight="Bold" Foreground="#F59E0B"/>
                                         </Border>
                                         <Border x:Name="ExchangeAMargin" Style="{StaticResource ModeTagStyle}" Background="#207C3AED">
-                                            <TextBlock Text="MARGIN" FontSize="9" FontWeight="Bold" Foreground="#7C3AED"/>
+                                            <TextBlock Text="MARGIN" FontSize="8" FontWeight="Bold" Foreground="#7C3AED"/>
                                         </Border>
                                     </StackPanel>
-
-                                    <!-- Price Display -->
-                                    <TextBlock x:Name="ExchangeAPrice" Text="$0.00" FontSize="28" FontWeight="Bold" Foreground="White"/>
-
-                                    <Grid Margin="0,10,0,0">
+                                    <TextBlock x:Name="ExchangeAPrice" Text="$0.00" FontSize="22" FontWeight="Bold" Foreground="White"/>
+                                    <Grid Margin="0,8,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
-                                            <TextBlock Text="BID" FontSize="9" Foreground="#50FFFFFF"/>
-                                            <TextBlock x:Name="ExchangeABid" Text="$0.00" FontSize="13" Foreground="#10B981" FontWeight="SemiBold"/>
+                                            <TextBlock Text="BID" FontSize="8" Foreground="#50FFFFFF"/>
+                                            <TextBlock x:Name="ExchangeABid" Text="$0.00" FontSize="11" Foreground="#10B981" FontWeight="SemiBold"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1">
-                                            <TextBlock Text="ASK" FontSize="9" Foreground="#50FFFFFF"/>
-                                            <TextBlock x:Name="ExchangeAAsk" Text="$0.00" FontSize="13" Foreground="#EF4444" FontWeight="SemiBold"/>
+                                            <TextBlock Text="ASK" FontSize="8" Foreground="#50FFFFFF"/>
+                                            <TextBlock x:Name="ExchangeAAsk" Text="$0.00" FontSize="11" Foreground="#EF4444" FontWeight="SemiBold"/>
                                         </StackPanel>
                                     </Grid>
-
-                                    <!-- Balance -->
-                                    <Border Background="#10FFFFFF" CornerRadius="8" Padding="10,8" Margin="0,12,0,0">
+                                    <Border Background="#10FFFFFF" CornerRadius="6" Padding="8,6" Margin="0,10,0,0">
                                         <StackPanel>
-                                            <TextBlock Text="AVAILABLE BALANCE" FontSize="8" Foreground="#50FFFFFF"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                                <TextBlock x:Name="ExchangeABalance" Text="0.00" FontSize="14" Foreground="White" FontWeight="SemiBold"/>
-                                                <TextBlock x:Name="ExchangeABalanceAsset" Text=" USDT" FontSize="11" Foreground="#60FFFFFF" VerticalAlignment="Bottom"/>
+                                            <TextBlock Text="BALANCE" FontSize="7" Foreground="#50FFFFFF"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock x:Name="ExchangeABalance" Text="0.00" FontSize="12" Foreground="White" FontWeight="SemiBold"/>
+                                                <TextBlock x:Name="ExchangeABalanceAsset" Text=" USDT" FontSize="9" Foreground="#60FFFFFF" VerticalAlignment="Bottom"/>
                                             </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- Manual Trading Form A -->
-                                    <Border x:Name="ManualTradingFormA" Background="#10FFFFFF" CornerRadius="10" Padding="12" Margin="0,12,0,0">
-                                        <StackPanel>
-                                            <Grid Margin="0,0,0,10">
-                                                <TextBlock Text="MANUAL BUY" FontSize="10" FontWeight="Bold" Foreground="#10B981"/>
-                                                <Border x:Name="BotBlockingOverlayA" Visibility="Collapsed" Background="#80000000" CornerRadius="6"
-                                                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="-12,-12,-12,0">
-                                                    <TextBlock Text="Turn off bot to trade manually" FontSize="10" Foreground="#F59E0B"
-                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                </Border>
-                                            </Grid>
-
-                                            <TextBlock Text="Amount" FontSize="9" Foreground="#60FFFFFF" Margin="0,0,0,4"/>
-                                            <TextBox x:Name="ManualAmountA" Style="{StaticResource DarkTextBox}" Text="100" FontSize="13"/>
-
-                                            <TextBlock Text="Price (leave empty for market)" FontSize="9" Foreground="#60FFFFFF" Margin="0,8,0,4"/>
-                                            <TextBox x:Name="ManualPriceA" Style="{StaticResource DarkTextBox}" FontSize="13"
-                                                     ToolTip="Leave empty for market order"/>
-
-                                            <Grid Margin="0,10,0,0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Button x:Name="BuyMarketA" Content="MARKET" Grid.Column="0" Margin="0,0,4,0"
-                                                        Style="{StaticResource SmallActionButton}" Click="ManualBuyA_Click" Tag="Market">
-                                                    <Button.Background>
-                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                            <GradientStop Color="#10B981" Offset="0"/>
-                                                            <GradientStop Color="#059669" Offset="1"/>
-                                                        </LinearGradientBrush>
-                                                    </Button.Background>
-                                                </Button>
-                                                <Button x:Name="BuyLimitA" Content="LIMIT" Grid.Column="1" Margin="4,0,0,0"
-                                                        Style="{StaticResource SmallActionButton}" Click="ManualBuyA_Click" Tag="Limit">
-                                                    <Button.Background>
-                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                            <GradientStop Color="#0EA5E9" Offset="0"/>
-                                                            <GradientStop Color="#0284C7" Offset="1"/>
-                                                        </LinearGradientBrush>
-                                                    </Button.Background>
-                                                </Button>
-                                            </Grid>
                                         </StackPanel>
                                     </Border>
                                 </StackPanel>
                             </Border>
 
-                            <!-- Center Arrow with Bot Animation -->
+                            <!-- Center Arrow -->
                             <Grid Grid.Column="1" VerticalAlignment="Center">
-                                <StackPanel>
-                                    <!-- Animated Data Flow Lines -->
-                                    <Canvas x:Name="ArrowFlowCanvas" Width="80" Height="60" Margin="0,0,0,5">
-                                        <!-- Main Arrow -->
-                                        <Path Canvas.Left="10" Canvas.Top="25"
-                                              Data="M0,5 L15,0 L15,3 L50,3 L50,7 L15,7 L15,10 Z"
-                                              Fill="#7C3AED"/>
-
-                                        <!-- Flow Particles -->
-                                        <Ellipse x:Name="FlowParticle1" Width="4" Height="4" Fill="#00D4FF"
-                                                 Canvas.Left="15" Canvas.Top="28" Opacity="0"/>
-                                        <Ellipse x:Name="FlowParticle2" Width="3" Height="3" Fill="#7C3AED"
-                                                 Canvas.Left="25" Canvas.Top="28" Opacity="0"/>
-                                        <Ellipse x:Name="FlowParticle3" Width="4" Height="4" Fill="#10B981"
-                                                 Canvas.Left="35" Canvas.Top="28" Opacity="0"/>
-                                    </Canvas>
-
-                                    <TextBlock Text="ARBITRAGE" FontSize="9" FontWeight="Bold" Foreground="#7C3AED" HorizontalAlignment="Center"/>
-
-                                    <!-- Spread Display -->
-                                    <Border Background="#207C3AED" CornerRadius="6" Padding="8,4" Margin="0,8,0,0" HorizontalAlignment="Center">
-                                        <TextBlock x:Name="CenterSpreadDisplay" Text="0.15%" FontSize="12" FontWeight="Bold" Foreground="#00D4FF"/>
+                                <StackPanel HorizontalAlignment="Center">
+                                    <Path Data="M0,5 L10,0 L10,3 L30,3 L30,7 L10,7 L10,10 Z" Fill="#7C3AED" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="ARB" FontSize="8" FontWeight="Bold" Foreground="#7C3AED" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                                    <Border Background="#207C3AED" CornerRadius="4" Padding="6,3" Margin="0,5,0,0">
+                                        <TextBlock x:Name="CenterSpreadDisplay" Text="0.15%" FontSize="10" FontWeight="Bold" Foreground="#00D4FF"/>
                                     </Border>
                                 </StackPanel>
                             </Grid>
 
-                            <!-- Exchange B Panel (SELL) -->
-                            <Border Grid.Column="2" CornerRadius="12" Padding="16">
-                                <Border.Background>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop Color="#1523AF91" Offset="0"/>
-                                        <GradientStop Color="#0823AF91" Offset="1"/>
-                                    </LinearGradientBrush>
-                                </Border.Background>
+                            <!-- Exchange B (Sell) -->
+                            <Border Grid.Column="2" Background="#0823AF91" CornerRadius="10" Padding="12">
                                 <StackPanel>
-                                    <!-- Exchange Header with Modes -->
-                                    <Grid Margin="0,0,0,12">
-                                        <StackPanel Orientation="Horizontal">
-                                            <controls:ExchangeIcon x:Name="ExchangeBIcon" ExchangeName="KuCoin" Size="36" Margin="0,0,10,0"/>
-                                            <StackPanel VerticalAlignment="Center">
-                                                <TextBlock x:Name="ExchangeBName" Text="KUCOIN" FontSize="14" FontWeight="Bold" Foreground="#23AF91"/>
-                                                <TextBlock Text="SELL HERE" FontSize="10" Foreground="#EF4444"/>
-                                            </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <controls:ExchangeIcon x:Name="ExchangeBIcon" ExchangeName="KuCoin" Size="28" Margin="0,0,8,0"/>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock x:Name="ExchangeBName" Text="KUCOIN" FontSize="12" FontWeight="Bold" Foreground="#23AF91"/>
+                                            <TextBlock Text="SELL" FontSize="9" Foreground="#EF4444"/>
                                         </StackPanel>
-                                        <Button x:Name="ExchangeBApiGuide" Content="?" HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                Width="20" Height="20" FontSize="11" FontWeight="Bold"
-                                                Background="#30FFFFFF" Foreground="#80FFFFFF" Cursor="Hand"
-                                                ToolTip="API Setup Guide" Click="ApiGuideButton_Click" Tag="B">
-                                            <Button.Template>
-                                                <ControlTemplate TargetType="Button">
-                                                    <Border Background="{TemplateBinding Background}" CornerRadius="10">
-                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    </Border>
-                                                </ControlTemplate>
-                                            </Button.Template>
-                                        </Button>
-                                    </Grid>
-
-                                    <!-- Supported Modes -->
-                                    <StackPanel x:Name="ExchangeBModesPanel" Orientation="Horizontal" Margin="0,0,0,12">
+                                    </StackPanel>
+                                    <StackPanel x:Name="ExchangeBModesPanel" Orientation="Horizontal" Margin="0,0,0,8">
                                         <Border Style="{StaticResource ModeTagStyle}" Background="#2010B981">
-                                            <TextBlock Text="SPOT" FontSize="9" FontWeight="Bold" Foreground="#10B981"/>
+                                            <TextBlock Text="SPOT" FontSize="8" FontWeight="Bold" Foreground="#10B981"/>
                                         </Border>
                                         <Border x:Name="ExchangeBFutures" Style="{StaticResource ModeTagStyle}" Background="#20F59E0B">
-                                            <TextBlock Text="FUTURES" FontSize="9" FontWeight="Bold" Foreground="#F59E0B"/>
+                                            <TextBlock Text="FUTURES" FontSize="8" FontWeight="Bold" Foreground="#F59E0B"/>
                                         </Border>
                                         <Border x:Name="ExchangeBMargin" Style="{StaticResource ModeTagStyle}" Background="#207C3AED" Visibility="Collapsed">
-                                            <TextBlock Text="MARGIN" FontSize="9" FontWeight="Bold" Foreground="#7C3AED"/>
+                                            <TextBlock Text="MARGIN" FontSize="8" FontWeight="Bold" Foreground="#7C3AED"/>
                                         </Border>
                                     </StackPanel>
-
-                                    <!-- Price Display -->
-                                    <TextBlock x:Name="ExchangeBPrice" Text="$0.00" FontSize="28" FontWeight="Bold" Foreground="White"/>
-
-                                    <Grid Margin="0,10,0,0">
+                                    <TextBlock x:Name="ExchangeBPrice" Text="$0.00" FontSize="22" FontWeight="Bold" Foreground="White"/>
+                                    <Grid Margin="0,8,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
-                                            <TextBlock Text="BID" FontSize="9" Foreground="#50FFFFFF"/>
-                                            <TextBlock x:Name="ExchangeBBid" Text="$0.00" FontSize="13" Foreground="#10B981" FontWeight="SemiBold"/>
+                                            <TextBlock Text="BID" FontSize="8" Foreground="#50FFFFFF"/>
+                                            <TextBlock x:Name="ExchangeBBid" Text="$0.00" FontSize="11" Foreground="#10B981" FontWeight="SemiBold"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1">
-                                            <TextBlock Text="ASK" FontSize="9" Foreground="#50FFFFFF"/>
-                                            <TextBlock x:Name="ExchangeBAsk" Text="$0.00" FontSize="13" Foreground="#EF4444" FontWeight="SemiBold"/>
+                                            <TextBlock Text="ASK" FontSize="8" Foreground="#50FFFFFF"/>
+                                            <TextBlock x:Name="ExchangeBAsk" Text="$0.00" FontSize="11" Foreground="#EF4444" FontWeight="SemiBold"/>
                                         </StackPanel>
                                     </Grid>
-
-                                    <!-- Balance -->
-                                    <Border Background="#10FFFFFF" CornerRadius="8" Padding="10,8" Margin="0,12,0,0">
+                                    <Border Background="#10FFFFFF" CornerRadius="6" Padding="8,6" Margin="0,10,0,0">
                                         <StackPanel>
-                                            <TextBlock Text="AVAILABLE BALANCE" FontSize="8" Foreground="#50FFFFFF"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                                <TextBlock x:Name="ExchangeBBalance" Text="0.00" FontSize="14" Foreground="White" FontWeight="SemiBold"/>
-                                                <TextBlock x:Name="ExchangeBBalanceAsset" Text=" USDT" FontSize="11" Foreground="#60FFFFFF" VerticalAlignment="Bottom"/>
+                                            <TextBlock Text="BALANCE" FontSize="7" Foreground="#50FFFFFF"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock x:Name="ExchangeBBalance" Text="0.00" FontSize="12" Foreground="White" FontWeight="SemiBold"/>
+                                                <TextBlock x:Name="ExchangeBBalanceAsset" Text=" USDT" FontSize="9" Foreground="#60FFFFFF" VerticalAlignment="Bottom"/>
                                             </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- Manual Trading Form B -->
-                                    <Border x:Name="ManualTradingFormB" Background="#10FFFFFF" CornerRadius="10" Padding="12" Margin="0,12,0,0">
-                                        <StackPanel>
-                                            <Grid Margin="0,0,0,10">
-                                                <TextBlock Text="MANUAL SELL" FontSize="10" FontWeight="Bold" Foreground="#EF4444"/>
-                                                <Border x:Name="BotBlockingOverlayB" Visibility="Collapsed" Background="#80000000" CornerRadius="6"
-                                                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="-12,-12,-12,0">
-                                                    <TextBlock Text="Turn off bot to trade manually" FontSize="10" Foreground="#F59E0B"
-                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                </Border>
-                                            </Grid>
-
-                                            <TextBlock Text="Amount" FontSize="9" Foreground="#60FFFFFF" Margin="0,0,0,4"/>
-                                            <TextBox x:Name="ManualAmountB" Style="{StaticResource DarkTextBox}" Text="100" FontSize="13"/>
-
-                                            <TextBlock Text="Price (leave empty for market)" FontSize="9" Foreground="#60FFFFFF" Margin="0,8,0,4"/>
-                                            <TextBox x:Name="ManualPriceB" Style="{StaticResource DarkTextBox}" FontSize="13"
-                                                     ToolTip="Leave empty for market order"/>
-
-                                            <Grid Margin="0,10,0,0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Button x:Name="SellMarketB" Content="MARKET" Grid.Column="0" Margin="0,0,4,0"
-                                                        Style="{StaticResource SmallActionButton}" Click="ManualSellB_Click" Tag="Market">
-                                                    <Button.Background>
-                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                            <GradientStop Color="#EF4444" Offset="0"/>
-                                                            <GradientStop Color="#DC2626" Offset="1"/>
-                                                        </LinearGradientBrush>
-                                                    </Button.Background>
-                                                </Button>
-                                                <Button x:Name="SellLimitB" Content="LIMIT" Grid.Column="1" Margin="4,0,0,0"
-                                                        Style="{StaticResource SmallActionButton}" Click="ManualSellB_Click" Tag="Limit">
-                                                    <Button.Background>
-                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                            <GradientStop Color="#F97316" Offset="0"/>
-                                                            <GradientStop Color="#EA580C" Offset="1"/>
-                                                        </LinearGradientBrush>
-                                                    </Button.Background>
-                                                </Button>
-                                            </Grid>
                                         </StackPanel>
                                     </Border>
                                 </StackPanel>
                             </Border>
                         </Grid>
+                    </Border>
 
-                        <!-- API Setup Guide Panel (Collapsible) -->
-                        <Border x:Name="ApiGuidePanel" Grid.Row="2" Background="#15FFFFFF" CornerRadius="12"
-                                Padding="16" Margin="0,15,0,0" Visibility="Collapsed">
-                            <StackPanel>
-                                <Grid Margin="0,0,0,12">
-                                    <TextBlock Text="API SETUP GUIDE" FontSize="12" FontWeight="Bold" Foreground="#00D4FF"/>
-                                    <Button x:Name="CloseApiGuide" Content="X" HorizontalAlignment="Right"
-                                            Width="24" Height="24" FontSize="12" FontWeight="Bold"
-                                            Background="#30FFFFFF" Foreground="#80FFFFFF" Cursor="Hand"
-                                            Click="CloseApiGuide_Click">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border Background="{TemplateBinding Background}" CornerRadius="12">
-                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                </Border>
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                    </Button>
-                                </Grid>
+                    <!-- Arbitrage Mode Selector -->
+                    <controls:ArbitrageModeSelector x:Name="ModeSelector" Margin="0,0,0,10"
+                                                    ModeChanged="ModeSelector_ModeChanged"
+                                                    TransferTypeChanged="ModeSelector_TransferTypeChanged"/>
 
-                                <TextBlock x:Name="ApiGuideExchangeName" Text="Binance API Setup" FontSize="14" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,10"/>
-
-                                <TextBlock Text="Required API Permissions:" FontSize="11" FontWeight="Bold" Foreground="#F59E0B" Margin="0,0,0,8"/>
-
-                                <StackPanel x:Name="ApiPermissionsList">
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                                        <TextBlock Text="✓" FontSize="12" Foreground="#10B981" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Enable Reading" FontSize="11" Foreground="#80FFFFFF"/>
-                                        <TextBlock Text=" - View balances and orders" FontSize="10" Foreground="#50FFFFFF"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                                        <TextBlock Text="✓" FontSize="12" Foreground="#10B981" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Enable Spot Trading" FontSize="11" Foreground="#80FFFFFF"/>
-                                        <TextBlock Text=" - Execute spot trades" FontSize="10" Foreground="#50FFFFFF"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                                        <TextBlock Text="✓" FontSize="12" Foreground="#10B981" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Enable Futures (Optional)" FontSize="11" Foreground="#80FFFFFF"/>
-                                        <TextBlock Text=" - For futures trading" FontSize="10" Foreground="#50FFFFFF"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                                        <TextBlock Text="✗" FontSize="12" Foreground="#EF4444" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Withdrawals" FontSize="11" Foreground="#60FFFFFF" TextDecorations="Strikethrough"/>
-                                        <TextBlock Text=" - NOT NEEDED (keep disabled)" FontSize="10" Foreground="#EF4444"/>
-                                    </StackPanel>
+                    <!-- P&L Display -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <Grid>
+                                <TextBlock Text="PROFIT / LOSS" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF"/>
+                                <TextBlock x:Name="PnLSourceText" Text="(This Session)" FontSize="8" Foreground="#40FFFFFF" HorizontalAlignment="Right"/>
+                            </Grid>
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Session" FontSize="8" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="SessionPnL" Text="+$0.00" FontSize="16" FontWeight="Bold" Foreground="#10B981"/>
                                 </StackPanel>
-
-                                <Border Background="#20F59E0B" CornerRadius="8" Padding="12" Margin="0,12,0,0">
-                                    <StackPanel>
-                                        <TextBlock Text="SECURITY TIPS:" FontSize="10" FontWeight="Bold" Foreground="#F59E0B" Margin="0,0,0,6"/>
-                                        <TextBlock TextWrapping="Wrap" FontSize="10" Foreground="#80FFFFFF" LineHeight="16">
-                                            • Never enable withdrawal permissions
-                                            • Restrict API to your IP address only
-                                            • Use separate API keys for each bot
-                                            • Regularly rotate your API keys
-                                        </TextBlock>
+                                <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                                    <TextBlock Text="Today" FontSize="8" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="TodayPnL" Text="+$0.00" FontSize="16" FontWeight="Bold" Foreground="#10B981"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                                    <TextBlock Text="Trades" FontSize="8" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="TradeCount" Text="0" FontSize="16" FontWeight="Bold" Foreground="#7C3AED"/>
+                                </StackPanel>
+                            </Grid>
+                            <Border Background="#08FFFFFF" CornerRadius="8" Padding="10" Margin="0,10,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="USDT: " FontSize="10" Foreground="#80FFFFFF"/>
+                                        <TextBlock x:Name="USDTChangeText" Text="+0.00" FontSize="10" FontWeight="SemiBold" Foreground="#10B981"/>
                                     </StackPanel>
-                                </Border>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <TextBlock x:Name="BaseAssetLabel" Text="BTC: " FontSize="10" Foreground="#80FFFFFF"/>
+                                        <TextBlock x:Name="BaseAssetChangeText" Text="+0.00000000" FontSize="10" FontWeight="SemiBold" Foreground="#10B981"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
 
-                                <Button x:Name="OpenExchangeApiPage" Content="Open Exchange API Settings" Margin="0,12,0,0"
-                                        Style="{StaticResource SmallActionButton}" Click="OpenExchangeApiPage_Click">
+                    <!-- Transfer Progress Panel -->
+                    <Border x:Name="TransferProgressPanel" Style="{StaticResource GlassCard}" Margin="0,0,0,10" Visibility="Collapsed">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,8">
+                                <TextBlock Text="🔄 TRANSFER IN PROGRESS" FontSize="10" FontWeight="Bold" Foreground="#F59E0B"/>
+                                <Button x:Name="CancelTransferButton" Content="Cancel" HorizontalAlignment="Right"
+                                        Click="CancelTransferButton_Click" Style="{StaticResource SmallActionButton}" Padding="10,4">
+                                    <Button.Background>
+                                        <SolidColorBrush Color="#EF4444"/>
+                                    </Button.Background>
+                                </Button>
+                            </Grid>
+                            <StackPanel>
+                                <Grid Margin="0,4,0,4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="Step1Icon" Text="✓" FontSize="10" Foreground="#10B981" Width="18"/>
+                                        <TextBlock Text="Buy Order Filled" FontSize="10" Foreground="White"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="Step1Details" Text="0.05 BTC @ $98,500" FontSize="9" Foreground="#60FFFFFF" HorizontalAlignment="Right"/>
+                                </Grid>
+                                <Grid Margin="0,4,0,4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="Step2Icon" Text="⏳" FontSize="10" Foreground="#F59E0B" Width="18"/>
+                                        <TextBlock Text="Withdrawal" FontSize="10" Foreground="White"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="Step2Details" Text="Pending..." FontSize="9" Foreground="#60FFFFFF" HorizontalAlignment="Right"/>
+                                </Grid>
+                                <Grid Margin="0,4,0,4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="Step3Icon" Text="○" FontSize="10" Foreground="#60FFFFFF" Width="18"/>
+                                        <TextBlock Text="Blockchain Transfer" FontSize="10" Foreground="#60FFFFFF"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="Step3Details" Text="2/6 confirms" FontSize="9" Foreground="#60FFFFFF" HorizontalAlignment="Right"/>
+                                </Grid>
+                                <Grid Margin="0,4,0,4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="Step4Icon" Text="○" FontSize="10" Foreground="#60FFFFFF" Width="18"/>
+                                        <TextBlock Text="Deposit &amp; Sell" FontSize="10" Foreground="#60FFFFFF"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="Step4Details" Text="Waiting..." FontSize="9" Foreground="#60FFFFFF" HorizontalAlignment="Right"/>
+                                </Grid>
+                            </StackPanel>
+                            <Border Background="#15F59E0B" CornerRadius="6" Padding="10" Margin="0,8,0,0">
+                                <Grid>
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Buy: " FontSize="9" Foreground="#80FFFFFF"/>
+                                            <TextBlock x:Name="TransferBuyPrice" Text="$98,500" FontSize="9" Foreground="White"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Current: " FontSize="9" Foreground="#80FFFFFF"/>
+                                            <TextBlock x:Name="TransferCurrentPrice" Text="$98,650" FontSize="9" Foreground="#10B981"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                            <TextBlock Text="Fee: " FontSize="9" Foreground="#80FFFFFF"/>
+                                            <TextBlock x:Name="TransferFeeDisplay" Text="0.0005 BTC" FontSize="9" Foreground="#F59E0B"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <StackPanel HorizontalAlignment="Right">
+                                        <TextBlock Text="Unrealized" FontSize="8" Foreground="#60FFFFFF"/>
+                                        <TextBlock x:Name="TransferUnrealizedPnL" Text="+$7.50" FontSize="14" FontWeight="Bold" Foreground="#10B981"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Manual Transfer Confirmation Button -->
+                            <Button x:Name="ConfirmTransferButton" Visibility="Collapsed"
+                                    Margin="0,8,0,0" Style="{StaticResource ActionButton}"
+                                    Click="ConfirmTransferButton_Click">
+                                <Button.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#10B981" Offset="0"/>
+                                        <GradientStop Color="#059669" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Button.Background>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="✓ " FontSize="13"/>
+                                    <TextBlock Text="I've Transferred / ฉันโอนแล้ว" FontSize="12" FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Trade Controls -->
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel>
+                            <TextBlock Text="TRADE AMOUNT" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,8"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="90"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TradeAmountInput" Text="100" Style="{StaticResource DarkTextBox}" FontSize="16" FontWeight="SemiBold"/>
+                                <ComboBox x:Name="TradeAmountUnit" Grid.Column="1" Width="80" Margin="8,0,0,0"
+                                          SelectedIndex="0" Style="{StaticResource DarkComboBox}">
+                                    <ComboBoxItem Content="USDT"/>
+                                    <ComboBoxItem Content="BTC"/>
+                                    <ComboBoxItem Content="%"/>
+                                </ComboBox>
+                            </Grid>
+                            <TextBlock x:Name="EstimatedProfit" Text="Est. Profit: $0.15" FontSize="11" Foreground="#10B981" Margin="0,8,0,0"/>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="ManualTradeButton" Content="Execute Trade" Grid.Column="0" Margin="0,0,5,0"
+                                        Style="{StaticResource ActionButton}" Click="ManualTradeButton_Click">
+                                    <Button.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#10B981" Offset="0"/>
+                                            <GradientStop Color="#059669" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Button.Background>
+                                </Button>
+                                <Button x:Name="AutoTradeToggle" Content="Auto: OFF" Grid.Column="1" Margin="5,0,0,0"
+                                        Style="{StaticResource ActionButton}" Click="AutoTradeToggle_Click">
                                     <Button.Background>
                                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                             <GradientStop Color="#7C3AED" Offset="0"/>
@@ -1003,158 +888,103 @@
                                         </LinearGradientBrush>
                                     </Button.Background>
                                 </Button>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                </ScrollViewer>
-            </Border>
-
-            <!-- Trade Controls -->
-            <Border Grid.Row="2" Style="{StaticResource GlassCard}" Margin="0,15,0,0">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel>
-                        <TextBlock Text="TRADE AMOUNT" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TradeAmountInput" Text="100" FontSize="18" FontWeight="SemiBold"
-                                     Background="#15FFFFFF" Foreground="White" BorderThickness="0"
-                                     Padding="15,12" VerticalContentAlignment="Center"/>
-                            <ComboBox x:Name="TradeAmountUnit" Grid.Column="1" Width="100" Margin="10,0,0,0"
-                                      SelectedIndex="0" Style="{StaticResource DarkComboBox}">
-                                <ComboBoxItem Content="USDT"/>
-                                <ComboBoxItem Content="BTC"/>
-                                <ComboBoxItem Content="%"/>
-                            </ComboBox>
-                        </Grid>
-                        <TextBlock x:Name="EstimatedProfit" Text="Estimated Profit: $0.15" FontSize="12" Foreground="#10B981" Margin="0,10,0,0"/>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
-                        <Button x:Name="ManualTradeButton" Content="Execute Trade" Margin="0,0,10,0"
-                                Style="{StaticResource ActionButton}" Click="ManualTradeButton_Click">
-                            <Button.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#10B981" Offset="0"/>
-                                    <GradientStop Color="#059669" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Button.Background>
-                        </Button>
-
-                        <Button x:Name="AutoTradeToggle" Content="Auto: OFF"
-                                Style="{StaticResource ActionButton}" Click="AutoTradeToggle_Click">
-                            <Button.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#7C3AED" Offset="0"/>
-                                    <GradientStop Color="#5B21B6" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Button.Background>
-                        </Button>
-                    </StackPanel>
-                </Grid>
-            </Border>
-        </Grid>
-
-        <!-- Right Panel - Order Book & Recent Trades -->
-        <StackPanel Grid.Column="2" Margin="10,0,0,0">
-            <!-- Order Book -->
-            <Border Style="{StaticResource GlassCard}" Margin="0,0,0,15">
-                <StackPanel>
-                    <TextBlock Text="ORDER BOOK DEPTH" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,15"/>
-
-                    <!-- Asks (Sells) -->
-                    <TextBlock Text="ASKS (SELL ORDERS)" FontSize="9" Foreground="#EF4444" Margin="0,0,0,5"/>
-                    <ItemsControl x:Name="AsksDisplay">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="0,2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Border Background="#20EF4444" Height="20" HorizontalAlignment="Right"
-                                            Width="{Binding DepthPercent}" CornerRadius="2" Grid.ColumnSpan="3"/>
-                                    <TextBlock Text="{Binding Price, StringFormat=F2}" Foreground="#EF4444" FontSize="11"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding Amount, StringFormat=F4}" Foreground="#80FFFFFF" FontSize="11" HorizontalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding Total, StringFormat=F2}" Foreground="#60FFFFFF" FontSize="11" HorizontalAlignment="Right"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-
-                    <!-- Spread -->
-                    <Border Background="#20FFFFFF" CornerRadius="4" Padding="10,8" Margin="0,10">
-                        <Grid>
-                            <TextBlock Text="SPREAD" FontSize="10" Foreground="#60FFFFFF"/>
-                            <TextBlock x:Name="OrderBookSpread" Text="$0.00 (0.00%)" FontSize="12" FontWeight="Bold" Foreground="#7C3AED" HorizontalAlignment="Right"/>
-                        </Grid>
+                            </Grid>
+                        </StackPanel>
                     </Border>
-
-                    <!-- Bids (Buys) -->
-                    <TextBlock Text="BIDS (BUY ORDERS)" FontSize="9" Foreground="#10B981" Margin="0,0,0,5"/>
-                    <ItemsControl x:Name="BidsDisplay">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="0,2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Border Background="#2010B981" Height="20" HorizontalAlignment="Left"
-                                            Width="{Binding DepthPercent}" CornerRadius="2" Grid.ColumnSpan="3"/>
-                                    <TextBlock Text="{Binding Price, StringFormat=F2}" Foreground="#10B981" FontSize="11"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding Amount, StringFormat=F4}" Foreground="#80FFFFFF" FontSize="11" HorizontalAlignment="Center"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding Total, StringFormat=F2}" Foreground="#60FFFFFF" FontSize="11" HorizontalAlignment="Right"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
                 </StackPanel>
-            </Border>
+            </ScrollViewer>
 
-            <!-- Recent Executions -->
-            <Border Style="{StaticResource GlassCard}">
+            <!-- Right Panel - Order Book & Executions -->
+            <ScrollViewer Grid.Column="2" Margin="10,0,0,0" Style="{StaticResource PremiumScrollViewer}">
                 <StackPanel>
-                    <TextBlock Text="RECENT EXECUTIONS" FontSize="11" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,15"/>
+                    <!-- Order Book -->
+                    <Border Style="{StaticResource GlassCard}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="ORDER BOOK" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>
 
-                    <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding RecentExecutions}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#15FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,6">
-                                        <Grid>
+                            <TextBlock Text="ASKS" FontSize="8" Foreground="#EF4444" Margin="0,0,0,4"/>
+                            <ItemsControl x:Name="AsksDisplay">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,1">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding Symbol}" FontWeight="SemiBold" Foreground="White" FontSize="12"/>
-                                                <TextBlock Text="{Binding TimeAgo}" FontSize="10" Foreground="#60FFFFFF"/>
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                                                <TextBlock Text="{Binding PnLDisplay}" FontWeight="Bold"
-                                                           Foreground="{Binding PnLColor}" HorizontalAlignment="Right"/>
-                                                <TextBlock Text="{Binding ExecutionTime}" FontSize="10"
-                                                           Foreground="#60FFFFFF" HorizontalAlignment="Right"/>
-                                            </StackPanel>
+                                            <Border Background="#15EF4444" Height="18" HorizontalAlignment="Right"
+                                                    Width="{Binding DepthPercent}" CornerRadius="2" Grid.ColumnSpan="3"/>
+                                            <TextBlock Text="{Binding Price, StringFormat=F2}" Foreground="#EF4444" FontSize="10"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Amount, StringFormat=F4}" Foreground="#80FFFFFF" FontSize="10" HorizontalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Total, StringFormat=F2}" Foreground="#60FFFFFF" FontSize="10" HorizontalAlignment="Right"/>
                                         </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Border Background="#15FFFFFF" CornerRadius="4" Padding="8,6" Margin="0,8">
+                                <Grid>
+                                    <TextBlock Text="SPREAD" FontSize="9" Foreground="#60FFFFFF"/>
+                                    <TextBlock x:Name="OrderBookSpread" Text="$0.00 (0.00%)" FontSize="10" FontWeight="Bold" Foreground="#7C3AED" HorizontalAlignment="Right"/>
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="BIDS" FontSize="8" Foreground="#10B981" Margin="0,0,0,4"/>
+                            <ItemsControl x:Name="BidsDisplay">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,1">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Background="#1510B981" Height="18" HorizontalAlignment="Left"
+                                                    Width="{Binding DepthPercent}" CornerRadius="2" Grid.ColumnSpan="3"/>
+                                            <TextBlock Text="{Binding Price, StringFormat=F2}" Foreground="#10B981" FontSize="10"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Amount, StringFormat=F4}" Foreground="#80FFFFFF" FontSize="10" HorizontalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Total, StringFormat=F2}" Foreground="#60FFFFFF" FontSize="10" HorizontalAlignment="Right"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Recent Executions -->
+                    <Border Style="{StaticResource GlassCard}">
+                        <StackPanel>
+                            <TextBlock Text="RECENT TRADES" FontSize="10" FontWeight="Bold" Foreground="#60FFFFFF" Margin="0,0,0,10"/>
+                            <ScrollViewer MaxHeight="180" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding RecentExecutions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#10FFFFFF" CornerRadius="6" Padding="8" Margin="0,0,0,4">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Symbol}" FontWeight="SemiBold" Foreground="White" FontSize="10"/>
+                                                        <TextBlock Text="{Binding TimeAgo}" FontSize="8" Foreground="#60FFFFFF"/>
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                                        <TextBlock Text="{Binding PnLDisplay}" FontWeight="Bold" FontSize="11"
+                                                                   Foreground="{Binding PnLColor}" HorizontalAlignment="Right"/>
+                                                        <TextBlock Text="{Binding ExecutionTime}" FontSize="8"
+                                                                   Foreground="#60FFFFFF" HorizontalAlignment="Right"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
-            </Border>
-        </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Grid>
 </UserControl>

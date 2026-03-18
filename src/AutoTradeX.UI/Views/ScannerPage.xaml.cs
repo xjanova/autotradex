@@ -13,19 +13,25 @@ namespace AutoTradeX.UI.Views;
 
 public partial class ScannerPage : UserControl
 {
-    private readonly ISmartScannerService? _scanner;
-    private readonly ICoinDataService? _coinDataService;
-    private readonly ILoggingService? _logger;
-    private readonly IArbEngine? _arbEngine;
-    private readonly IProjectService? _projectService;
-    private readonly IStrategyService? _strategyService;
-    private readonly IExchangeClientFactory? _exchangeFactory;
-    private readonly ICurrencyConverterService? _currencyConverter;
+    // Services (not readonly - may need to be re-fetched after App.Services is ready)
+    // Services ไม่ใช่ readonly เพราะอาจต้อง re-fetch หลังจาก App.Services พร้อม
+    private ISmartScannerService? _scanner;
+    private ICoinDataService? _coinDataService;
+    private ILoggingService? _logger;
+    private IArbEngine? _arbEngine;
+    private IProjectService? _projectService;
+    private IStrategyService? _strategyService;
+    private IExchangeClientFactory? _exchangeFactory;
+    private ICurrencyConverterService? _currencyConverter;
+    private IConnectionStatusService? _connectionStatusService;
+    private IApiCredentialsService? _apiCredentialsService;
+
     private System.Windows.Threading.DispatcherTimer? _scanTimer;
     private bool _isScanning = false;
     private int _scanCount = 0;
     private CancellationTokenSource? _scanCts;
     private bool _autoMode = false;
+    private bool _isInitialized = false;
 
     public ObservableCollection<ScanResultDisplay> ScanResults { get; } = new();
 
@@ -34,14 +40,9 @@ public partial class ScannerPage : UserControl
         InitializeComponent();
         DataContext = this;
 
-        _scanner = App.Services?.GetService<ISmartScannerService>();
-        _coinDataService = App.Services?.GetService<ICoinDataService>();
-        _logger = App.Services?.GetService<ILoggingService>();
-        _arbEngine = App.Services?.GetService<IArbEngine>();
-        _projectService = App.Services?.GetService<IProjectService>();
-        _strategyService = App.Services?.GetService<IStrategyService>();
-        _exchangeFactory = App.Services?.GetService<IExchangeClientFactory>();
-        _currencyConverter = App.Services?.GetService<ICurrencyConverterService>();
+        // Try to get services (may be null if App.Services not ready yet)
+        // พยายาม get services (อาจเป็น null ถ้า App.Services ยังไม่พร้อม)
+        TryInitializeServices();
 
         ResultsList.ItemsSource = ScanResults;
 
@@ -49,8 +50,49 @@ public partial class ScannerPage : UserControl
         Unloaded += ScannerPage_Unloaded;
     }
 
+    /// <summary>
+    /// Try to initialize services from DI container
+    /// พยายาม initialize services จาก DI container
+    /// </summary>
+    private void TryInitializeServices()
+    {
+        if (App.Services == null) return;
+
+        _scanner ??= App.Services.GetService<ISmartScannerService>();
+        _coinDataService ??= App.Services.GetService<ICoinDataService>();
+        _logger ??= App.Services.GetService<ILoggingService>();
+        _arbEngine ??= App.Services.GetService<IArbEngine>();
+        _projectService ??= App.Services.GetService<IProjectService>();
+        _strategyService ??= App.Services.GetService<IStrategyService>();
+        _exchangeFactory ??= App.Services.GetService<IExchangeClientFactory>();
+        _currencyConverter ??= App.Services.GetService<ICurrencyConverterService>();
+        _connectionStatusService ??= App.Services.GetService<IConnectionStatusService>();
+        _apiCredentialsService ??= App.Services.GetService<IApiCredentialsService>();
+    }
+
+    /// <summary>
+    /// Ensure all services are initialized. Called on page load.
+    /// ตรวจสอบว่า services ถูก initialize แล้ว เรียกเมื่อ load หน้า
+    /// </summary>
+    private void EnsureServicesInitialized()
+    {
+        TryInitializeServices();
+
+        if (_exchangeFactory == null || _scanner == null)
+        {
+            _logger?.LogWarning("ScannerPage", "Some services are still null after initialization attempt");
+        }
+    }
+
     private async void ScannerPage_Loaded(object sender, RoutedEventArgs e)
     {
+        // Ensure services are initialized before checking connections
+        // ตรวจสอบว่า services พร้อมก่อนเช็คการเชื่อมต่อ
+        EnsureServicesInitialized();
+
+        // Prevent re-initialization if already done
+        if (_isInitialized) return;
+
         // Check exchange connections first
         var isConnected = await CheckExchangeConnectionsAsync();
 
@@ -59,10 +101,10 @@ public partial class ScannerPage : UserControl
             NotConnectedOverlay.Visibility = Visibility.Collapsed;
             MainScannerContent.Visibility = Visibility.Visible;
 
-            if (_scanner != null)
-            {
-                _scanner.OpportunityFound += Scanner_OpportunityFound;
-            }
+            // Subscribe to events
+            SetupEventHandlers();
+
+            _isInitialized = true;
         }
         else
         {
@@ -72,28 +114,139 @@ public partial class ScannerPage : UserControl
         }
     }
 
+    /// <summary>
+    /// Setup event handlers for scanner
+    /// ตั้งค่า event handlers สำหรับ scanner
+    /// </summary>
+    private void SetupEventHandlers()
+    {
+        if (_scanner != null)
+        {
+            _scanner.OpportunityFound += Scanner_OpportunityFound;
+        }
+
+        if (_arbEngine != null)
+        {
+            _arbEngine.OpportunityFound += ArbEngine_OpportunityFound;
+        }
+    }
+
+    /// <summary>
+    /// Cleanup event handlers to prevent memory leaks
+    /// ยกเลิก event handlers เพื่อป้องกัน memory leak
+    /// </summary>
+    private void CleanupEventHandlers()
+    {
+        if (_scanner != null)
+        {
+            _scanner.OpportunityFound -= Scanner_OpportunityFound;
+        }
+
+        if (_arbEngine != null)
+        {
+            _arbEngine.OpportunityFound -= ArbEngine_OpportunityFound;
+        }
+    }
+
+    private void ArbEngine_OpportunityFound(object? sender, OpportunityEventArgs e)
+    {
+        // Handle arbitrage engine opportunity if needed
+        Dispatcher.Invoke(() =>
+        {
+            _logger?.LogInfo("Scanner", $"ArbEngine opportunity: {e.Pair.Symbol} spread {e.Opportunity.NetSpreadPercentage:F3}%");
+        });
+    }
+
     private async Task<bool> CheckExchangeConnectionsAsync()
     {
+        // Use ConnectionStatusService if available (preferred - uses cache from Splash)
+        // ใช้ ConnectionStatusService ถ้ามี (แนะนำ - ใช้ cache จาก Splash)
+        if (_connectionStatusService != null)
+        {
+            try
+            {
+                var status = await _connectionStatusService.CheckAllConnectionsAsync();
+                var connectedCount = status.Exchanges.Count(e => e.Value.IsConnected && e.Value.HasValidCredentials);
+                _logger?.LogInfo("ScannerPage", $"Connection check via service: {connectedCount} exchanges connected");
+                return connectedCount > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError("ScannerPage", $"Error checking connections via service: {ex.Message}");
+            }
+        }
+
+        // Fallback: Check manually if service not available
         if (_exchangeFactory == null) return false;
 
         var exchanges = new[] { "Binance", "KuCoin", "OKX", "Bybit", "Gate.io", "Bitkub" };
-        var connectedCount = 0;
+        var connectedCount2 = 0;
 
         foreach (var exchangeName in exchanges)
         {
             try
             {
-                var client = _exchangeFactory.CreateClient(exchangeName);
+                // Check credentials from database first (via ApiCredentialsService)
+                // ตรวจสอบ credentials จาก database ก่อน
+                bool hasCredentials = false;
+
+                if (_apiCredentialsService != null)
+                {
+                    hasCredentials = await _apiCredentialsService.HasCredentialsAsync(exchangeName);
+                    if (hasCredentials)
+                    {
+                        // Load credentials to env vars
+                        var creds = await _apiCredentialsService.GetCredentialsAsync(exchangeName);
+                        if (creds != null)
+                        {
+                            var (keyEnv, secretEnv) = GetExchangeEnvVarNames(exchangeName);
+                            Environment.SetEnvironmentVariable(keyEnv, creds.ApiKey);
+                            Environment.SetEnvironmentVariable(secretEnv, creds.ApiSecret);
+                        }
+                    }
+                }
+                else
+                {
+                    // Fallback: Check env vars directly
+                    var (keyEnv, secretEnv) = GetExchangeEnvVarNames(exchangeName);
+                    var apiKey = Environment.GetEnvironmentVariable(keyEnv);
+                    var apiSecret = Environment.GetEnvironmentVariable(secretEnv);
+                    hasCredentials = !string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(apiSecret);
+                }
+
+                if (!hasCredentials) continue;
+
+                // Use real client for connection testing (not simulation)
+                var client = _exchangeFactory.CreateRealClient(exchangeName);
                 var isConnected = await client.TestConnectionAsync();
-                if (isConnected) connectedCount++;
+                if (isConnected) connectedCount2++;
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore connection errors
+                _logger?.LogWarning("ScannerPage", $"Connection check failed for {exchangeName}: {ex.Message}");
             }
         }
 
-        return connectedCount > 0;
+        _logger?.LogInfo("ScannerPage", $"Manual connection check: {connectedCount2} exchanges connected");
+        return connectedCount2 > 0;
+    }
+
+    /// <summary>
+    /// Get environment variable names for exchange credentials
+    /// </summary>
+    private static (string keyEnv, string secretEnv) GetExchangeEnvVarNames(string exchangeName)
+    {
+        return exchangeName.ToLower() switch
+        {
+            "binance" => ("AUTOTRADEX_BINANCE_API_KEY", "AUTOTRADEX_BINANCE_API_SECRET"),
+            "kucoin" => ("AUTOTRADEX_KUCOIN_API_KEY", "AUTOTRADEX_KUCOIN_API_SECRET"),
+            "okx" => ("AUTOTRADEX_OKX_API_KEY", "AUTOTRADEX_OKX_API_SECRET"),
+            "bybit" => ("AUTOTRADEX_BYBIT_API_KEY", "AUTOTRADEX_BYBIT_API_SECRET"),
+            "gate.io" => ("AUTOTRADEX_GATEIO_API_KEY", "AUTOTRADEX_GATEIO_API_SECRET"),
+            "bitkub" => ("AUTOTRADEX_BITKUB_API_KEY", "AUTOTRADEX_BITKUB_API_SECRET"),
+            _ => ($"AUTOTRADEX_{exchangeName.ToUpper().Replace(".", "")}_API_KEY",
+                  $"AUTOTRADEX_{exchangeName.ToUpper().Replace(".", "")}_API_SECRET")
+        };
     }
 
     private void GoToSettings_Click(object sender, RoutedEventArgs e)
@@ -107,11 +260,59 @@ public partial class ScannerPage : UserControl
 
     private void ScannerPage_Unloaded(object sender, RoutedEventArgs e)
     {
+        // Stop scanning and cleanup resources
+        // หยุดการสแกนและ cleanup ทรัพยากร
         StopScanning();
 
-        if (_scanner != null)
+        // Cleanup event handlers to prevent memory leaks
+        // ยกเลิก event handlers เพื่อป้องกัน memory leak
+        CleanupEventHandlers();
+
+        // Dispose CancellationTokenSource
+        // Dispose CancellationTokenSource
+        DisposeCancellationToken();
+
+        // Stop and dispose timer
+        // หยุดและ dispose timer
+        DisposeTimer();
+    }
+
+    /// <summary>
+    /// Dispose CancellationTokenSource properly
+    /// Dispose CancellationTokenSource อย่างถูกต้อง
+    /// </summary>
+    private void DisposeCancellationToken()
+    {
+        try
         {
-            _scanner.OpportunityFound -= Scanner_OpportunityFound;
+            _scanCts?.Cancel();
+            _scanCts?.Dispose();
+            _scanCts = null;
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed, ignore
+        }
+    }
+
+    /// <summary>
+    /// Dispose timer properly
+    /// Dispose timer อย่างถูกต้อง
+    /// </summary>
+    private void DisposeTimer()
+    {
+        try
+        {
+            if (_scanTimer != null)
+            {
+                _scanTimer.Stop();
+                _scanTimer.Tick -= ScanTimer_Tick;
+                _scanTimer = null;
+            }
+        }
+        catch
+        {
+            // Ignore timer disposal errors
         }
     }
 
@@ -187,7 +388,13 @@ public partial class ScannerPage : UserControl
         if (!_isScanning) return;
 
         _isScanning = false;
-        _scanCts?.Cancel();
+
+        // Cancel and dispose token
+        // ยกเลิกและ dispose token
+        DisposeCancellationToken();
+
+        // Stop timer but don't dispose yet (might restart)
+        // หยุด timer แต่ยังไม่ dispose (อาจเริ่มใหม่)
         _scanTimer?.Stop();
 
         // Update UI
@@ -214,26 +421,57 @@ public partial class ScannerPage : UserControl
         try
         {
             _scanCount++;
-            ScanCountDisplay.Text = _scanCount.ToString();
 
-            // Show loading
-            LoadingState.Visibility = Visibility.Visible;
-            LoadingText.Text = $"Scanning with {GetSelectedStrategy()} strategy...";
+            await Dispatcher.InvokeAsync(() =>
+            {
+                ScanCountDisplay.Text = _scanCount.ToString();
+
+                // Show loading
+                LoadingState.Visibility = Visibility.Visible;
+                LoadingText.Text = $"Scanning with {GetSelectedStrategy()} strategy...";
+            });
 
             var strategy = GetSelectedStrategy();
+
+            // Get slider values on UI thread
+            decimal minSpread = 0.1m;
+            decimal minScore = 50m;
+            await Dispatcher.InvokeAsync(() =>
+            {
+                minSpread = (decimal)MinSpreadSlider.Value;
+                minScore = (decimal)MinScoreSlider.Value;
+            });
+
             var options = new ScanOptions
             {
-                MinSpreadPercent = (decimal)MinSpreadSlider.Value,
+                MinSpreadPercent = minSpread,
                 MaxResults = 30
             };
 
-            var results = await _scanner.ScanAsync(strategy, options);
+            // Add timeout to prevent hanging if scanner is slow
+            // เพิ่ม timeout เพื่อป้องกันการค้างถ้า scanner ช้า
+            var scanTask = _scanner.ScanAsync(strategy, options);
+            var completedTask = await Task.WhenAny(
+                scanTask,
+                Task.Delay(TimeSpan.FromSeconds(30), _scanCts?.Token ?? CancellationToken.None)
+            );
+
+            if (completedTask != scanTask)
+            {
+                _logger?.LogWarning("Scanner", "Scan timed out after 30 seconds");
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    LoadingState.Visibility = Visibility.Collapsed;
+                });
+                return;
+            }
+
+            var results = await scanTask;
 
             await Dispatcher.InvokeAsync(() =>
             {
                 // Filter by min score
-                var minScore = (decimal)MinScoreSlider.Value;
-                var filtered = results.Where(r => r.Score >= minScore).ToList();
+                var filtered = results?.Where(r => r.Score >= minScore).ToList() ?? new List<ScanResult>();
 
                 ScanResults.Clear();
                 var thbRate = _currencyConverter?.GetCachedThbUsdtRate() ?? 35.0m;
@@ -250,12 +488,24 @@ public partial class ScannerPage : UserControl
                 {
                     RecommendedBadge.Visibility = Visibility.Visible;
                 }
+                else
+                {
+                    RecommendedBadge.Visibility = Visibility.Collapsed;
+                }
             });
+        }
+        catch (OperationCanceledException)
+        {
+            // Scan was cancelled, ignore
+            _logger?.LogInfo("Scanner", "Scan cancelled");
         }
         catch (Exception ex)
         {
             _logger?.LogError("Scanner", $"Scan error: {ex.Message}");
-            LoadingState.Visibility = Visibility.Collapsed;
+            await Dispatcher.InvokeAsync(() =>
+            {
+                LoadingState.Visibility = Visibility.Collapsed;
+            });
         }
     }
 
@@ -379,45 +629,97 @@ public partial class ScannerPage : UserControl
             return;
         }
 
-        // Get projects
-        var projects = await _projectService.GetAllProjectsAsync();
-        if (!projects.Any())
+        try
         {
-            // No projects - ask to create one
-            var createResult = MessageBox.Show(
-                "ยังไม่มีโปรเจคใดๆ\n\nต้องการสร้างโปรเจคใหม่หรือไม่?",
-                "ไม่พบโปรเจค",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            if (createResult == MessageBoxResult.Yes)
+            // Auto-add to Active Project (no dialog needed)
+            // เพิ่มอัตโนมัติไปยัง Active Project (ไม่ต้องเปิด dialog)
+            var activeProject = await _projectService.GetActiveProjectAsync();
+            if (activeProject != null)
             {
-                // Navigate to Projects page
-                if (Window.GetWindow(this) is MainWindow mainWindow)
+                // Check if can add more pairs
+                var canAdd = await _projectService.CanAddMorePairsAsync(activeProject.Id);
+                if (!canAdd)
                 {
-                    mainWindow.NavigateToPage("Projects");
+                    MessageBox.Show(
+                        $"โปรเจค \"{activeProject.Name}\" มีคู่เทรดเต็ม (สูงสุด 10 คู่)\n" +
+                        $"Project \"{activeProject.Name}\" has maximum trading pairs (10 max).\n\n" +
+                        "กรุณาลบคู่เทรดที่ไม่ใช้ก่อนเพิ่มคู่ใหม่\n" +
+                        "Please remove unused pairs before adding new ones.",
+                        "Limit Reached / ถึงขีดจำกัด",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
                 }
-            }
-            return;
-        }
 
-        // Show project selection dialog
-        var selectDialog = new SelectProjectDialog(projects, result);
-        selectDialog.Owner = Window.GetWindow(this);
-        selectDialog.ShowDialog();
-
-        if (selectDialog.DialogResultOk && selectDialog.SelectedProject != null)
-        {
-            try
-            {
-                // Get strategies for the dialog
-                var strategies = _strategyService?.GetPresetStrategies() ?? Enumerable.Empty<TradingStrategy>();
-
-                // Create the trading pair
                 var newPair = new ProjectTradingPair
                 {
                     Symbol = result.Symbol,
                     BaseAsset = result.BaseAsset,
+                    QuoteAsset = "USDT",
+                    ExchangeA = result.BestBuyExchange,
+                    ExchangeB = result.BestSellExchange,
+                    TradeAmount = 100m,
+                    IsEnabled = true,
+                    Priority = 5
+                };
+
+                var saved = await _projectService.AddToActiveProjectAsync(newPair);
+                if (saved)
+                {
+                    _logger?.LogInfo("Scanner", $"Added {result.Symbol} to active project: {activeProject.Name}");
+
+                    MessageBox.Show(
+                        $"เพิ่ม {result.Symbol} เข้าโปรเจค \"{activeProject.Name}\" เรียบร้อยแล้ว!\n\n" +
+                        $"Exchange: {result.BestBuyExchange} → {result.BestSellExchange}\n" +
+                        $"คู่เทรดจะปรากฏในหน้า Trading อัตโนมัติ",
+                        "เพิ่มคู่เทรดสำเร็จ / Pair Added",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+                else
+                {
+                    _logger?.LogInfo("Scanner", $"Pair {result.Symbol} already exists in active project");
+                    MessageBox.Show(
+                        $"{result.Symbol} มีอยู่ในโปรเจคแล้ว\n{result.Symbol} already exists in the project.",
+                        "Already Exists / มีอยู่แล้ว",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                return;
+            }
+
+            // Fallback: Show project selection dialog if no active project
+            // สำรอง: แสดง dialog เลือกโปรเจคถ้าไม่มี active project
+            var projects = await _projectService.GetAllProjectsAsync();
+            if (!projects.Any())
+            {
+                var createResult = MessageBox.Show(
+                    "ยังไม่มีโปรเจคใดๆ\n\nต้องการสร้างโปรเจคใหม่หรือไม่?",
+                    "ไม่พบโปรเจค",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (createResult == MessageBoxResult.Yes)
+                {
+                    if (Window.GetWindow(this) is MainWindow mainWindow)
+                    {
+                        mainWindow.NavigateToPage("Projects");
+                    }
+                }
+                return;
+            }
+
+            var selectDialog = new SelectProjectDialog(projects, result);
+            selectDialog.Owner = Window.GetWindow(this);
+            selectDialog.ShowDialog();
+
+            if (selectDialog.DialogResultOk && selectDialog.SelectedProject != null)
+            {
+                var strategies = _strategyService?.GetPresetStrategies() ?? Enumerable.Empty<TradingStrategy>();
+
+                var dialogPair = new ProjectTradingPair
+                {
+                    Symbol = result.Symbol,
+                    BaseAsset = result.BaseAsset,
+                    QuoteAsset = "USDT",
                     ExchangeA = result.BestBuyExchange,
                     ExchangeB = result.BestSellExchange,
                     StrategyId = selectDialog.SelectedStrategyId ?? strategies.FirstOrDefault()?.Id ?? "default",
@@ -425,8 +727,7 @@ public partial class ScannerPage : UserControl
                     IsEnabled = true
                 };
 
-                // Add pair to project
-                await _projectService.AddTradingPairAsync(selectDialog.SelectedProject.Id, newPair);
+                await _projectService.AddTradingPairAsync(selectDialog.SelectedProject.Id, dialogPair);
 
                 _logger?.LogInfo("Scanner", $"Added {result.Symbol} to project: {selectDialog.SelectedProject.Name}");
 
@@ -438,11 +739,11 @@ public partial class ScannerPage : UserControl
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"เกิดข้อผิดพลาด: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                _logger?.LogError("Scanner", $"Failed to add pair to project: {ex.Message}");
-            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"เกิดข้อผิดพลาด: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _logger?.LogError("Scanner", $"Failed to add pair to project: {ex.Message}");
         }
     }
 
@@ -452,20 +753,52 @@ public partial class ScannerPage : UserControl
         {
             _logger?.LogInfo("Scanner", $"Executing trade for {result.Symbol}");
 
-            if (_arbEngine != null)
+            if (_arbEngine == null)
             {
-                // For now, show success message
-                // In production, this would call the actual trading engine
-                MessageBox.Show(
-                    $"Trade Signal Sent!\n\n" +
-                    $"Symbol: {result.Symbol}\n" +
-                    $"Buy: {result.BestBuyExchange} @ ${result.BestBuyPrice:N2}\n" +
-                    $"Sell: {result.BestSellExchange} @ ${result.BestSellPrice:N2}\n" +
-                    $"Expected Profit: ${result.EstimatedProfit:F2}",
-                    "Trade Executed",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                MessageBox.Show("Trading engine not available.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
             }
+
+            // Confirm with user before executing
+            var confirmResult = MessageBox.Show(
+                $"Execute Arbitrage Trade?\n\n" +
+                $"Symbol: {result.Symbol}\n" +
+                $"Buy: {result.BestBuyExchange} @ ${result.BestBuyPrice:N2}\n" +
+                $"Sell: {result.BestSellExchange} @ ${result.BestSellPrice:N2}\n" +
+                $"Spread: {result.SpreadPercent:F4}%\n" +
+                $"Expected Profit: ${result.EstimatedProfit:F2}",
+                "Confirm Trade",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (confirmResult != MessageBoxResult.Yes) return;
+
+            // Create a TradingPair and analyze the opportunity via ArbEngine
+            var pair = TradingPair.FromSymbol(result.Symbol);
+            var opportunity = await _arbEngine.AnalyzeOpportunityAsync(pair);
+
+            if (!opportunity.ShouldTrade)
+            {
+                MessageBox.Show(
+                    $"Trade conditions no longer met:\n{opportunity.Remarks}",
+                    "Trade Cancelled",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            var tradeResult = await _arbEngine.ExecuteArbitrageWithModeAsync(
+                opportunity, ArbitrageExecutionMode.DualBalance);
+
+            var statusText = tradeResult.IsFullySuccessful ? "สำเร็จ" : $"สถานะ: {tradeResult.Status}";
+            MessageBox.Show(
+                $"Trade Result: {statusText}\n\n" +
+                $"Symbol: {result.Symbol}\n" +
+                $"Net P&L: ${tradeResult.NetPnL:F4}\n" +
+                $"Duration: {tradeResult.DurationMs}ms",
+                tradeResult.IsFullySuccessful ? "Trade Success" : "Trade Complete",
+                MessageBoxButton.OK,
+                tradeResult.IsFullySuccessful ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
         catch (Exception ex)
         {

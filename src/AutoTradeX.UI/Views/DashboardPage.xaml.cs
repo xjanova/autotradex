@@ -26,21 +26,23 @@ namespace AutoTradeX.UI.Views;
 
 public partial class DashboardPage : UserControl
 {
-    // Services
-    private readonly ICoinDataService? _coinDataService;
-    private readonly ILoggingService? _logger;
-    private readonly IArbEngine? _arbEngine;
-    private readonly IConfigService? _configService;
-    private readonly IBalancePoolService? _balancePool;
-    private readonly ITradeHistoryService? _tradeHistory;
-    private readonly INotificationService? _notificationService;
-    private readonly IExchangeClientFactory? _exchangeFactory;
-    private readonly IProjectService? _projectService;
-    private readonly IConnectionStatusService? _connectionStatusService;
+    // Services (not readonly because they may need to be re-fetched after App.Services is ready)
+    // Services ไม่ใช่ readonly เพราะอาจต้อง re-fetch หลังจาก App.Services พร้อม
+    private ICoinDataService? _coinDataService;
+    private ILoggingService? _logger;
+    private IArbEngine? _arbEngine;
+    private IConfigService? _configService;
+    private IBalancePoolService? _balancePool;
+    private ITradeHistoryService? _tradeHistory;
+    private INotificationService? _notificationService;
+    private IExchangeClientFactory? _exchangeFactory;
+    private IProjectService? _projectService;
+    private IConnectionStatusService? _connectionStatusService;
 
     // Timers
     private DispatcherTimer? _refreshTimer;
     private DispatcherTimer? _chartUpdateTimer;
+    private DispatcherTimer? _connectionRefreshTimer;
 
     // State
     private bool _isBotRunning = false;
@@ -65,6 +67,16 @@ public partial class DashboardPage : UserControl
     public ObservableCollection<TradingPairItem> ActivePairs { get; } = new();
     public ObservableCollection<RecentTradeItem> RecentTrades { get; } = new();
     public ObservableCollection<ActivityLogItem> ActivityLogs { get; } = new();
+    public ObservableCollection<ExchangeWalletItem> ExchangeWallets { get; } = new();
+
+    // Arbitrage Mode State / สถานะโหมด Arbitrage
+    private ArbitrageExecutionMode _currentMode = ArbitrageExecutionMode.DualBalance;
+    private TransferExecutionType _currentTransferType = TransferExecutionType.Manual;
+    private decimal _dashboardSessionPnL = 0;
+
+    // Trading Mode State (new) / สถานะโหมดการเทรด (ใหม่)
+    private TradingModeType _currentTradingMode = TradingModeType.Arbitrage;
+    private string _selectedSingleExchange = "Binance";
 
     public DashboardPage()
     {
@@ -231,36 +243,36 @@ public partial class DashboardPage : UserControl
 
     private async void InitializeData()
     {
-        // Load REAL exchange statuses from configured exchanges
-        await LoadExchangeStatusesAsync();
-        ExchangeStatusList.ItemsSource = ExchangeStatuses;
+        // NOTE: Exchange status is NOT loaded here because services may not be ready yet
+        // Exchange status will be loaded by RefreshExchangeStatuses() called from MainWindow after Splash
+        // สถานะ Exchange จะถูกโหลดโดย RefreshExchangeStatuses() ที่ MainWindow เรียกหลัง Splash เสร็จ
 
-        // Load active trading pairs from projects
-        await LoadActiveTradingPairsAsync();
+        // Set ItemsSource first (data will be populated later)
+        ExchangeStatusList.ItemsSource = ExchangeStatuses;
         ActivePairsList.ItemsSource = ActivePairs;
 
         // Initialize activity log
         AddActivityLog("System", "Dashboard initialized", "#00D4FF");
 
-        // Load market overview
+        // Load data that doesn't require exchange connections
+        // โหลดข้อมูลที่ไม่ต้องการการเชื่อมต่อ exchange
+        await LoadActiveTradingPairsAsync();
         await LoadMarketOverviewAsync();
-
-        // Load trade history stats
         await LoadTradeStatsAsync();
-
-        // Load recent trades
         await LoadRecentTradesAsync();
-
-        // Load P&L chart data
         await LoadPnLChartDataAsync();
-
-        // Load Best/Worst performing pairs
         await LoadBestWorstPairsAsync();
+
+        // Update mode display
+        UpdateCurrentModeDisplay();
+
+        // Note: LoadExchangeWalletsAsync requires connection, will be called in RefreshExchangeStatuses
     }
 
     /// <summary>
     /// Load REAL exchange connection statuses using ConnectionStatusService
-    /// This checks for actual API credentials, not just public API access
+    /// This uses cached verified status from Splash screen when available
+    /// to avoid redundant connection checks.
     /// </summary>
     private async Task LoadExchangeStatusesAsync()
     {
@@ -269,15 +281,54 @@ public partial class DashboardPage : UserControl
         // Use ConnectionStatusService for proper credential checking
         if (_connectionStatusService != null)
         {
-            var status = await _connectionStatusService.CheckAllConnectionsAsync();
+            var exchanges = new[] { "Binance", "KuCoin", "OKX", "Bybit", "Gate.io", "Bitkub" };
+            var statusDict = new Dictionary<string, ExchangeConnectionStatus>();
+            var needsCheck = new List<string>();
 
-            foreach (var (exchangeName, exchangeStatus) in status.Exchanges)
+            // First, try to use cached status from Splash screen verification
+            foreach (var exchangeName in exchanges)
+            {
+                var cachedStatus = _connectionStatusService.GetVerifiedStatus(exchangeName);
+                if (cachedStatus != null)
+                {
+                    _logger?.LogInfo("Dashboard", $"LoadExchangeStatuses: Using cached status for {exchangeName}");
+                    statusDict[exchangeName] = cachedStatus;
+                }
+                else
+                {
+                    needsCheck.Add(exchangeName);
+                }
+            }
+
+            // Check any exchanges that weren't in cache
+            if (needsCheck.Count > 0)
+            {
+                _logger?.LogInfo("Dashboard", $"LoadExchangeStatuses: Checking {needsCheck.Count} exchanges not in cache: {string.Join(", ", needsCheck)}");
+                var status = await _connectionStatusService.CheckAllConnectionsAsync();
+                foreach (var exchangeName in needsCheck)
+                {
+                    if (status.Exchanges.TryGetValue(exchangeName, out var exchangeStatus))
+                    {
+                        statusDict[exchangeName] = exchangeStatus;
+                    }
+                }
+            }
+
+            foreach (var exchangeName in exchanges)
             {
                 string displayStatus;
                 string statusColor;
                 string latency;
 
-                if (exchangeStatus.IsConnected && exchangeStatus.HasValidCredentials)
+                // Get status from dictionary (cached or freshly checked)
+                if (!statusDict.TryGetValue(exchangeName, out var exchangeStatus))
+                {
+                    // No status available - mark as not configured
+                    displayStatus = "Not Configured";
+                    statusColor = "#60FFFFFF";
+                    latency = "-";
+                }
+                else if (exchangeStatus.IsConnected && exchangeStatus.HasValidCredentials)
                 {
                     // Fully connected with valid API key
                     displayStatus = "Connected";
@@ -437,19 +488,48 @@ public partial class DashboardPage : UserControl
             _balancePool.BalanceUpdated += BalancePool_BalanceUpdated;
             _balancePool.EmergencyTriggered += BalancePool_EmergencyTriggered;
         }
+
+        // Subscribe to project changes for cross-page sync
+        // ลงทะเบียนรับการเปลี่ยนแปลงโปรเจคสำหรับ sync ข้ามหน้า
+        if (_projectService != null)
+        {
+            _projectService.ActiveProjectChanged += ProjectService_ActiveProjectChanged;
+        }
+    }
+
+    private void ProjectService_ActiveProjectChanged(object? sender, ProjectChangedEventArgs e)
+    {
+        Dispatcher.Invoke(async () =>
+        {
+            try
+            {
+                await LoadActiveTradingPairsAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError("Dashboard", $"Error refreshing pairs on project change: {ex.Message}");
+            }
+        });
     }
 
     private void StartTimers()
     {
-        // Main refresh timer (every 5 seconds)
-        _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        // Main refresh timer (every 2 seconds for near real-time updates)
+        _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _refreshTimer.Tick += async (s, e) => await RefreshDataAsync();
         _refreshTimer.Start();
 
-        // Chart update timer (every 30 seconds)
-        _chartUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        // Chart update timer (every 5 seconds for responsive charts)
+        _chartUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _chartUpdateTimer.Tick += async (s, e) => await UpdateChartsAsync();
         _chartUpdateTimer.Start();
+
+        // Connection status refresh timer (every 30 seconds - less frequent to avoid API spam)
+        // Timer สำหรับ refresh สถานะการเชื่อมต่อ (ทุก 30 วินาที - ไม่บ่อยเกินไปเพื่อไม่ให้เรียก API มากเกินไป)
+        _connectionRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _connectionRefreshTimer.Tick += async (s, e) => await RefreshConnectionStatusAsync();
+        // Note: This timer is NOT started here - it will be started after Splash completes
+        // เริ่มหลังจาก Splash เสร็จแล้ว ไม่ใช่ตอน constructor
     }
 
     #endregion
@@ -459,20 +539,56 @@ public partial class DashboardPage : UserControl
     private async Task LoadMarketOverviewAsync()
     {
         var coins = new[] { ("BTC", "Bitcoin"), ("ETH", "Ethereum"), ("SOL", "Solana"), ("XRP", "Ripple"), ("DOGE", "Dogecoin") };
-        var random = new Random();
+
+        // Fetch real market data from CoinGecko when available
+        Dictionary<string, CoinPriceData>? priceData = null;
+        if (_coinDataService != null)
+        {
+            try
+            {
+                var coinIds = coins.Select(c => _coinDataService.GetCoinIdFromSymbol(c.Item1));
+                priceData = await _coinDataService.GetPricesAsync(coinIds);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning("Dashboard", $"Failed to fetch market prices: {ex.Message}");
+            }
+        }
 
         for (int i = 0; i < coins.Length; i++)
         {
             var (symbol, name) = coins[i];
             try
             {
-                var price = _coinDataService != null
-                    ? (decimal)await _coinDataService.GetPriceAsync(symbol.ToLower())
-                    : (decimal)(random.NextDouble() * 50000);
+                decimal price = 0;
+                decimal change = 0;
+                decimal spread = 0;
+                int score = 0;
 
-                var change = (decimal)(random.NextDouble() * 10 - 5);
-                var spread = (decimal)(random.NextDouble() * 0.3);
-                var score = (int)(spread * 100 + 30);
+                var coinId = _coinDataService?.GetCoinIdFromSymbol(symbol) ?? symbol.ToLower();
+                if (priceData != null && priceData.TryGetValue(coinId, out var coinPrice))
+                {
+                    price = coinPrice.Price;
+                    change = coinPrice.Change24h;
+                }
+                else if (_coinDataService != null)
+                {
+                    price = await _coinDataService.GetPriceAsync(coinId);
+                }
+
+                // Calculate spread from ArbEngine if available
+                if (_arbEngine != null)
+                {
+                    var pairs = _arbEngine.GetTradingPairs();
+                    var matchingPair = pairs.FirstOrDefault(p =>
+                        p.BaseCurrency.Equals(symbol, StringComparison.OrdinalIgnoreCase));
+                    if (matchingPair?.CurrentOpportunity != null)
+                    {
+                        spread = matchingPair.CurrentOpportunity.BestSpreadPercentage;
+                    }
+                }
+
+                score = (int)Math.Clamp(spread * 100 + 30, 0, 100);
 
                 var changeColorHex = change >= 0 ? "#10B981" : "#EF4444";
                 var spreadColorHex = spread >= 0.15m ? "#10B981" : spread >= 0.1m ? "#F59E0B" : "#60FFFFFF";
@@ -811,6 +927,198 @@ public partial class DashboardPage : UserControl
         }
     }
 
+    /// <summary>
+    /// Load wallet balances from all connected exchanges
+    /// โหลดยอดกระเป๋าจากทุกกระดานที่เชื่อมต่อ
+    /// </summary>
+    private async Task LoadExchangeWalletsAsync()
+    {
+        ExchangeWallets.Clear();
+        decimal totalPortfolioValue = 0;
+
+        var exchanges = new[] { "Binance", "KuCoin", "OKX", "Bybit", "Gate.io", "Bitkub" };
+
+        foreach (var exchangeName in exchanges)
+        {
+            try
+            {
+                // Check if API key is configured first
+                var (keyEnv, secretEnv) = GetExchangeEnvVarNames(exchangeName);
+                var apiKey = Environment.GetEnvironmentVariable(keyEnv);
+                var apiSecret = Environment.GetEnvironmentVariable(secretEnv);
+
+                if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiSecret))
+                {
+                    // Not configured
+                    ExchangeWallets.Add(new ExchangeWalletItem
+                    {
+                        ExchangeName = exchangeName,
+                        USDTBalance = "Not Connected",
+                        OtherAssets = "กรุณาตั้งค่า API Key",
+                        StatusColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#60FFFFFF")),
+                        TotalValueUSDT = 0
+                    });
+                    continue;
+                }
+
+                // Use real client for wallet loading (not simulation)
+                var client = _exchangeFactory?.CreateRealClient(exchangeName);
+                if (client == null)
+                {
+                    // Factory not available
+                    ExchangeWallets.Add(new ExchangeWalletItem
+                    {
+                        ExchangeName = exchangeName,
+                        USDTBalance = "Error",
+                        OtherAssets = "Factory not available",
+                        StatusColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444")),
+                        TotalValueUSDT = 0
+                    });
+                    continue;
+                }
+
+                // Get balance from exchange
+                var balance = await client.GetBalanceAsync();
+                if (balance != null)
+                {
+                    // Find USDT balance using Assets dictionary
+                    var usdtAmount = balance.GetTotal("USDT");
+
+                    // Get other major assets
+                    var otherAssets = balance.Assets
+                        .Where(kvp => !kvp.Key.Equals("USDT", StringComparison.OrdinalIgnoreCase) && kvp.Value.Total > 0)
+                        .Take(3)
+                        .Select(kvp => $"{kvp.Key}: {kvp.Value.Total:F4}")
+                        .ToList();
+
+                    var otherAssetsText = otherAssets.Count > 0
+                        ? string.Join(" | ", otherAssets)
+                        : "No other assets";
+
+                    // Calculate total value (simplified - USDT only for now)
+                    totalPortfolioValue += usdtAmount;
+
+                    ExchangeWallets.Add(new ExchangeWalletItem
+                    {
+                        ExchangeName = exchangeName,
+                        USDTBalance = $"${usdtAmount:N2}",
+                        OtherAssets = otherAssetsText,
+                        StatusColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981")),
+                        TotalValueUSDT = usdtAmount
+                    });
+                }
+                else
+                {
+                    ExchangeWallets.Add(new ExchangeWalletItem
+                    {
+                        ExchangeName = exchangeName,
+                        USDTBalance = "Error",
+                        OtherAssets = "ไม่สามารถโหลดยอดได้",
+                        StatusColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444")),
+                        TotalValueUSDT = 0
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError("Dashboard", $"Error loading wallet for {exchangeName}: {ex.Message}");
+
+                // Extract meaningful error message
+                var errorMsg = ex.Message;
+                if (errorMsg.Contains("Error 5"))
+                    errorMsg = "IP ไม่อยู่ใน whitelist";
+                else if (errorMsg.Contains("Error 6"))
+                    errorMsg = "Signature ไม่ถูกต้อง";
+                else if (errorMsg.Contains("Error 3"))
+                    errorMsg = "API Key ไม่ถูกต้อง";
+                else if (errorMsg.Length > 40)
+                    errorMsg = errorMsg.Substring(0, 40) + "...";
+
+                ExchangeWallets.Add(new ExchangeWalletItem
+                {
+                    ExchangeName = exchangeName,
+                    USDTBalance = "Error",
+                    OtherAssets = errorMsg,
+                    StatusColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444")),
+                    TotalValueUSDT = 0
+                });
+            }
+        }
+
+        // Update UI
+        Dispatcher.Invoke(() =>
+        {
+            ExchangeWalletsList.ItemsSource = ExchangeWallets;
+            TotalWalletValue.Text = $"${totalPortfolioValue:N2}";
+            WalletLastUpdate.Text = $"Updated: {DateTime.Now:HH:mm:ss}";
+
+            // Update session P&L display
+            DashboardSessionPnL.Text = _dashboardSessionPnL >= 0
+                ? $"+${_dashboardSessionPnL:F2}"
+                : $"-${Math.Abs(_dashboardSessionPnL):F2}";
+            DashboardSessionPnL.Foreground = new SolidColorBrush(
+                (Color)ColorConverter.ConvertFromString(_dashboardSessionPnL >= 0 ? "#10B981" : "#EF4444"));
+        });
+    }
+
+    /// <summary>
+    /// Update current arbitrage mode display
+    /// อัปเดตการแสดงโหมด arbitrage ปัจจุบัน
+    /// </summary>
+    private void UpdateCurrentModeDisplay()
+    {
+        // Load mode from config if available
+        var config = _configService?.GetConfig();
+        if (config != null)
+        {
+            _currentMode = config.Strategy.DefaultExecutionMode;
+            _currentTransferType = config.Strategy.DefaultTransferType;
+        }
+
+        var modeInfo = ArbitrageModeInfo.GetModeInfo(_currentMode);
+
+        Dispatcher.Invoke(() =>
+        {
+            // Update mode indicator
+            CurrentModeName.Text = modeInfo.EnglishName;
+            CurrentModeNameThai.Text = modeInfo.ThaiName;
+            CurrentModeDescription.Text = modeInfo.ShortDescription;
+
+            // Update icon and colors based on mode
+            if (_currentMode == ArbitrageExecutionMode.DualBalance)
+            {
+                CurrentModeIcon.Text = "⚡";
+                CurrentModeBorder.Background = new LinearGradientBrush(
+                    new GradientStopCollection
+                    {
+                        new GradientStop((Color)ColorConverter.ConvertFromString("#3010B981"), 0),
+                        new GradientStop((Color)ColorConverter.ConvertFromString("#2010B981"), 1)
+                    },
+                    new Point(0, 0), new Point(1, 1));
+                CurrentModeBorder.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"));
+                TransferTypeIndicator.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                CurrentModeIcon.Text = "🔄";
+                CurrentModeBorder.Background = new LinearGradientBrush(
+                    new GradientStopCollection
+                    {
+                        new GradientStop((Color)ColorConverter.ConvertFromString("#30F59E0B"), 0),
+                        new GradientStop((Color)ColorConverter.ConvertFromString("#20F59E0B"), 1)
+                    },
+                    new Point(0, 0), new Point(1, 1));
+                CurrentModeBorder.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B"));
+
+                // Show transfer type indicator
+                TransferTypeIndicator.Visibility = Visibility.Visible;
+                var transferInfo = TransferExecutionTypeInfo.GetTypeInfo(_currentTransferType);
+                TransferTypeIcon.Text = _currentTransferType == TransferExecutionType.Auto ? "🤖" : "👤";
+                TransferTypeName.Text = $"{transferInfo.EnglishName} / {transferInfo.ThaiName}";
+            }
+        });
+    }
+
     #endregion
 
     #region Event Handlers
@@ -1068,24 +1376,34 @@ public partial class DashboardPage : UserControl
 
     private void AddActivityLog(string type, string message, string color, string? details = null)
     {
-        var logItem = new ActivityLogItem
-        {
-            Message = $"[{type}] {message}",
-            Details = details,
-            DetailsVisibility = string.IsNullOrEmpty(details) ? Visibility.Collapsed : Visibility.Visible,
-            Time = DateTime.Now.ToString("HH:mm:ss"),
-            IconColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color))
-        };
+        // Skip if UI not loaded yet / ข้ามถ้า UI ยังโหลดไม่เสร็จ
+        if (ActivityLogList == null) return;
 
-        ActivityLogs.Insert(0, logItem);
-
-        // Keep only last 100 entries
-        while (ActivityLogs.Count > 100)
+        try
         {
-            ActivityLogs.RemoveAt(ActivityLogs.Count - 1);
+            var logItem = new ActivityLogItem
+            {
+                Message = $"[{type}] {message}",
+                Details = details,
+                DetailsVisibility = string.IsNullOrEmpty(details) ? Visibility.Collapsed : Visibility.Visible,
+                Time = DateTime.Now.ToString("HH:mm:ss"),
+                IconColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color))
+            };
+
+            ActivityLogs.Insert(0, logItem);
+
+            // Keep only last 100 entries
+            while (ActivityLogs.Count > 100)
+            {
+                ActivityLogs.RemoveAt(ActivityLogs.Count - 1);
+            }
+
+            ActivityLogList.ItemsSource = ActivityLogs;
         }
-
-        ActivityLogList.ItemsSource = ActivityLogs;
+        catch (Exception)
+        {
+            // Ignore errors during UI initialization
+        }
     }
 
     private string GetStatusColor(EngineStatus status) => status switch
@@ -1302,6 +1620,22 @@ public partial class DashboardPage : UserControl
         }
     }
 
+    private void GoToTradingPage_Click(object sender, RoutedEventArgs e)
+    {
+        // Navigate to Trading page to change mode
+        if (Window.GetWindow(this) is MainWindow mainWindow)
+        {
+            mainWindow.NavigateToPage("Trading");
+        }
+    }
+
+    private async void RefreshWallets_Click(object sender, RoutedEventArgs e)
+    {
+        AddActivityLog("System", "Refreshing wallet balances...", "#00D4FF");
+        await LoadExchangeWalletsAsync();
+        AddActivityLog("System", "Wallet balances updated", "#10B981");
+    }
+
     #endregion
 
     #region Refresh Methods
@@ -1381,6 +1715,82 @@ public partial class DashboardPage : UserControl
     }
 
     /// <summary>
+    /// Public method to refresh exchange statuses from MainWindow after Splash completes
+    /// เมธอดสาธารณะให้ MainWindow เรียกหลัง Splash เสร็จเพื่อ refresh status
+    /// </summary>
+    public async void RefreshExchangeStatuses()
+    {
+        _logger?.LogInfo("Dashboard", "RefreshExchangeStatuses: Called from MainWindow after Splash completed");
+
+        // Re-get services if they were null during constructor
+        // รับ services ใหม่ถ้าตอน constructor ยังไม่พร้อม
+        EnsureServicesInitialized();
+
+        // Load exchange connection status (uses cache from Splash)
+        await LoadExchangeStatusesAsync();
+
+        // Load exchange wallets (requires connection)
+        await LoadExchangeWalletsAsync();
+
+        // Update Start button state
+        await UpdateStartButtonStateAsync();
+
+        // Start the connection refresh timer now that services are ready
+        // เริ่ม timer refresh connection หลังจาก services พร้อมแล้ว
+        _connectionRefreshTimer?.Start();
+
+        _logger?.LogInfo("Dashboard", "RefreshExchangeStatuses: Completed, connection timer started");
+    }
+
+    /// <summary>
+    /// Periodic refresh of connection status (called by timer)
+    /// Refresh สถานะ connection แบบ periodic (เรียกโดย timer)
+    /// </summary>
+    private async Task RefreshConnectionStatusAsync()
+    {
+        try
+        {
+            // Clear the verified cache to force fresh check
+            // ล้าง cache เพื่อบังคับให้ check ใหม่
+            // Note: Don't clear cache, just reload status
+            await LoadExchangeStatusesAsync();
+            await LoadExchangeWalletsAsync();
+            await UpdateStartButtonStateAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("Dashboard", $"Error refreshing connection status: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Ensures all services are initialized. Called when refreshing after Splash.
+    /// ตรวจสอบว่า services ถูก initialize แล้ว เรียกเมื่อ refresh หลัง Splash
+    /// </summary>
+    private void EnsureServicesInitialized()
+    {
+        if (App.Services == null)
+        {
+            _logger?.LogWarning("Dashboard", "EnsureServicesInitialized: App.Services is still null");
+            return;
+        }
+
+        // Re-fetch any null services
+        _coinDataService ??= App.Services.GetService<ICoinDataService>();
+        _logger ??= App.Services.GetService<ILoggingService>();
+        _arbEngine ??= App.Services.GetService<IArbEngine>();
+        _configService ??= App.Services.GetService<IConfigService>();
+        _balancePool ??= App.Services.GetService<IBalancePoolService>();
+        _tradeHistory ??= App.Services.GetService<ITradeHistoryService>();
+        _notificationService ??= App.Services.GetService<INotificationService>();
+        _exchangeFactory ??= App.Services.GetService<IExchangeClientFactory>();
+        _projectService ??= App.Services.GetService<IProjectService>();
+        _connectionStatusService ??= App.Services.GetService<IConnectionStatusService>();
+
+        _logger?.LogInfo("Dashboard", "EnsureServicesInitialized: Services checked/re-fetched");
+    }
+
+    /// <summary>
     /// Updates the Start button enabled state based on exchange connection status.
     /// If no exchanges are connected, the button shows a warning and is still clickable
     /// but will show a message to configure settings first.
@@ -1420,10 +1830,241 @@ public partial class DashboardPage : UserControl
     {
         _refreshTimer?.Stop();
         _chartUpdateTimer?.Stop();
+        _connectionRefreshTimer?.Stop();
         StopLogoAnimation();
+
+        // Unsubscribe from all events to prevent memory leaks
+        if (_arbEngine != null)
+        {
+            _arbEngine.StatusChanged -= ArbEngine_StatusChanged;
+            _arbEngine.TradeCompleted -= ArbEngine_TradeCompleted;
+            _arbEngine.OpportunityFound -= ArbEngine_OpportunityFound;
+            _arbEngine.PriceUpdated -= ArbEngine_PriceUpdated;
+            _arbEngine.ErrorOccurred -= ArbEngine_ErrorOccurred;
+        }
+
+        if (_balancePool != null)
+        {
+            _balancePool.BalanceUpdated -= BalancePool_BalanceUpdated;
+            _balancePool.EmergencyTriggered -= BalancePool_EmergencyTriggered;
+        }
+
+        if (_projectService != null)
+        {
+            _projectService.ActiveProjectChanged -= ProjectService_ActiveProjectChanged;
+        }
+    }
+
+    /// <summary>
+    /// Get environment variable names for exchange credentials
+    /// </summary>
+    private static (string keyEnv, string secretEnv) GetExchangeEnvVarNames(string exchangeName)
+    {
+        return exchangeName.ToLower() switch
+        {
+            "binance" => ("AUTOTRADEX_BINANCE_API_KEY", "AUTOTRADEX_BINANCE_API_SECRET"),
+            "kucoin" => ("AUTOTRADEX_KUCOIN_API_KEY", "AUTOTRADEX_KUCOIN_API_SECRET"),
+            "okx" => ("AUTOTRADEX_OKX_API_KEY", "AUTOTRADEX_OKX_API_SECRET"),
+            "bybit" => ("AUTOTRADEX_BYBIT_API_KEY", "AUTOTRADEX_BYBIT_API_SECRET"),
+            "gate.io" => ("AUTOTRADEX_GATEIO_API_KEY", "AUTOTRADEX_GATEIO_API_SECRET"),
+            "bitkub" => ("AUTOTRADEX_BITKUB_API_KEY", "AUTOTRADEX_BITKUB_API_SECRET"),
+            _ => ($"AUTOTRADEX_{exchangeName.ToUpper().Replace(".", "")}_API_KEY",
+                  $"AUTOTRADEX_{exchangeName.ToUpper().Replace(".", "")}_API_SECRET")
+        };
     }
 
     #endregion
+
+    #region Trading Mode Switcher / ตัวเลือกโหมดการเทรด
+
+    /// <summary>
+    /// Handle trading mode change from UI tabs
+    /// จัดการการเปลี่ยนโหมดการเทรดจาก UI tabs
+    /// </summary>
+    private void TradingMode_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton radio)
+        {
+            if (radio.Name == "ModeArbitrage")
+            {
+                _currentTradingMode = TradingModeType.Arbitrage;
+                ShowArbitrageMode();
+                AddActivityLog("Mode", "Switched to Arbitrage Mode", "#7C3AED");
+            }
+            else if (radio.Name == "ModeSingleExchange")
+            {
+                _currentTradingMode = TradingModeType.SingleExchange;
+                ShowSingleExchangeMode();
+                AddActivityLog("Mode", "Switched to Single Exchange Mode", "#00D4FF");
+            }
+            else if (radio.Name == "ModeAITrading")
+            {
+                _currentTradingMode = TradingModeType.AITrading;
+                ShowAITradingMode();
+                AddActivityLog("Mode", "Switched to AI Trading Mode", "#F59E0B");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show Arbitrage mode panel and hide others
+    /// แสดง panel โหมด Arbitrage และซ่อนอื่นๆ
+    /// </summary>
+    private void ShowArbitrageMode()
+    {
+        // Null check for elements that might not be loaded yet
+        if (ArbitrageModePanel != null) ArbitrageModePanel.Visibility = Visibility.Visible;
+        if (SingleExchangeModePanel != null) SingleExchangeModePanel.Visibility = Visibility.Collapsed;
+        if (AITradingModePanel != null) AITradingModePanel.Visibility = Visibility.Collapsed;
+        if (BalanceDistributionPanel != null) BalanceDistributionPanel.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Show Single Exchange mode panel and hide others
+    /// แสดง panel โหมด Single Exchange และซ่อนอื่นๆ
+    /// </summary>
+    private void ShowSingleExchangeMode()
+    {
+        if (ArbitrageModePanel != null) ArbitrageModePanel.Visibility = Visibility.Collapsed;
+        if (SingleExchangeModePanel != null) SingleExchangeModePanel.Visibility = Visibility.Visible;
+        if (AITradingModePanel != null) AITradingModePanel.Visibility = Visibility.Collapsed;
+        if (BalanceDistributionPanel != null) BalanceDistributionPanel.Visibility = Visibility.Collapsed;
+
+        // Load single exchange data
+        _ = LoadSingleExchangeDataAsync();
+    }
+
+    /// <summary>
+    /// Show AI Trading mode panel and hide others
+    /// แสดง panel โหมด AI Trading และซ่อนอื่นๆ
+    /// </summary>
+    private void ShowAITradingMode()
+    {
+        if (ArbitrageModePanel != null) ArbitrageModePanel.Visibility = Visibility.Collapsed;
+        if (SingleExchangeModePanel != null) SingleExchangeModePanel.Visibility = Visibility.Collapsed;
+        if (AITradingModePanel != null) AITradingModePanel.Visibility = Visibility.Visible;
+        if (BalanceDistributionPanel != null) BalanceDistributionPanel.Visibility = Visibility.Collapsed;
+
+        // Load AI trading data
+        _ = LoadAITradingDataAsync();
+    }
+
+    /// <summary>
+    /// Handle single exchange selector change
+    /// จัดการการเปลี่ยน exchange ที่เลือก
+    /// </summary>
+    private async void SingleExchangeSelector_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (SingleExchangeSelector.SelectedItem is ComboBoxItem selectedItem)
+        {
+            _selectedSingleExchange = selectedItem.Content?.ToString() ?? "Binance";
+            await LoadSingleExchangeDataAsync();
+        }
+    }
+
+    /// <summary>
+    /// Load data for single exchange mode
+    /// โหลดข้อมูลสำหรับโหมด Single Exchange
+    /// </summary>
+    private async Task LoadSingleExchangeDataAsync()
+    {
+        // Skip if UI elements not loaded yet
+        if (SingleExchangeBalance == null) return;
+
+        try
+        {
+            // Get balance for selected exchange
+            var wallet = ExchangeWallets.FirstOrDefault(w => w.ExchangeName == _selectedSingleExchange);
+            if (wallet != null)
+            {
+                SingleExchangeBalance.Text = $"Balance: {wallet.USDTBalance}";
+            }
+            else
+            {
+                SingleExchangeBalance.Text = "Balance: Not Connected";
+            }
+
+            // Get BTC price as default pair
+            if (_coinDataService != null && SinglePairPrice != null)
+            {
+                var price = (decimal)await _coinDataService.GetPriceAsync("btc");
+                SinglePairPrice.Text = $"${price:N2}";
+
+                // Simulate 24h data (in real app, fetch from API)
+                var random = new Random();
+                var change = (decimal)(random.NextDouble() * 10 - 5);
+                if (SinglePairChange != null)
+                {
+                    SinglePairChange.Text = $"{(change >= 0 ? "+" : "")}{change:F2}%";
+                    SinglePairChange.Foreground = new SolidColorBrush(
+                        (Color)ColorConverter.ConvertFromString(change >= 0 ? "#10B981" : "#EF4444"));
+                }
+
+                if (SingleHigh24h != null) SingleHigh24h.Text = $"${price * 1.02m:N2}";
+                if (SingleLow24h != null) SingleLow24h.Text = $"${price * 0.98m:N2}";
+                if (SingleVolume24h != null) SingleVolume24h.Text = $"${random.Next(1000, 5000)}M";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("Dashboard", $"Error loading single exchange data: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Load data for AI trading mode
+    /// โหลดข้อมูลสำหรับโหมด AI Trading
+    /// </summary>
+    private async Task LoadAITradingDataAsync()
+    {
+        // Skip if UI elements not loaded yet
+        if (AISignalText == null) return;
+
+        try
+        {
+            // Simulate AI data (in real app, fetch from AI service)
+            await Task.Delay(100); // Simulate async call
+
+            var random = new Random();
+            var signals = new[] { "BUY", "SELL", "HOLD" };
+            var signal = signals[random.Next(signals.Length)];
+
+            AISignalText.Text = signal;
+            var signalColor = signal switch
+            {
+                "BUY" => "#10B981",
+                "SELL" => "#EF4444",
+                _ => "#F59E0B"
+            };
+            AISignalText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(signalColor));
+
+            var confidence = 60 + random.Next(35);
+            if (AIConfidence != null) AIConfidence.Text = $"Confidence: {confidence}%";
+
+            var accuracy = 65 + random.Next(25);
+            if (AIAccuracy != null) AIAccuracy.Text = $"{accuracy}%";
+
+            // Check if there's an active AI position
+            if (AIPositionStatus != null) AIPositionStatus.Text = "No Active Position";
+            if (AIPositionPnL != null) AIPositionPnL.Text = "$0.00";
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("Dashboard", $"Error loading AI trading data: {ex.Message}");
+        }
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// Trading mode types / ประเภทโหมดการเทรด
+/// </summary>
+public enum TradingModeType
+{
+    Arbitrage,
+    SingleExchange,
+    AITrading
 }
 
 #region View Models
@@ -1548,6 +2189,19 @@ public class ActivityLogItem
     public Visibility DetailsVisibility { get; set; } = Visibility.Collapsed;
     public string Time { get; set; } = "";
     public SolidColorBrush IconColor { get; set; } = Brushes.White;
+}
+
+/// <summary>
+/// View model for exchange wallet display in dashboard
+/// แสดงข้อมูลกระเป๋าเงินของ exchange บน dashboard
+/// </summary>
+public class ExchangeWalletItem
+{
+    public string ExchangeName { get; set; } = "";
+    public string USDTBalance { get; set; } = "$0.00";
+    public string OtherAssets { get; set; } = "";
+    public SolidColorBrush StatusColor { get; set; } = Brushes.Gray;
+    public decimal TotalValueUSDT { get; set; }
 }
 
 #endregion

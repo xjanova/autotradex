@@ -70,6 +70,15 @@ public partial class HistoryPage : UserControl
 
         SetupChart();
         Loaded += HistoryPage_Loaded;
+        Unloaded += HistoryPage_Unloaded;
+    }
+
+    private void HistoryPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (_arbEngine != null)
+        {
+            _arbEngine.TradeCompleted -= ArbEngine_TradeCompleted;
+        }
     }
 
     private async void HistoryPage_Loaded(object sender, RoutedEventArgs e)
@@ -176,7 +185,9 @@ public partial class HistoryPage : UserControl
                         SpreadPercent = trade.SpreadPercent,
                         PnL = trade.PnL,
                         IsSuccess = trade.PnL > 0,
-                        ExecutionTimeMs = (int)trade.ExecutionTimeMs
+                        ExecutionTimeMs = (int)trade.ExecutionTimeMs,
+                        TradeAmount = trade.TradeAmount,
+                        Fee = trade.Fee
                     });
                 }
 
@@ -215,7 +226,9 @@ public partial class HistoryPage : UserControl
             IsSuccess = result.IsFullySuccessful,
             ExecutionTimeMs = result.Metadata.TryGetValue("TotalExecutionMs", out var ms) && ms is long execMs
                 ? (int)execMs
-                : (int)result.DurationMs
+                : (int)result.DurationMs,
+            TradeAmount = result.ActualBuyValue,
+            Fee = result.TotalFees
         };
 
         TradeHistory.Insert(0, display);
@@ -293,11 +306,12 @@ public partial class HistoryPage : UserControl
         if (AvgExecutionDisplay != null) AvgExecutionDisplay.Text = $"{avgExec:F0}ms";
         if (FastestExecDisplay != null) FastestExecDisplay.Text = $"Fastest: {fastestExec}ms";
 
-        // Volume (estimate)
-        var volume = TradeHistory.Count * 500m; // Assume $500 avg trade
+        // Volume — use real TradeAmount data when available
+        var volume = TradeHistory.Sum(t => t.TradeAmount);
         if (VolumeDisplay != null) VolumeDisplay.Text = volume >= 1000 ? $"${volume / 1000:F1}K" : $"${volume:F0}";
 
-        var fees = volume * 0.001m; // 0.1% avg fees
+        // Fees — use real fee data when available
+        var fees = TradeHistory.Sum(t => t.Fee);
         if (FeesDisplay != null) FeesDisplay.Text = $"Fees: ${fees:F2}";
     }
 
@@ -501,6 +515,8 @@ public class TradeHistoryDisplay
     public decimal PnL { get; set; }
     public bool IsSuccess { get; set; }
     public int ExecutionTimeMs { get; set; }
+    public decimal TradeAmount { get; set; }
+    public decimal Fee { get; set; }
 
     public string TimeDisplay => Timestamp.ToLocalTime().ToString("MM/dd HH:mm:ss");
     public string SpreadDisplay => $"{SpreadPercent:F2}%";

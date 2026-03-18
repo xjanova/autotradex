@@ -86,6 +86,53 @@ public interface IBalancePoolService
     /// </summary>
     IReadOnlyList<BalancePoolSnapshot> GetHistory(int count = 100);
 
+    // ========== Dual-Balance Mode Support / สนับสนุนโหมดสองกระเป๋า ==========
+
+    /// <summary>
+    /// Check if balances support Dual-Balance mode for a trading pair
+    /// ตรวจสอบว่ายอดรองรับโหมดสองกระเป๋าสำหรับคู่เทรดหรือไม่
+    /// </summary>
+    /// <param name="exchangeA">Exchange A name</param>
+    /// <param name="exchangeB">Exchange B name</param>
+    /// <param name="baseAsset">Base asset (e.g., BTC)</param>
+    /// <param name="quoteAsset">Quote asset (e.g., USDT)</param>
+    /// <param name="requiredQuoteAmount">Required quote amount for buy</param>
+    /// <returns>Balance readiness result</returns>
+    DualBalanceReadiness CheckDualBalanceReadiness(
+        string exchangeA,
+        string exchangeB,
+        string baseAsset,
+        string quoteAsset,
+        decimal requiredQuoteAmount);
+
+    /// <summary>
+    /// Get current balance snapshot for a trading pair
+    /// รับสแน็ปช็อตยอดปัจจุบันสำหรับคู่เทรด
+    /// </summary>
+    /// <param name="exchangeA">Exchange A name</param>
+    /// <param name="exchangeB">Exchange B name</param>
+    /// <param name="baseAsset">Base asset</param>
+    /// <param name="quoteAsset">Quote asset</param>
+    /// <returns>Balance snapshot</returns>
+    TradingPairBalanceSnapshot GetCurrentBalanceSnapshot(
+        string exchangeA,
+        string exchangeB,
+        string baseAsset,
+        string quoteAsset);
+
+    /// <summary>
+    /// Calculate real P&L from balance snapshots
+    /// คำนวณกำไร/ขาดทุนจริงจากสแน็ปช็อตยอด
+    /// </summary>
+    /// <param name="before">Snapshot before trade</param>
+    /// <param name="after">Snapshot after trade</param>
+    /// <param name="quotePrice">Current quote price</param>
+    /// <returns>Real P&L value</returns>
+    decimal CalculateRealPnLFromSnapshots(
+        TradingPairBalanceSnapshot before,
+        TradingPairBalanceSnapshot after,
+        decimal quotePrice);
+
     /// <summary>
     /// Event fired when balance is updated
     /// </summary>

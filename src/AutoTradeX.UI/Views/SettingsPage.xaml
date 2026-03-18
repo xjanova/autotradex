@@ -427,10 +427,30 @@
                         <TextBox x:Name="BinanceApiKey" Style="{StaticResource ApiInput}" Margin="0,0,0,10"/>
 
                         <TextBlock Text="API Secret" FontSize="11" Foreground="#80FFFFFF" Margin="0,0,0,5"/>
-                        <PasswordBox x:Name="BinanceApiSecret" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,15"/>
+                        <PasswordBox x:Name="BinanceApiSecret" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,10"/>
 
-                        <Button Content="Test Connection" Style="{StaticResource TestButton}"
-                                HorizontalAlignment="Left" Click="TestBinance_Click"/>
+                        <!-- API Permissions Display -->
+                        <Border x:Name="BinancePermissions" Background="#10FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,10" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="🔐 API Permissions:" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF" Margin="0,0,0,6"/>
+                                <WrapPanel x:Name="BinancePermissionTags">
+                                    <!-- Permission tags will be added dynamically -->
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Action Buttons -->
+                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                            <Button Content="Test Connection" Style="{StaticResource TestButton}"
+                                    HorizontalAlignment="Left" Click="TestBinance_Click"/>
+                            <Border Background="#15FFFFFF" CornerRadius="6" Padding="10,8" Margin="10,0,0,0"
+                                    Cursor="Hand" MouseLeftButtonDown="OpenBinanceApiDocs_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="📖" FontSize="12" Margin="0,0,5,0"/>
+                                    <TextBlock Text="วิธีสร้าง API" FontSize="11" Foreground="#7C3AED" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -458,10 +478,28 @@
                         <PasswordBox x:Name="KuCoinApiSecret" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,10"/>
 
                         <TextBlock Text="Passphrase" FontSize="11" Foreground="#80FFFFFF" Margin="0,0,0,5"/>
-                        <PasswordBox x:Name="KuCoinPassphrase" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,15"/>
+                        <PasswordBox x:Name="KuCoinPassphrase" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,10"/>
 
-                        <Button Content="Test Connection" Style="{StaticResource TestButton}"
-                                HorizontalAlignment="Left" Click="TestKuCoin_Click"/>
+                        <!-- API Permissions Display -->
+                        <Border x:Name="KuCoinPermissions" Background="#10FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,10" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="🔐 API Permissions:" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF" Margin="0,0,0,6"/>
+                                <WrapPanel x:Name="KuCoinPermissionTags"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Action Buttons -->
+                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                            <Button Content="Test Connection" Style="{StaticResource TestButton}"
+                                    HorizontalAlignment="Left" Click="TestKuCoin_Click"/>
+                            <Border Background="#15FFFFFF" CornerRadius="6" Padding="10,8" Margin="10,0,0,0"
+                                    Cursor="Hand" MouseLeftButtonDown="OpenKuCoinApiDocs_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="📖" FontSize="12" Margin="0,0,5,0"/>
+                                    <TextBlock Text="วิธีสร้าง API" FontSize="11" Foreground="#7C3AED" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -486,10 +524,28 @@
                         <TextBox x:Name="BitkubApiKey" Style="{StaticResource ApiInput}" Margin="0,0,0,10"/>
 
                         <TextBlock Text="API Secret" FontSize="11" Foreground="#80FFFFFF" Margin="0,0,0,5"/>
-                        <PasswordBox x:Name="BitkubApiSecret" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,15"/>
+                        <PasswordBox x:Name="BitkubApiSecret" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,10"/>
 
-                        <Button Content="Test Connection" Style="{StaticResource TestButton}"
-                                HorizontalAlignment="Left" Click="TestBitkub_Click"/>
+                        <!-- API Permissions Display -->
+                        <Border x:Name="BitkubPermissions" Background="#10FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,10" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="🔐 API Permissions:" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF" Margin="0,0,0,6"/>
+                                <WrapPanel x:Name="BitkubPermissionTags"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Action Buttons -->
+                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                            <Button Content="Test Connection" Style="{StaticResource TestButton}"
+                                    HorizontalAlignment="Left" Click="TestBitkub_Click"/>
+                            <Border Background="#15FFFFFF" CornerRadius="6" Padding="10,8" Margin="10,0,0,0"
+                                    Cursor="Hand" MouseLeftButtonDown="OpenBitkubApiDocs_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="📖" FontSize="12" Margin="0,0,5,0"/>
+                                    <TextBlock Text="วิธีสร้าง API" FontSize="11" Foreground="#7C3AED" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </StackPanel>
@@ -520,10 +576,28 @@
                         <PasswordBox x:Name="OKXApiSecret" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,10"/>
 
                         <TextBlock Text="Passphrase" FontSize="11" Foreground="#80FFFFFF" Margin="0,0,0,5"/>
-                        <PasswordBox x:Name="OKXPassphrase" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,15"/>
+                        <PasswordBox x:Name="OKXPassphrase" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,10"/>
 
-                        <Button Content="Test Connection" Style="{StaticResource TestButton}"
-                                HorizontalAlignment="Left" Click="TestOKX_Click"/>
+                        <!-- API Permissions Display -->
+                        <Border x:Name="OKXPermissions" Background="#10FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,10" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="🔐 API Permissions:" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF" Margin="0,0,0,6"/>
+                                <WrapPanel x:Name="OKXPermissionTags"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Action Buttons -->
+                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                            <Button Content="Test Connection" Style="{StaticResource TestButton}"
+                                    HorizontalAlignment="Left" Click="TestOKX_Click"/>
+                            <Border Background="#15FFFFFF" CornerRadius="6" Padding="10,8" Margin="10,0,0,0"
+                                    Cursor="Hand" MouseLeftButtonDown="OpenOKXApiDocs_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="📖" FontSize="12" Margin="0,0,5,0"/>
+                                    <TextBlock Text="วิธีสร้าง API" FontSize="11" Foreground="#7C3AED" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -548,10 +622,28 @@
                         <TextBox x:Name="BybitApiKey" Style="{StaticResource ApiInput}" Margin="0,0,0,10"/>
 
                         <TextBlock Text="API Secret" FontSize="11" Foreground="#80FFFFFF" Margin="0,0,0,5"/>
-                        <PasswordBox x:Name="BybitApiSecret" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,15"/>
+                        <PasswordBox x:Name="BybitApiSecret" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,10"/>
 
-                        <Button Content="Test Connection" Style="{StaticResource TestButton}"
-                                HorizontalAlignment="Left" Click="TestBybit_Click"/>
+                        <!-- API Permissions Display -->
+                        <Border x:Name="BybitPermissions" Background="#10FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,10" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="🔐 API Permissions:" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF" Margin="0,0,0,6"/>
+                                <WrapPanel x:Name="BybitPermissionTags"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Action Buttons -->
+                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                            <Button Content="Test Connection" Style="{StaticResource TestButton}"
+                                    HorizontalAlignment="Left" Click="TestBybit_Click"/>
+                            <Border Background="#15FFFFFF" CornerRadius="6" Padding="10,8" Margin="10,0,0,0"
+                                    Cursor="Hand" MouseLeftButtonDown="OpenBybitApiDocs_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="📖" FontSize="12" Margin="0,0,5,0"/>
+                                    <TextBlock Text="วิธีสร้าง API" FontSize="11" Foreground="#7C3AED" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -576,10 +668,28 @@
                         <TextBox x:Name="GateIOApiKey" Style="{StaticResource ApiInput}" Margin="0,0,0,10"/>
 
                         <TextBlock Text="API Secret" FontSize="11" Foreground="#80FFFFFF" Margin="0,0,0,5"/>
-                        <PasswordBox x:Name="GateIOApiSecret" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,15"/>
+                        <PasswordBox x:Name="GateIOApiSecret" Style="{StaticResource ApiPasswordBox}" Margin="0,0,0,10"/>
 
-                        <Button Content="Test Connection" Style="{StaticResource TestButton}"
-                                HorizontalAlignment="Left" Click="TestGateIO_Click"/>
+                        <!-- API Permissions Display -->
+                        <Border x:Name="GateIOPermissions" Background="#10FFFFFF" CornerRadius="8" Padding="10" Margin="0,0,0,10" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="🔐 API Permissions:" FontSize="11" FontWeight="SemiBold" Foreground="#A0FFFFFF" Margin="0,0,0,6"/>
+                                <WrapPanel x:Name="GateIOPermissionTags"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Action Buttons -->
+                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                            <Button Content="Test Connection" Style="{StaticResource TestButton}"
+                                    HorizontalAlignment="Left" Click="TestGateIO_Click"/>
+                            <Border Background="#15FFFFFF" CornerRadius="6" Padding="10,8" Margin="10,0,0,0"
+                                    Cursor="Hand" MouseLeftButtonDown="OpenGateIOApiDocs_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="📖" FontSize="12" Margin="0,0,5,0"/>
+                                    <TextBlock Text="วิธีสร้าง API" FontSize="11" Foreground="#7C3AED" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 

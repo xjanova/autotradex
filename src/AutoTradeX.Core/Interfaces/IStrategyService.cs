@@ -112,4 +112,22 @@ public interface IProjectService
     /// Check if can add more pairs (max 10)
     /// </summary>
     Task<bool> CanAddMorePairsAsync(string projectId);
+
+    /// <summary>
+    /// Raised when the active project or its trading pairs change
+    /// เมื่อโปรเจคที่ใช้งานหรือคู่เทรดเปลี่ยนแปลง
+    /// </summary>
+    event EventHandler<ProjectChangedEventArgs>? ActiveProjectChanged;
+
+    /// <summary>
+    /// Add a trading pair to the currently active project
+    /// เพิ่มคู่เทรดไปยังโปรเจคที่ใช้งานอยู่
+    /// </summary>
+    Task<bool> AddToActiveProjectAsync(ProjectTradingPair pair);
+
+    /// <summary>
+    /// Remove a trading pair from the currently active project
+    /// ลบคู่เทรดจากโปรเจคที่ใช้งานอยู่
+    /// </summary>
+    Task<bool> RemoveFromActiveProjectAsync(string pairId);
 }

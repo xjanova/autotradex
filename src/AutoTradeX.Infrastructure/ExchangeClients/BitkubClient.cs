@@ -9,6 +9,7 @@
 
 using AutoTradeX.Core.Interfaces;
 using AutoTradeX.Core.Models;
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -165,6 +166,340 @@ public class BitkubClient : BaseExchangeClient
         }
     }
 
+    /// <summary>
+    /// Get multiple tickers in a single API call (efficient for Bitkub)
+    /// Bitkub's /api/market/ticker returns ALL tickers in one call
+    /// Supports both formats: "THB_BTC" and "BTC/THB"
+    /// </summary>
+    public override async Task<Dictionary<string, Ticker>> GetTickersAsync(
+        IEnumerable<string> symbols,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<string, Ticker>();
+
+        try
+        {
+            // Get ALL tickers in one API call (Bitkub returns all pairs at once)
+            var response = await GetAsync<Dictionary<string, BitkubTickerData>>(
+                "/api/market/ticker",
+                cancellationToken);
+
+            if (response == null || response.Count == 0)
+            {
+                _logger.LogWarning(ExchangeName, "GetTickersAsync: No data returned from API");
+                return result;
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetTickersAsync: Got {response.Count} tickers from API");
+
+            foreach (var symbol in symbols)
+            {
+                try
+                {
+                    // Normalize the symbol to Bitkub format (THB_XXX)
+                    var normalizedSymbol = NormalizeSymbol(symbol);
+
+                    if (response.TryGetValue(normalizedSymbol, out var data))
+                    {
+                        var ticker = new Ticker
+                        {
+                            Symbol = normalizedSymbol, // Use Bitkub format for consistency
+                            Exchange = ExchangeName,
+                            BidPrice = data.HighestBid,
+                            AskPrice = data.LowestAsk,
+                            BidQuantity = 0,
+                            AskQuantity = 0,
+                            LastPrice = data.Last,
+                            Volume24h = data.BaseVolume,
+                            Timestamp = DateTime.UtcNow
+                        };
+
+                        // Store with the original symbol as key (to match what scanner expects)
+                        result[symbol] = ticker;
+                    }
+                    else
+                    {
+                        _logger.LogWarning(ExchangeName, $"Symbol {symbol} (normalized: {normalizedSymbol}) not found in response");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ExchangeName, $"Error processing symbol {symbol}: {ex.Message}");
+                    // Continue with next symbol instead of failing all
+                }
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetTickersAsync: Returning {result.Count} tickers");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetTickersAsync error: {ex.Message}");
+            // Return empty result instead of throwing
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Get ALL tickers from Bitkub - no symbol filter needed
+    /// Bitkub's /api/market/ticker returns all pairs at once
+    /// </summary>
+    public override async Task<Dictionary<string, Ticker>> GetAllTickersAsync(
+        string? quoteAsset = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<string, Ticker>();
+
+        try
+        {
+            _logger.LogInfo(ExchangeName, "GetAllTickersAsync: Fetching all tickers...");
+
+            var response = await GetAsync<Dictionary<string, BitkubTickerData>>(
+                "/api/market/ticker",
+                cancellationToken);
+
+            if (response == null || response.Count == 0)
+            {
+                _logger.LogWarning(ExchangeName, "GetAllTickersAsync: No data returned from API");
+                return result;
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Got {response.Count} tickers from API");
+
+            foreach (var kvp in response)
+            {
+                var symbol = kvp.Key;  // Format: THB_XXX
+                var data = kvp.Value;
+
+                // Filter by quote asset if specified (Bitkub uses THB as quote)
+                if (!string.IsNullOrEmpty(quoteAsset))
+                {
+                    // For Bitkub, symbol format is "THB_XXX"
+                    if (!symbol.StartsWith($"{quoteAsset}_", StringComparison.OrdinalIgnoreCase) &&
+                        !symbol.EndsWith($"_{quoteAsset}", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                }
+
+                // Skip pairs with zero volume (inactive/delisted)
+                if (data.BaseVolume <= 0 && data.Last <= 0)
+                    continue;
+
+                result[symbol] = new Ticker
+                {
+                    Symbol = symbol,
+                    Exchange = ExchangeName,
+                    BidPrice = data.HighestBid,
+                    AskPrice = data.LowestAsk,
+                    BidQuantity = 0,
+                    AskQuantity = 0,
+                    LastPrice = data.Last,
+                    Volume24h = data.BaseVolume,
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+
+            _logger.LogInfo(ExchangeName, $"GetAllTickersAsync: Returning {result.Count} active tickers");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetAllTickersAsync error: {ex.Message}");
+        }
+
+        return result;
+    }
+
+    public override async Task<List<PriceCandle>> GetKlinesAsync(string symbol, string interval = "1m", int limit = 100, CancellationToken cancellationToken = default)
+    {
+        var candles = new List<PriceCandle>();
+        try
+        {
+            var normalizedSymbol = NormalizeSymbol(symbol);
+
+            // Bitkub /tradingview/history uses resolution: 1, 5, 15, 60, 240, 1D
+            var resolution = interval switch
+            {
+                "1m" => "1",
+                "5m" => "5",
+                "15m" => "15",
+                "30m" => "30",
+                "1h" => "60",
+                "4h" => "240",
+                "1d" => "1D",
+                _ => "1"
+            };
+
+            var intervalSeconds = interval switch
+            {
+                "1m" => 60L,
+                "5m" => 300L,
+                "15m" => 900L,
+                "30m" => 1800L,
+                "1h" => 3600L,
+                "4h" => 14400L,
+                "1d" => 86400L,
+                _ => 60L
+            };
+
+            var to = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var from = to - (limit * intervalSeconds);
+
+            var response = await GetAsync<BitkubTradingViewHistory>(
+                $"/tradingview/history?symbol={normalizedSymbol}&resolution={resolution}&from={from}&to={to}",
+                cancellationToken);
+
+            if (response?.T == null || response.T.Count == 0) return candles;
+
+            for (int i = 0; i < response.T.Count; i++)
+            {
+                candles.Add(new PriceCandle
+                {
+                    Time = DateTimeOffset.FromUnixTimeSeconds(response.T[i]).UtcDateTime,
+                    Open = i < response.O.Count ? response.O[i] : 0,
+                    High = i < response.H.Count ? response.H[i] : 0,
+                    Low = i < response.L.Count ? response.L[i] : 0,
+                    Close = i < response.C.Count ? response.C[i] : 0,
+                    Volume = i < response.V.Count ? response.V[i] : 0
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"GetKlinesAsync error for {symbol}: {ex.Message}");
+        }
+        return candles;
+    }
+
+    #endregion
+
+    #region Connection Test
+
+    /// <summary>
+    /// Test connection to Bitkub API - uses THB_BTC ticker (Bitkub's most popular pair)
+    /// Also tests API credentials if provided
+    /// </summary>
+    public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInfo(ExchangeName, "Testing connection...");
+
+            // Step 1: Test public API - get server status
+            var statusResponse = await GetAsync<List<BitkubServerStatus>>(
+                "/api/status",
+                cancellationToken);
+
+            if (statusResponse == null || statusResponse.Count == 0)
+            {
+                _logger.LogWarning(ExchangeName, "Failed to get server status");
+                return false;
+            }
+
+            _logger.LogInfo(ExchangeName, $"Public API OK ({statusResponse.Count} services)");
+
+            // Step 2: Test ticker API with THB_BTC
+            var tickerResponse = await GetAsync<Dictionary<string, BitkubTickerData>>(
+                "/api/market/ticker",
+                cancellationToken);
+
+            if (tickerResponse == null || !tickerResponse.ContainsKey("THB_BTC"))
+            {
+                _logger.LogWarning(ExchangeName, "Failed to get THB_BTC ticker");
+                return false;
+            }
+
+            _logger.LogInfo(ExchangeName, $"THB_BTC: {tickerResponse["THB_BTC"].Last:N2} THB");
+
+            // Step 3: If API credentials are configured, test private API
+            if (HasCredentials())
+            {
+                _logger.LogInfo(ExchangeName, "Testing API credentials...");
+                try
+                {
+                    var balance = await GetBalanceAsync(cancellationToken);
+                    if (balance != null)
+                    {
+                        _logger.LogInfo(ExchangeName, $"API verified! Found {balance.Assets.Count} assets");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ExchangeName, $"Credentials test failed: {ex.Message}");
+                    IsConnected = false;
+                    return false;
+                }
+            }
+            else
+            {
+                _logger.LogWarning(ExchangeName, "No credentials - skipping private API test");
+            }
+
+            IsConnected = true;
+            _logger.LogInfo(ExchangeName, "Connection test passed!");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ExchangeName, $"Connection test failed: {ex.Message}");
+            IsConnected = false;
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region API Permissions
+
+    /// <summary>
+    /// Get API key permissions from Bitkub
+    /// Bitkub ไม่มี API สำหรับเช็ค permissions โดยตรง
+    /// ต้องลองเรียก API แล้วดูผลลัพธ์
+    /// </summary>
+    public override async Task<ApiPermissionInfo> GetApiPermissionsAsync(CancellationToken cancellationToken = default)
+    {
+        var permissions = new ApiPermissionInfo();
+
+        try
+        {
+            if (!HasCredentials())
+            {
+                permissions.AdditionalInfo = "ไม่ได้ตั้งค่า API Key";
+                return permissions;
+            }
+
+            // ลองดึง balance - ถ้าได้แสดงว่ามี Read permission
+            try
+            {
+                var balance = await GetBalanceAsync(cancellationToken);
+                permissions.CanRead = balance != null;
+                _logger.LogInfo(ExchangeName, "API Read permission verified");
+            }
+            catch
+            {
+                permissions.CanRead = false;
+            }
+
+            // Bitkub API key permissions ต้องดูจากการตั้งค่าบนเว็บ
+            // ไม่มี API สำหรับเช็คโดยตรง - แจ้งให้ผู้ใช้ตรวจสอบเอง
+            if (permissions.CanRead)
+            {
+                permissions.AdditionalInfo = "กรุณาตรวจสอบสิทธิ์ Trade/Withdraw ที่ bitkub.com/api";
+                // สมมติว่ามี Trade ถ้า Read ได้ (Bitkub API key ปกติมี Trade)
+                permissions.CanTrade = true;
+            }
+
+            _logger.LogInfo(ExchangeName, $"API Permissions - Read: {permissions.CanRead}, Trade: {permissions.CanTrade} (assumed)");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ExchangeName, $"Failed to get API permissions: {ex.Message}");
+            permissions.AdditionalInfo = $"ไม่สามารถตรวจสอบสิทธิ์: {ex.Message}";
+        }
+
+        return permissions;
+    }
+
     #endregion
 
     #region Account Data (Private APIs)
@@ -173,37 +508,78 @@ public class BitkubClient : BaseExchangeClient
     {
         try
         {
+            _logger.LogInfo(ExchangeName, "=== GetBalanceAsync START ===");
+
+            // Debug: Check what env var names we're looking for
+            _logger.LogInfo(ExchangeName, $"Looking for env var: {_config.ApiKeyEnvVar}");
+
+            var apiKey = GetApiKey();
+            var apiSecret = GetApiSecret();
+
+            _logger.LogInfo(ExchangeName, $"API Key found: {!string.IsNullOrEmpty(apiKey)}");
+            _logger.LogInfo(ExchangeName, $"API Secret found: {!string.IsNullOrEmpty(apiSecret)}");
+
             if (!HasCredentials())
             {
-                throw new InvalidOperationException($"{ExchangeName}: API credentials not configured. Please configure API keys in Settings.");
+                _logger.LogError(ExchangeName, "No credentials found in environment variables!");
+                throw new InvalidOperationException($"{ExchangeName}: API credentials not configured. Please configure API keys in Settings and click Save.");
             }
 
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var requestBody = new Dictionary<string, object>
-            {
-                ["ts"] = timestamp
-            };
+            _logger.LogInfo(ExchangeName, $"API Key: {apiKey?.Substring(0, Math.Min(8, apiKey?.Length ?? 0))}...");
 
-            var body = JsonSerializer.Serialize(requestBody, _jsonOptions);
-            var signature = SignRequest(body);
+            // IMPORTANT: Use server timestamp, not local time
+            var timestamp = await GetServerTimestampAsync(cancellationToken);
+            _logger.LogInfo(ExchangeName, $"Server timestamp: {timestamp}");
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v3/market/wallet")
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            };
+            var path = "/api/v3/market/wallet";
 
-            request.Headers.Add("X-BTK-APIKEY", GetApiKey());
-            request.Headers.Add("X-BTK-SIGN", signature);
+            // According to Bitkub API docs:
+            // Wallet endpoint is POST but requires NO body
+            // Signing string = timestamp + method + path (no body)
+            var signature = SignRequestV3(timestamp, "POST", path, "", "");
+            _logger.LogInfo(ExchangeName, $"Signing string: {timestamp}POST{path}");
 
+            using var request = new HttpRequestMessage(HttpMethod.Post, path);
+
+            // Add required headers as per Bitkub docs
+            request.Headers.Add("Accept", "application/json");
+            AddBitkubAuthHeaders(request, timestamp, signature);
+
+            _logger.LogInfo(ExchangeName, "Sending wallet request...");
             var response = await _httpClient.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            var result = await response.Content.ReadFromJsonAsync<BitkubWalletResponse>(_jsonOptions, cancellationToken);
+            _logger.LogInfo(ExchangeName, $"Response Status: {response.StatusCode}");
+            _logger.LogInfo(ExchangeName, $"Response: {responseContent}");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception($"API call failed: {response.StatusCode} - {responseContent}");
+            }
+
+            var result = JsonSerializer.Deserialize<BitkubWalletResponse>(responseContent, _jsonOptions);
 
             if (result?.Error != 0)
             {
-                throw new Exception($"Failed to get balance: Error {result?.Error}");
+                var errorCode = result?.Error ?? -1;
+                var errorMsg = GetBitkubErrorMessage(errorCode);
+                _logger.LogError(ExchangeName, $"API Error {errorCode}: {errorMsg}");
+
+                // Provide more specific error messages for common issues
+                var userFriendlyMsg = errorCode switch
+                {
+                    5 => $"IP not allowed - กรุณาเพิ่ม IP ของคุณใน whitelist ที่ bitkub.com/api (error {errorCode})",
+                    6 => $"Invalid signature - ตรวจสอบ API Secret ว่าถูกต้อง (error {errorCode})",
+                    3 => $"Invalid API key - ตรวจสอบ API Key ว่าถูกต้อง (error {errorCode})",
+                    8 => $"Invalid timestamp - เวลาของเครื่องไม่ตรง (error {errorCode})",
+                    52 => $"Invalid permission - API Key ไม่มีสิทธิ์อ่าน Wallet (error {errorCode})",
+                    _ => $"Bitkub API Error {errorCode}: {errorMsg}"
+                };
+
+                throw new Exception(userFriendlyMsg);
             }
+
+            _logger.LogInfo(ExchangeName, "Success! Parsing balance...");
 
             var balance = new AccountBalance
             {
@@ -229,6 +605,7 @@ public class BitkubClient : BaseExchangeClient
                 }
             }
 
+            _logger.LogInfo(ExchangeName, $"Balance loaded: {balance.Assets.Count} assets");
             return balance;
         }
         catch (Exception ex)
@@ -255,7 +632,7 @@ public class BitkubClient : BaseExchangeClient
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
             // Bitkub uses different endpoints for buy/sell
-            var endpoint = request.Side == OrderSide.Buy
+            var path = request.Side == OrderSide.Buy
                 ? "/api/v3/market/place-bid"
                 : "/api/v3/market/place-ask";
 
@@ -264,8 +641,7 @@ public class BitkubClient : BaseExchangeClient
                 ["sym"] = normalizedSymbol,
                 ["amt"] = request.Quantity,
                 ["rat"] = request.Type == OrderType.Market ? 0 : (request.Price ?? 0),
-                ["typ"] = request.Type == OrderType.Market ? "market" : "limit",
-                ["ts"] = timestamp
+                ["typ"] = request.Type == OrderType.Market ? "market" : "limit"
             };
 
             if (!string.IsNullOrEmpty(request.ClientOrderId))
@@ -274,15 +650,14 @@ public class BitkubClient : BaseExchangeClient
             }
 
             var body = JsonSerializer.Serialize(orderData, _jsonOptions);
-            var signature = SignRequest(body);
+            var signature = SignRequestV3(timestamp, "POST", path, "", body);
 
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpoint)
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, path)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json")
             };
 
-            httpRequest.Headers.Add("X-BTK-APIKEY", GetApiKey());
-            httpRequest.Headers.Add("X-BTK-SIGN", signature);
+            AddBitkubAuthHeaders(httpRequest, timestamp, signature);
 
             var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -336,37 +711,51 @@ public class BitkubClient : BaseExchangeClient
 
             var normalizedSymbol = NormalizeSymbol(symbol);
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var path = "/api/v3/market/cancel-order";
 
-            var cancelData = new Dictionary<string, object>
+            // Bitkub requires knowing the order side to cancel
+            // Try "buy" first, then "sell" if that fails
+            foreach (var side in new[] { "buy", "sell" })
             {
-                ["sym"] = normalizedSymbol,
-                ["id"] = orderId,
-                ["sd"] = "buy", // We'll need to know the side to cancel
-                ["ts"] = timestamp
-            };
+                try
+                {
+                    var cancelData = new Dictionary<string, object>
+                    {
+                        ["sym"] = normalizedSymbol,
+                        ["id"] = orderId,
+                        ["sd"] = side
+                    };
 
-            var body = JsonSerializer.Serialize(cancelData, _jsonOptions);
-            var signature = SignRequest(body);
+                    var body = JsonSerializer.Serialize(cancelData, _jsonOptions);
+                    var signature = SignRequestV3(timestamp, "POST", path, "", body);
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v3/market/cancel-order")
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            };
+                    using var request = new HttpRequestMessage(HttpMethod.Post, path)
+                    {
+                        Content = new StringContent(body, Encoding.UTF8, "application/json")
+                    };
 
-            request.Headers.Add("X-BTK-APIKEY", GetApiKey());
-            request.Headers.Add("X-BTK-SIGN", signature);
+                    AddBitkubAuthHeaders(request, timestamp, signature);
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
+                    var response = await _httpClient.SendAsync(request, cancellationToken);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return new Order
+                        {
+                            OrderId = orderId,
+                            Exchange = ExchangeName,
+                            Symbol = symbol,
+                            Status = OrderStatus.Cancelled,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                    }
+                }
+                catch
+                {
+                    if (side == "sell") throw; // Both sides failed
+                }
+            }
 
-            return new Order
-            {
-                OrderId = orderId,
-                Exchange = ExchangeName,
-                Symbol = symbol,
-                Status = OrderStatus.Cancelled,
-                UpdatedAt = DateTime.UtcNow
-            };
+            throw new Exception($"Failed to cancel order {orderId}: both buy and sell sides failed");
         }
         catch (Exception ex)
         {
@@ -386,24 +775,23 @@ public class BitkubClient : BaseExchangeClient
 
             var normalizedSymbol = NormalizeSymbol(symbol);
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var path = "/api/v3/market/order-info";
 
             var requestData = new Dictionary<string, object>
             {
                 ["sym"] = normalizedSymbol,
-                ["id"] = orderId,
-                ["ts"] = timestamp
+                ["id"] = orderId
             };
 
             var body = JsonSerializer.Serialize(requestData, _jsonOptions);
-            var signature = SignRequest(body);
+            var signature = SignRequestV3(timestamp, "POST", path, "", body);
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v3/market/order-info")
+            using var request = new HttpRequestMessage(HttpMethod.Post, path)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json")
             };
 
-            request.Headers.Add("X-BTK-APIKEY", GetApiKey());
-            request.Headers.Add("X-BTK-SIGN", signature);
+            AddBitkubAuthHeaders(request, timestamp, signature);
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -452,10 +840,8 @@ public class BitkubClient : BaseExchangeClient
             }
 
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var requestData = new Dictionary<string, object>
-            {
-                ["ts"] = timestamp
-            };
+            var path = "/api/v3/market/my-open-orders";
+            var requestData = new Dictionary<string, object>();
 
             if (symbol != null)
             {
@@ -463,15 +849,14 @@ public class BitkubClient : BaseExchangeClient
             }
 
             var body = JsonSerializer.Serialize(requestData, _jsonOptions);
-            var signature = SignRequest(body);
+            var signature = SignRequestV3(timestamp, "POST", path, "", body);
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v3/market/my-open-orders")
+            using var request = new HttpRequestMessage(HttpMethod.Post, path)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json")
             };
 
-            request.Headers.Add("X-BTK-APIKEY", GetApiKey());
-            request.Headers.Add("X-BTK-SIGN", signature);
+            AddBitkubAuthHeaders(request, timestamp, signature);
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -518,6 +903,66 @@ public class BitkubClient : BaseExchangeClient
         return symbol.Replace("/", "_").ToUpperInvariant();
     }
 
+    /// <summary>
+    /// Get server timestamp from Bitkub API
+    /// ดึง timestamp จาก server Bitkub (สำคัญมาก - ต้องใช้ server time ไม่ใช่ local time)
+    /// </summary>
+    private async Task<long> GetServerTimestampAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync("/api/v3/servertime", cancellationToken);
+            response.EnsureSuccessStatusCode();
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            // Response is just a number: 1699381086593
+            if (long.TryParse(content.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var serverTime))
+            {
+                return serverTime;
+            }
+
+            // Fallback to local time if parsing fails
+            _logger.LogWarning(ExchangeName, $"Failed to parse server time: {content}, using local time");
+            return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ExchangeName, $"Failed to get server time: {ex.Message}, using local time");
+            return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        }
+    }
+
+    /// <summary>
+    /// Create signature for Bitkub API v3
+    /// Signature = HMAC-SHA256(timestamp + method + path + query + payload, secret)
+    /// </summary>
+    private string SignRequestV3(long timestamp, string method, string path, string query, string payload)
+    {
+        var secret = GetApiSecret();
+        if (string.IsNullOrEmpty(secret))
+        {
+            throw new Exception("API secret not configured");
+        }
+
+        // Build signature string: timestamp + method + path + query + payload
+        var signatureString = $"{timestamp}{method}{path}";
+        if (!string.IsNullOrEmpty(query))
+        {
+            signatureString += query;
+        }
+        if (!string.IsNullOrEmpty(payload))
+        {
+            signatureString += payload;
+        }
+
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(signatureString));
+        return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Legacy signature method - signs only payload (deprecated but kept for compatibility)
+    /// </summary>
     private string SignRequest(string payload)
     {
         var secret = GetApiSecret();
@@ -531,6 +976,16 @@ public class BitkubClient : BaseExchangeClient
         return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
     }
 
+    /// <summary>
+    /// Add Bitkub API v3 authentication headers to request
+    /// </summary>
+    private void AddBitkubAuthHeaders(HttpRequestMessage request, long timestamp, string signature)
+    {
+        request.Headers.Add("X-BTK-APIKEY", GetApiKey());
+        request.Headers.Add("X-BTK-TIMESTAMP", timestamp.ToString());
+        request.Headers.Add("X-BTK-SIGN", signature);
+    }
+
     private OrderStatus MapOrderStatus(string status)
     {
         return status.ToLowerInvariant() switch
@@ -540,6 +995,64 @@ public class BitkubClient : BaseExchangeClient
             "filled" => OrderStatus.Filled,
             "cancelled" or "canceled" => OrderStatus.Cancelled,
             _ => OrderStatus.Error
+        };
+    }
+
+    /// <summary>
+    /// Get human-readable error message from Bitkub error code
+    /// แปลง error code เป็นข้อความที่อ่านเข้าใจได้
+    /// </summary>
+    private static string GetBitkubErrorMessage(int errorCode)
+    {
+        return errorCode switch
+        {
+            0 => "Success",
+            1 => "Invalid JSON payload",
+            2 => "Missing X-BTK-APIKEY header",
+            3 => "Invalid API key",
+            4 => "API pending for activation",
+            5 => "IP not allowed - กรุณาเพิ่ม IP ของคุณใน whitelist ที่ bitkub.com",
+            6 => "Invalid signature - ลายเซ็นไม่ถูกต้อง",
+            7 => "Missing timestamp header",
+            8 => "Invalid timestamp - timestamp ไม่ถูกต้อง",
+            9 => "Invalid user",
+            10 => "Invalid parameter",
+            11 => "Invalid symbol",
+            12 => "Invalid amount",
+            13 => "Invalid rate",
+            14 => "Improper rate",
+            15 => "Amount too low",
+            16 => "Failed to get balance",
+            17 => "Wallet is empty",
+            18 => "Insufficient balance",
+            19 => "Failed to insert order into db",
+            20 => "Failed to deduct balance",
+            21 => "Invalid order for cancellation",
+            22 => "Invalid side",
+            23 => "Failed to update order status",
+            24 => "Invalid order for lookup",
+            25 => "KYC required",
+            30 => "Limit exceeds",
+            40 => "Pending withdrawal exists",
+            41 => "Invalid currency for withdrawal",
+            42 => "Address is not whitelisted",
+            43 => "Failed to deduct crypto",
+            44 => "Failed to create withdrawal record",
+            45 => "Nonce has to be numeric",
+            46 => "Invalid nonce",
+            47 => "Withdrawal limit exceeded",
+            48 => "Invalid bank account",
+            49 => "Bank limit exceeded",
+            50 => "Pending withdrawal exists",
+            51 => "Withdrawal is under maintenance",
+            52 => "Invalid permission - API key ไม่มีสิทธิ์เข้าถึง endpoint นี้",
+            53 => "Invalid internal address",
+            54 => "Address has been deprecated",
+            55 => "Cancel only mode",
+            56 => "User has been suspended from purchasing",
+            57 => "User has been suspended from selling",
+            90 => "Server is busy - กรุณาลองใหม่อีกครั้ง",
+            _ => $"Unknown error code: {errorCode}"
         };
     }
 
@@ -720,6 +1233,45 @@ internal class BitkubOpenOrder
 
     [JsonPropertyName("ts")]
     public long Ts { get; set; }
+}
+
+/// <summary>
+/// Bitkub server status response from /api/status
+/// </summary>
+internal class BitkubTradingViewHistory
+{
+    [JsonPropertyName("t")]
+    public List<long> T { get; set; } = new(); // Timestamps
+
+    [JsonPropertyName("o")]
+    public List<decimal> O { get; set; } = new(); // Open
+
+    [JsonPropertyName("h")]
+    public List<decimal> H { get; set; } = new(); // High
+
+    [JsonPropertyName("l")]
+    public List<decimal> L { get; set; } = new(); // Low
+
+    [JsonPropertyName("c")]
+    public List<decimal> C { get; set; } = new(); // Close
+
+    [JsonPropertyName("v")]
+    public List<decimal> V { get; set; } = new(); // Volume
+
+    [JsonPropertyName("s")]
+    public string? S { get; set; } // Status
+}
+
+internal class BitkubServerStatus
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
 }
 
 #endregion
