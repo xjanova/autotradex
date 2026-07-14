@@ -280,7 +280,7 @@ public class OKXClient : BaseExchangeClient
             }
 
             // OKX API config endpoint returns permissions
-            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            var timestamp = CreateOkxTimestamp();
             var endpoint = "/api/v5/account/config";
             var headers = CreateAuthHeaders("GET", endpoint, "", timestamp);
 
@@ -396,7 +396,7 @@ public class OKXClient : BaseExchangeClient
                 throw new InvalidOperationException($"{ExchangeName}: API credentials not configured. Please configure API keys in Settings.");
             }
 
-            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            var timestamp = CreateOkxTimestamp();
             var endpoint = "/api/v5/account/balance";
             var headers = CreateAuthHeaders("GET", endpoint, "", timestamp);
 
@@ -462,7 +462,7 @@ public class OKXClient : BaseExchangeClient
             }
 
             var normalizedSymbol = NormalizeSymbol(request.Symbol);
-            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            var timestamp = CreateOkxTimestamp();
             var endpoint = "/api/v5/trade/order";
 
             var orderData = new Dictionary<string, object>
@@ -471,8 +471,15 @@ public class OKXClient : BaseExchangeClient
                 ["tdMode"] = "cash", // Spot trading
                 ["side"] = request.Side == OrderSide.Buy ? "buy" : "sell",
                 ["ordType"] = request.Type == OrderType.Market ? "market" : "limit",
-                ["sz"] = request.Quantity.ToString("F8")
+                ["sz"] = request.Quantity.ToString("F8", System.Globalization.CultureInfo.InvariantCulture)
             };
+
+            // OKX spot market BUY ตีความ sz เป็นจำนวนเงิน quote (USDT) โดย default!
+            // แอปทั้งระบบส่ง Quantity เป็นจำนวนเหรียญ (base) — ต้องบอก OKX ชัดๆ
+            if (request.Type == OrderType.Market)
+            {
+                orderData["tgtCcy"] = "base_ccy";
+            }
 
             if (!string.IsNullOrEmpty(request.ClientOrderId))
             {
@@ -481,7 +488,7 @@ public class OKXClient : BaseExchangeClient
 
             if (request.Type == OrderType.Limit && request.Price.HasValue)
             {
-                orderData["px"] = request.Price.Value.ToString("F8");
+                orderData["px"] = request.Price.Value.ToString("F8", System.Globalization.CultureInfo.InvariantCulture);
             }
 
             var body = JsonSerializer.Serialize(orderData, _jsonOptions);
@@ -552,7 +559,7 @@ public class OKXClient : BaseExchangeClient
             }
 
             var normalizedSymbol = NormalizeSymbol(symbol);
-            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            var timestamp = CreateOkxTimestamp();
             var endpoint = "/api/v5/trade/cancel-order";
 
             var cancelData = new Dictionary<string, object>
@@ -575,7 +582,16 @@ public class OKXClient : BaseExchangeClient
             }
 
             var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
             response.EnsureSuccessStatusCode();
+
+            // OKX คืน HTTP 200 แม้ cancel ล้มเหลว — ต้องเช็ค code/sCode ใน body
+            var result = JsonSerializer.Deserialize<OKXResponse<List<OKXOrderResponse>>>(responseContent, _jsonOptions);
+            var item = result?.Data?.FirstOrDefault();
+            if (result == null || result.Code != "0" || item == null || item.SCode != "0")
+            {
+                throw new Exception($"Cancel order failed: {item?.SMsg ?? result?.Msg ?? responseContent}");
+            }
 
             return new Order
             {
@@ -603,7 +619,7 @@ public class OKXClient : BaseExchangeClient
             }
 
             var normalizedSymbol = NormalizeSymbol(symbol);
-            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            var timestamp = CreateOkxTimestamp();
             var endpoint = $"/api/v5/trade/order?instId={normalizedSymbol}&ordId={orderId}";
             var headers = CreateAuthHeaders("GET", endpoint, "", timestamp);
 
@@ -660,7 +676,7 @@ public class OKXClient : BaseExchangeClient
                 return new List<Order>();
             }
 
-            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            var timestamp = CreateOkxTimestamp();
             var endpoint = symbol != null
                 ? $"/api/v5/trade/orders-pending?instId={NormalizeSymbol(symbol)}&instType=SPOT"
                 : "/api/v5/trade/orders-pending?instType=SPOT";
@@ -710,8 +726,10 @@ public class OKXClient : BaseExchangeClient
 
     private string NormalizeSymbol(string symbol)
     {
-        // Convert "BTC/USDT" to "BTC-USDT" (OKX format)
-        return symbol.Replace("/", "-").ToUpperInvariant();
+        // OKX instId format: "BTC-USDT"
+        // รองรับ input ทุกแบบ: "BTC/USDT", "BTCUSDT", "BTC-USDT"
+        var (baseAsset, quoteAsset) = SplitSymbol(symbol);
+        return quoteAsset.Length > 0 ? $"{baseAsset}-{quoteAsset}" : symbol.ToUpperInvariant();
     }
 
     private Dictionary<string, string> CreateAuthHeaders(string method, string endpoint, string body, string timestamp)
@@ -731,15 +749,24 @@ public class OKXClient : BaseExchangeClient
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(apiSecret));
         var signature = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(signatureString)));
 
+        // NOTE: ห้ามใส่ "Content-Type" ใน dictionary นี้ — call sites ใส่เข้า
+        // HttpRequestMessage.Headers ซึ่ง .NET จะ throw "Misused header name"
+        // (Content-Type เป็น content header ตั้งผ่าน StringContent เท่านั้น)
         return new Dictionary<string, string>
         {
             ["OK-ACCESS-KEY"] = apiKey,
             ["OK-ACCESS-SIGN"] = signature,
             ["OK-ACCESS-TIMESTAMP"] = timestamp,
-            ["OK-ACCESS-PASSPHRASE"] = _passphrase ?? "",
-            ["Content-Type"] = "application/json"
+            ["OK-ACCESS-PASSPHRASE"] = _passphrase ?? ""
         };
     }
+
+    /// <summary>
+    /// OKX ต้องการ ISO-8601 UTC timestamp — บังคับ InvariantCulture
+    /// (เครื่อง locale ไทยจะได้ปีพุทธศักราช 2569 ถ้าไม่ระบุ culture → signature ถูกปฏิเสธ)
+    /// </summary>
+    private static string CreateOkxTimestamp()
+        => DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", System.Globalization.CultureInfo.InvariantCulture);
 
     private OrderStatus MapOrderStatus(string state)
     {

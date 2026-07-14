@@ -316,7 +316,9 @@ public class KuCoinClient : BaseExchangeClient
                         var result = await response.Content.ReadFromJsonAsync<KuCoinResponse<KuCoinApiKeyInfo>>(_jsonOptions, cancellationToken);
                         if (result?.Data != null)
                         {
-                            permissions.CanTrade = result.Data.Permission?.Contains("Trade") ?? false;
+                            // KuCoin permission list ใช้ค่าเช่น "General,Spot,Margin,Futures,InnerTransfer"
+                            // — สิทธิ์เทรด spot คือ "Spot" ไม่ใช่ "Trade"
+                            permissions.CanTrade = result.Data.Permission?.Contains("Spot") ?? false;
                             permissions.CanWithdraw = result.Data.Permission?.Contains("Withdraw") ?? false;
                             permissions.IpRestriction = result.Data.IpWhitelist;
                         }
@@ -397,7 +399,9 @@ public class KuCoinClient : BaseExchangeClient
                     Close = decimal.Parse(kline[2], CultureInfo.InvariantCulture),
                     High = decimal.Parse(kline[3], CultureInfo.InvariantCulture),
                     Low = decimal.Parse(kline[4], CultureInfo.InvariantCulture),
-                    Volume = decimal.Parse(kline[6], CultureInfo.InvariantCulture)
+                    // index 5 = volume (จำนวนเหรียญ base), index 6 = turnover (มูลค่า quote)
+                    // ต้องใช้ index 5 ให้หน่วยตรงกับ exchange อื่น
+                    Volume = decimal.Parse(kline[5], CultureInfo.InvariantCulture)
                 });
             }
 
@@ -504,24 +508,19 @@ public class KuCoinClient : BaseExchangeClient
                 ["type"] = request.Type == OrderType.Market ? "market" : "limit"
             };
 
+            // Quantity ทั้งแอปเป็นจำนวนเหรียญ (base) เสมอ — ใช้ "size" ทุกกรณี
+            // ห้ามใช้ "funds" กับ market buy: funds = จำนวนเงิน quote (USDT)
+            // ("ซื้อ 0.5 BTC" จะกลายเป็น "ซื้อ 0.5 USDT")
             if (request.Type == OrderType.Market)
             {
-                if (request.Side == OrderSide.Buy)
-                {
-                    // For market buy, use funds (quote currency amount)
-                    orderData["funds"] = request.Quantity.ToString("F8");
-                }
-                else
-                {
-                    orderData["size"] = request.Quantity.ToString("F8");
-                }
+                orderData["size"] = request.Quantity.ToString("F8", CultureInfo.InvariantCulture);
             }
             else
             {
-                orderData["size"] = request.Quantity.ToString("F8");
+                orderData["size"] = request.Quantity.ToString("F8", CultureInfo.InvariantCulture);
                 if (request.Price.HasValue)
                 {
-                    orderData["price"] = request.Price.Value.ToString("F8");
+                    orderData["price"] = request.Price.Value.ToString("F8", CultureInfo.InvariantCulture);
                 }
             }
 
@@ -602,7 +601,17 @@ public class KuCoinClient : BaseExchangeClient
             }
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
             response.EnsureSuccessStatusCode();
+
+            // KuCoin คืน HTTP 200 พร้อม error body เมื่อ cancel ล้มเหลว — ต้องเช็ค code
+            var result = JsonSerializer.Deserialize<KuCoinResponse<KuCoinCancelResult>>(responseContent, _jsonOptions);
+            if (result?.Code != "200000" ||
+                result.Data?.CancelledOrderIds == null ||
+                !result.Data.CancelledOrderIds.Contains(orderId))
+            {
+                throw new Exception($"Cancel order failed (code {result?.Code}): {result?.Msg ?? responseContent}");
+            }
 
             return new Order
             {
@@ -738,8 +747,11 @@ public class KuCoinClient : BaseExchangeClient
 
     private string NormalizeSymbol(string symbol)
     {
-        // Convert "BTC/USDT" to "BTC-USDT" (KuCoin format)
-        return symbol.Replace("/", "-").ToUpperInvariant();
+        // KuCoin format: "BTC-USDT"
+        // รองรับ input ทุกแบบ: "BTC/USDT", "BTCUSDT", "BTC-USDT"
+        // (KuCoin ตอบ code 200000 + data:null เมื่อ symbol ผิด format — เงียบๆ ไม่มี error)
+        var (baseAsset, quoteAsset) = SplitSymbol(symbol);
+        return quoteAsset.Length > 0 ? $"{baseAsset}-{quoteAsset}" : symbol.ToUpperInvariant();
     }
 
     private Dictionary<string, string> CreateAuthHeaders(string method, string endpoint, string body, string timestamp)
@@ -808,6 +820,11 @@ internal class KuCoinResponse<T>
     public string? Msg { get; set; }
 }
 
+internal class KuCoinCancelResult
+{
+    public string[]? CancelledOrderIds { get; set; }
+}
+
 internal class KuCoinTickerData
 {
     public string? Sequence { get; set; }
@@ -862,7 +879,8 @@ internal class KuCoinAllTickerItem
 
 internal class KuCoinOrderBookData
 {
-    public long Sequence { get; set; }
+    // KuCoin ส่ง sequence เป็น JSON string เช่น "34527175946" — ห้าม map เป็น long
+    public string? Sequence { get; set; }
     public string[][] Bids { get; set; } = Array.Empty<string[]>();
     public string[][] Asks { get; set; } = Array.Empty<string[]>();
 }

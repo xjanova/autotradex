@@ -124,14 +124,17 @@ public class BitkubClient : BaseExchangeClient
     {
         try
         {
-            var normalizedSymbol = NormalizeSymbol(symbol);
+            // v3 depth ใช้ format "BTC_THB" (BASE_QUOTE) และคืน [[price, amount], ...]
+            // ห้ามใช้ legacy /api/market/depth หรือ /api/market/books — คืนข้อมูลค้าง (stale)
+            // และ books มีโครงสร้าง [order_id(string), ts, volume, rate, amount] ที่ parse ไม่ได้
+            var normalizedSymbol = NormalizeTradingViewSymbol(symbol);
             var response = await GetAsync<BitkubOrderBookResponse>(
-                $"/api/market/books?sym={normalizedSymbol}&lmt={Math.Min(depth, 100)}",
+                $"/api/v3/market/depth?sym={normalizedSymbol}&lmt={Math.Min(depth, 100)}",
                 cancellationToken);
 
-            if (response?.Result == null)
+            if (response?.Result == null || response.Error != 0)
             {
-                throw new Exception($"Failed to get order book for {symbol}");
+                throw new Exception($"Failed to get order book for {symbol} (error={response?.Error})");
             }
 
             var orderBook = new OrderBook
@@ -315,7 +318,8 @@ public class BitkubClient : BaseExchangeClient
         var candles = new List<PriceCandle>();
         try
         {
-            var normalizedSymbol = NormalizeSymbol(symbol);
+            // TradingView endpoint ใช้ "BTC_THB" (BASE_QUOTE) — กลับด้านกับ market API!
+            var normalizedSymbol = NormalizeTradingViewSymbol(symbol);
 
             // Bitkub /tradingview/history uses resolution: 1, 5, 15, 60, 240, 1D
             var resolution = interval switch
@@ -508,78 +512,40 @@ public class BitkubClient : BaseExchangeClient
     {
         try
         {
-            _logger.LogInfo(ExchangeName, "=== GetBalanceAsync START ===");
-
-            // Debug: Check what env var names we're looking for
-            _logger.LogInfo(ExchangeName, $"Looking for env var: {_config.ApiKeyEnvVar}");
-
-            var apiKey = GetApiKey();
-            var apiSecret = GetApiSecret();
-
-            _logger.LogInfo(ExchangeName, $"API Key found: {!string.IsNullOrEmpty(apiKey)}");
-            _logger.LogInfo(ExchangeName, $"API Secret found: {!string.IsNullOrEmpty(apiSecret)}");
-
+            // ห้าม log API key/response เต็มๆ — ข้อมูล sensitive
             if (!HasCredentials())
             {
                 _logger.LogError(ExchangeName, "No credentials found in environment variables!");
                 throw new InvalidOperationException($"{ExchangeName}: API credentials not configured. Please configure API keys in Settings and click Save.");
             }
 
-            _logger.LogInfo(ExchangeName, $"API Key: {apiKey?.Substring(0, Math.Min(8, apiKey?.Length ?? 0))}...");
-
             // IMPORTANT: Use server timestamp, not local time
             var timestamp = await GetServerTimestampAsync(cancellationToken);
-            _logger.LogInfo(ExchangeName, $"Server timestamp: {timestamp}");
 
-            var path = "/api/v3/market/wallet";
+            // v4 endpoint — /api/v3/market/wallet ถูกถอดออกแล้ว (26 พ.ค. 2026)
+            // v4 คืน available + reserved แยกกัน (v3 เดิมเห็นแค่ available)
+            var path = "/api/v4/wallet/balances";
+            var signature = SignRequestV3(timestamp, "GET", path, "", "");
 
-            // According to Bitkub API docs:
-            // Wallet endpoint is POST but requires NO body
-            // Signing string = timestamp + method + path (no body)
-            var signature = SignRequestV3(timestamp, "POST", path, "", "");
-            _logger.LogInfo(ExchangeName, $"Signing string: {timestamp}POST{path}");
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, path);
-
-            // Add required headers as per Bitkub docs
+            using var request = new HttpRequestMessage(HttpMethod.Get, path);
             request.Headers.Add("Accept", "application/json");
             AddBitkubAuthHeaders(request, timestamp, signature);
 
-            _logger.LogInfo(ExchangeName, "Sending wallet request...");
             var response = await _httpClient.SendAsync(request, cancellationToken);
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            _logger.LogInfo(ExchangeName, $"Response Status: {response.StatusCode}");
-            _logger.LogInfo(ExchangeName, $"Response: {responseContent}");
 
             if (!response.IsSuccessStatusCode)
             {
                 throw new Exception($"API call failed: {response.StatusCode} - {responseContent}");
             }
 
-            var result = JsonSerializer.Deserialize<BitkubWalletResponse>(responseContent, _jsonOptions);
+            var result = JsonSerializer.Deserialize<BitkubV4BalancesResponse>(responseContent, _jsonOptions);
 
-            if (result?.Error != 0)
+            if (result == null || result.Code != "0")
             {
-                var errorCode = result?.Error ?? -1;
-                var errorMsg = GetBitkubErrorMessage(errorCode);
-                _logger.LogError(ExchangeName, $"API Error {errorCode}: {errorMsg}");
-
-                // Provide more specific error messages for common issues
-                var userFriendlyMsg = errorCode switch
-                {
-                    5 => $"IP not allowed - กรุณาเพิ่ม IP ของคุณใน whitelist ที่ bitkub.com/api (error {errorCode})",
-                    6 => $"Invalid signature - ตรวจสอบ API Secret ว่าถูกต้อง (error {errorCode})",
-                    3 => $"Invalid API key - ตรวจสอบ API Key ว่าถูกต้อง (error {errorCode})",
-                    8 => $"Invalid timestamp - เวลาของเครื่องไม่ตรง (error {errorCode})",
-                    52 => $"Invalid permission - API Key ไม่มีสิทธิ์อ่าน Wallet (error {errorCode})",
-                    _ => $"Bitkub API Error {errorCode}: {errorMsg}"
-                };
-
-                throw new Exception(userFriendlyMsg);
+                var msg = result?.Message ?? responseContent;
+                throw new Exception($"Bitkub wallet error: {msg}");
             }
-
-            _logger.LogInfo(ExchangeName, "Success! Parsing balance...");
 
             var balance = new AccountBalance
             {
@@ -588,20 +554,21 @@ public class BitkubClient : BaseExchangeClient
                 Assets = new Dictionary<string, AssetBalance>()
             };
 
-            if (result?.Result != null)
+            foreach (var entry in result.Data ?? new List<BitkubV4Balance>())
             {
-                foreach (var kvp in result.Result)
+                var available = ParseDecimalOrZero(entry.Available);
+                var total = ParseDecimalOrZero(entry.Total);
+                if (total <= 0) total = available + ParseDecimalOrZero(entry.Reserved);
+
+                if (total > 0 && !string.IsNullOrEmpty(entry.Currency))
                 {
-                    var available = kvp.Value;
-                    if (available > 0)
+                    var asset = entry.Currency.ToUpperInvariant();
+                    balance.Assets[asset] = new AssetBalance
                     {
-                        balance.Assets[kvp.Key.ToUpperInvariant()] = new AssetBalance
-                        {
-                            Asset = kvp.Key.ToUpperInvariant(),
-                            Available = available,
-                            Total = available
-                        };
-                    }
+                        Asset = asset,
+                        Available = available,
+                        Total = total
+                    };
                 }
             }
 
@@ -628,19 +595,50 @@ public class BitkubClient : BaseExchangeClient
                 throw new Exception($"API credentials not configured for {ExchangeName}");
             }
 
-            var normalizedSymbol = NormalizeSymbol(request.Symbol);
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            // v3 trading endpoints ใช้ format "btc_thb" (base_quote ตัวเล็ก)
+            // — คนละแบบกับ legacy market API ("THB_BTC")
+            var normalizedSymbol = NormalizeV3Symbol(request.Symbol);
+            // spec บังคับใช้ timestamp จาก /api/v3/servertime — clock drift = error 8
+            var timestamp = await GetServerTimestampAsync(cancellationToken);
 
             // Bitkub uses different endpoints for buy/sell
             var path = request.Side == OrderSide.Buy
                 ? "/api/v3/market/place-bid"
                 : "/api/v3/market/place-ask";
 
+            // หน่วยของ amt ต่างกันตามฝั่ง (ตาม spec):
+            //  - place-bid (BUY): amt = จำนวนเงิน THB ที่จะใช้ซื้อ
+            //  - place-ask (SELL): amt = จำนวนเหรียญที่จะขาย
+            // แอปส่ง Quantity เป็นจำนวนเหรียญเสมอ → ฝั่ง buy ต้องแปลงเป็น THB
+            decimal amt;
+            if (request.Side == OrderSide.Buy)
+            {
+                var price = request.Price ?? 0;
+                if (price <= 0)
+                {
+                    // Market buy: ใช้ราคา ask ปัจจุบันคำนวณจำนวนเงิน
+                    var ticker = await GetTickerAsync(request.Symbol, cancellationToken);
+                    price = ticker?.AskPrice > 0 ? ticker.AskPrice : ticker?.LastPrice ?? 0;
+                    if (price <= 0)
+                    {
+                        throw new Exception($"Cannot determine price for market buy of {request.Symbol}");
+                    }
+                }
+                amt = Math.Round(request.Quantity * price, 2);
+            }
+            else
+            {
+                amt = request.Quantity;
+            }
+
             var orderData = new Dictionary<string, object>
             {
                 ["sym"] = normalizedSymbol,
-                ["amt"] = request.Quantity,
-                ["rat"] = request.Type == OrderType.Market ? 0 : (request.Price ?? 0),
+                // spec: "no trailing zero" — G29 ตัด trailing zeros ของ decimal scale
+                ["amt"] = decimal.Parse(amt.ToString("G29", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture),
+                ["rat"] = request.Type == OrderType.Market
+                    ? 0
+                    : decimal.Parse((request.Price ?? 0).ToString("G29", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture),
                 ["typ"] = request.Type == OrderType.Market ? "market" : "limit"
             };
 
@@ -671,7 +669,8 @@ public class BitkubClient : BaseExchangeClient
 
             if (result?.Error != 0)
             {
-                throw new Exception($"Order failed: Error {result?.Error}");
+                var code = result?.Error ?? -1;
+                throw new Exception($"Order failed: Error {code} - {GetBitkubErrorMessage(code)}");
             }
 
             return new Order
@@ -709,35 +708,42 @@ public class BitkubClient : BaseExchangeClient
                 throw new Exception($"API credentials not configured for {ExchangeName}");
             }
 
-            var normalizedSymbol = NormalizeSymbol(symbol);
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            // cancel-order (ตาม doc ปัจจุบัน) ยังใช้ format "thb_btc" (quote_base ตัวเล็ก)
+            var normalizedSymbol = NormalizeSymbol(symbol).ToLowerInvariant();
             var path = "/api/v3/market/cancel-order";
 
             // Bitkub requires knowing the order side to cancel
-            // Try "buy" first, then "sell" if that fails
+            // Try "buy" first, then "sell" if the order isn't found on the buy side
+            int lastError = -1;
             foreach (var side in new[] { "buy", "sell" })
             {
-                try
+                var timestamp = await GetServerTimestampAsync(cancellationToken);
+                var cancelData = new Dictionary<string, object>
                 {
-                    var cancelData = new Dictionary<string, object>
-                    {
-                        ["sym"] = normalizedSymbol,
-                        ["id"] = orderId,
-                        ["sd"] = side
-                    };
+                    ["sym"] = normalizedSymbol,
+                    ["id"] = orderId,
+                    ["sd"] = side
+                };
 
-                    var body = JsonSerializer.Serialize(cancelData, _jsonOptions);
-                    var signature = SignRequestV3(timestamp, "POST", path, "", body);
+                var body = JsonSerializer.Serialize(cancelData, _jsonOptions);
+                var signature = SignRequestV3(timestamp, "POST", path, "", body);
 
-                    using var request = new HttpRequestMessage(HttpMethod.Post, path)
-                    {
-                        Content = new StringContent(body, Encoding.UTF8, "application/json")
-                    };
+                using var request = new HttpRequestMessage(HttpMethod.Post, path)
+                {
+                    Content = new StringContent(body, Encoding.UTF8, "application/json")
+                };
 
-                    AddBitkubAuthHeaders(request, timestamp, signature);
+                AddBitkubAuthHeaders(request, timestamp, signature);
 
-                    var response = await _httpClient.SendAsync(request, cancellationToken);
-                    if (response.IsSuccessStatusCode)
+                var response = await _httpClient.SendAsync(request, cancellationToken);
+                var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                // Bitkub คืน HTTP 200 พร้อม {"error": N} เสมอ — ต้องเช็ค error ใน body
+                // (ห้ามถือว่า HTTP 200 = cancel สำเร็จ — ออเดอร์อาจยังค้างบนกระดาน!)
+                if (response.IsSuccessStatusCode)
+                {
+                    var result = JsonSerializer.Deserialize<BitkubErrorOnlyResponse>(responseContent, _jsonOptions);
+                    if (result?.Error == 0)
                     {
                         return new Order
                         {
@@ -748,14 +754,13 @@ public class BitkubClient : BaseExchangeClient
                             UpdatedAt = DateTime.UtcNow
                         };
                     }
-                }
-                catch
-                {
-                    if (side == "sell") throw; // Both sides failed
+                    lastError = result?.Error ?? -1;
+                    // error 21 = invalid order for cancellation → อาจเป็นอีกฝั่ง ลองต่อ
+                    if (lastError != 21) break;
                 }
             }
 
-            throw new Exception($"Failed to cancel order {orderId}: both buy and sell sides failed");
+            throw new Exception($"Failed to cancel order {orderId}: error {lastError} - {GetBitkubErrorMessage(lastError)}");
         }
         catch (Exception ex)
         {
@@ -773,55 +778,65 @@ public class BitkubClient : BaseExchangeClient
                 throw new Exception($"API credentials not configured for {ExchangeName}");
             }
 
-            var normalizedSymbol = NormalizeSymbol(symbol);
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            // order-info เป็น GET + query params (ไม่ใช่ POST!) และบังคับส่ง sd (side)
+            // interface ไม่มี side → ลอง buy ก่อน ถ้าไม่เจอลอง sell
+            var normalizedSymbol = NormalizeV3Symbol(symbol);
             var path = "/api/v3/market/order-info";
 
-            var requestData = new Dictionary<string, object>
+            foreach (var side in new[] { "buy", "sell" })
             {
-                ["sym"] = normalizedSymbol,
-                ["id"] = orderId
-            };
+                var timestamp = await GetServerTimestampAsync(cancellationToken);
+                var query = $"?sym={normalizedSymbol}&id={orderId}&sd={side}";
+                var signature = SignRequestV3(timestamp, "GET", path, query, "");
 
-            var body = JsonSerializer.Serialize(requestData, _jsonOptions);
-            var signature = SignRequestV3(timestamp, "POST", path, "", body);
+                using var request = new HttpRequestMessage(HttpMethod.Get, path + query);
+                AddBitkubAuthHeaders(request, timestamp, signature);
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, path)
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            };
+                var response = await _httpClient.SendAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    continue;
+                }
 
-            AddBitkubAuthHeaders(request, timestamp, signature);
+                var result = await response.Content.ReadFromJsonAsync<BitkubOrderInfoResponse>(_jsonOptions, cancellationToken);
+                if (result?.Error != 0 || result?.Result == null)
+                {
+                    continue; // ไม่เจอในฝั่งนี้ — ลองอีกฝั่ง
+                }
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
+                var data = result.Result;
+                var isBuy = side == "buy";
 
-            var result = await response.Content.ReadFromJsonAsync<BitkubOrderInfoResponse>(_jsonOptions, cancellationToken);
+                // หน่วยของ amount/filled ขึ้นกับฝั่ง (spec): buy = THB, sell = จำนวนเหรียญ
+                // แปลงกลับเป็นจำนวนเหรียญ (base) ให้ตรง convention ของแอป
+                var requestedBase = isBuy && data.Rate > 0 ? data.Amount / data.Rate : data.Amount;
+                var filledBase = isBuy && data.Rate > 0 ? data.Filled / data.Rate : data.Filled;
 
-            if (result?.Error != 0 || result?.Result == null)
-            {
-                throw new Exception($"Failed to get order {orderId}");
+                // เวลาสร้างออเดอร์: ใช้ timestamp ของ fill แรกจาก history (ms)
+                var createdAt = data.History?.Count > 0
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(data.History[0].Timestamp).UtcDateTime
+                    : DateTime.UtcNow;
+
+                return new Order
+                {
+                    OrderId = data.Id,
+                    Exchange = ExchangeName,
+                    Symbol = symbol,
+                    Side = isBuy ? OrderSide.Buy : OrderSide.Sell,
+                    Type = OrderType.Limit,
+                    Status = MapOrderStatus(data.Status, data.PartialFilled),
+                    RequestedQuantity = requestedBase,
+                    FilledQuantity = filledBase,
+                    RequestedPrice = data.Rate > 0 ? data.Rate : null,
+                    AverageFilledPrice = data.Rate,
+                    Fee = data.Fee,
+                    FeeCurrency = "THB",
+                    CreatedAt = createdAt,
+                    UpdatedAt = DateTime.UtcNow
+                };
             }
 
-            var data = result.Result;
-
-            return new Order
-            {
-                OrderId = data.Id,
-                Exchange = ExchangeName,
-                Symbol = symbol,
-                Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
-                Type = data.Type == "market" ? OrderType.Market : OrderType.Limit,
-                Status = MapOrderStatus(data.Status),
-                RequestedQuantity = data.Amount,
-                FilledQuantity = data.Receive,
-                RequestedPrice = data.Rate > 0 ? data.Rate : null,
-                AverageFilledPrice = data.Rate,
-                Fee = data.Fee,
-                FeeCurrency = "THB",
-                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(data.Ts).UtcDateTime,
-                UpdatedAt = DateTime.UtcNow
-            };
+            throw new Exception($"Failed to get order {orderId} (not found on either side)");
         }
         catch (Exception ex)
         {
@@ -839,23 +854,19 @@ public class BitkubClient : BaseExchangeClient
                 return new List<Order>();
             }
 
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var path = "/api/v3/market/my-open-orders";
-            var requestData = new Dictionary<string, object>();
-
-            if (symbol != null)
+            // my-open-orders เป็น GET + query และบังคับส่ง sym
+            if (symbol == null)
             {
-                requestData["sym"] = NormalizeSymbol(symbol);
+                _logger.LogWarning(ExchangeName, "GetOpenOrdersAsync requires a symbol on Bitkub — returning empty list");
+                return new List<Order>();
             }
 
-            var body = JsonSerializer.Serialize(requestData, _jsonOptions);
-            var signature = SignRequestV3(timestamp, "POST", path, "", body);
+            var timestamp = await GetServerTimestampAsync(cancellationToken);
+            var path = "/api/v3/market/my-open-orders";
+            var query = $"?sym={NormalizeV3Symbol(symbol)}";
+            var signature = SignRequestV3(timestamp, "GET", path, query, "");
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, path)
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            };
-
+            using var request = new HttpRequestMessage(HttpMethod.Get, path + query);
             AddBitkubAuthHeaders(request, timestamp, signature);
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -865,6 +876,10 @@ public class BitkubClient : BaseExchangeClient
 
             if (result?.Error != 0 || result?.Result == null)
             {
+                if (result?.Error is int err and not 0)
+                {
+                    _logger.LogWarning(ExchangeName, $"my-open-orders error {err}: {GetBitkubErrorMessage(err)}");
+                }
                 return new List<Order>();
             }
 
@@ -872,13 +887,16 @@ public class BitkubClient : BaseExchangeClient
             {
                 OrderId = data.Id,
                 Exchange = ExchangeName,
-                Symbol = data.Sym?.Replace("THB_", "") + "/THB",
+                // response ไม่มี field sym — ใช้ symbol ที่ส่งเข้ามา
+                Symbol = symbol,
                 Side = data.Side == "buy" ? OrderSide.Buy : OrderSide.Sell,
                 Type = data.Type == "market" ? OrderType.Market : OrderType.Limit,
                 Status = OrderStatus.Open,
-                RequestedQuantity = data.Amount,
+                // amount ฝั่ง buy เป็น THB — แปลงเป็นจำนวนเหรียญด้วย rate
+                RequestedQuantity = data.Side == "buy" && data.Rate > 0 ? data.Amount / data.Rate : data.Amount,
                 RequestedPrice = data.Rate > 0 ? data.Rate : null,
-                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(data.Ts).UtcDateTime
+                // ts เป็น milliseconds (เช่น 1702543272000) — ไม่ใช่ seconds
+                CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(data.Ts).UtcDateTime
             }).ToList();
         }
         catch (Exception ex)
@@ -894,13 +912,42 @@ public class BitkubClient : BaseExchangeClient
 
     private string NormalizeSymbol(string symbol)
     {
-        // Convert "BTC/THB" to "THB_BTC" (Bitkub format)
-        var parts = symbol.ToUpperInvariant().Split('/');
-        if (parts.Length == 2)
-        {
-            return $"{parts[1]}_{parts[0]}";
-        }
-        return symbol.Replace("/", "_").ToUpperInvariant();
+        // Bitkub legacy market API format: "THB_BTC" (QUOTE_BASE)
+        // รองรับ input ทุกแบบ: "BTC/THB", "BTCTHB", "THB_BTC"
+        var (baseAsset, quoteAsset) = SplitSymbol(symbol);
+        if (quoteAsset.Length == 0) return symbol.ToUpperInvariant();
+
+        // ถ้า input มาแบบ Bitkub เดิมอยู่แล้ว (THB_BTC — quote นำหน้า) SplitSymbol
+        // จะให้ base="THB" ซึ่งเป็น fiat — สลับกลับให้ถูก
+        if (baseAsset == "THB") return $"{baseAsset}_{quoteAsset}";
+        return $"{quoteAsset}_{baseAsset}";
+    }
+
+    /// <summary>
+    /// v3 trading endpoints (place-bid/place-ask/order-info/my-open-orders)
+    /// ใช้ format "btc_thb" — base_quote ตัวพิมพ์เล็ก
+    /// </summary>
+    private string NormalizeV3Symbol(string symbol)
+    {
+        return NormalizeTradingViewSymbol(symbol).ToLowerInvariant();
+    }
+
+    /// <summary>Parse ตัวเลขจาก JSON string แบบไม่ throw ("" หรือ null → 0)</summary>
+    private static decimal ParseDecimalOrZero(string? value)
+    {
+        return decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result)
+            ? result : 0m;
+    }
+
+    /// <summary>
+    /// Bitkub TradingView chart API ใช้ format กลับด้านกับ market API: "BTC_THB" (BASE_QUOTE)
+    /// </summary>
+    private string NormalizeTradingViewSymbol(string symbol)
+    {
+        var (baseAsset, quoteAsset) = SplitSymbol(symbol);
+        if (quoteAsset.Length == 0) return symbol.ToUpperInvariant();
+        if (baseAsset == "THB") return $"{quoteAsset}_{baseAsset}"; // input was THB_BTC
+        return $"{baseAsset}_{quoteAsset}";
     }
 
     /// <summary>
@@ -986,14 +1033,17 @@ public class BitkubClient : BaseExchangeClient
         request.Headers.Add("X-BTK-SIGN", signature);
     }
 
-    private OrderStatus MapOrderStatus(string status)
+    /// <summary>
+    /// Bitkub มี status แค่ 3 ค่า: filled / unfilled / cancelled
+    /// partial fill เป็น boolean แยกต่างหาก (ไม่ใช่ status "partially_filled")
+    /// </summary>
+    private OrderStatus MapOrderStatus(string status, bool partialFilled = false)
     {
         return status.ToLowerInvariant() switch
         {
-            "unfilled" => OrderStatus.Pending,
-            "partially_filled" => OrderStatus.PartiallyFilled,
+            "unfilled" => partialFilled ? OrderStatus.PartiallyFilled : OrderStatus.Open,
             "filled" => OrderStatus.Filled,
-            "cancelled" or "canceled" => OrderStatus.Cancelled,
+            "cancelled" or "canceled" => partialFilled ? OrderStatus.PartiallyFilled : OrderStatus.Cancelled,
             _ => OrderStatus.Error
         };
     }
@@ -1169,16 +1219,14 @@ internal class BitkubOrderInfoResponse
     public BitkubOrderInfo? Result { get; set; }
 }
 
+/// <summary>
+/// order-info result — หน่วยของ amount/filled ขึ้นกับฝั่ง: buy = THB, sell = เหรียญ
+/// (response ไม่มี side/type/receive/ts — side มาจาก query ที่เราส่งเอง)
+/// </summary>
 internal class BitkubOrderInfo
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = "";
-
-    [JsonPropertyName("side")]
-    public string Side { get; set; } = "";
-
-    [JsonPropertyName("type")]
-    public string Type { get; set; } = "";
 
     [JsonPropertyName("rate")]
     public decimal Rate { get; set; }
@@ -1192,14 +1240,71 @@ internal class BitkubOrderInfo
     [JsonPropertyName("amount")]
     public decimal Amount { get; set; }
 
-    [JsonPropertyName("receive")]
-    public decimal Receive { get; set; }
+    [JsonPropertyName("filled")]
+    public decimal Filled { get; set; }
+
+    [JsonPropertyName("remaining")]
+    public decimal Remaining { get; set; }
 
     [JsonPropertyName("status")]
     public string Status { get; set; } = "";
 
-    [JsonPropertyName("ts")]
-    public long Ts { get; set; }
+    [JsonPropertyName("partial_filled")]
+    public bool PartialFilled { get; set; }
+
+    [JsonPropertyName("history")]
+    public List<BitkubOrderHistoryEntry>? History { get; set; }
+}
+
+internal class BitkubOrderHistoryEntry
+{
+    [JsonPropertyName("amount")]
+    public decimal Amount { get; set; }
+
+    [JsonPropertyName("rate")]
+    public decimal Rate { get; set; }
+
+    [JsonPropertyName("fee")]
+    public decimal Fee { get; set; }
+
+    /// <summary>milliseconds เช่น 1702466375000</summary>
+    [JsonPropertyName("timestamp")]
+    public long Timestamp { get; set; }
+}
+
+/// <summary>Response ที่มีแค่ error field เช่น cancel-order</summary>
+internal class BitkubErrorOnlyResponse
+{
+    [JsonPropertyName("error")]
+    public int Error { get; set; }
+}
+
+/// <summary>GET /api/v4/wallet/balances — ตัวเลขทุกตัวเป็น JSON string</summary>
+internal class BitkubV4BalancesResponse
+{
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    [JsonPropertyName("data")]
+    public List<BitkubV4Balance>? Data { get; set; }
+}
+
+internal class BitkubV4Balance
+{
+    [JsonPropertyName("currency")]
+    public string Currency { get; set; } = "";
+
+    [JsonPropertyName("available")]
+    public string? Available { get; set; }
+
+    [JsonPropertyName("reserved")]
+    public string? Reserved { get; set; }
+
+    [JsonPropertyName("total")]
+    public string? Total { get; set; }
 }
 
 internal class BitkubOpenOrdersResponse

@@ -48,7 +48,10 @@ public abstract class BaseExchangeClient : IExchangeClient
         _jsonOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            // หลาย exchange (Bitkub, KuCoin) ส่งตัวเลขเป็น JSON string เช่น "ts":"1707220636"
+            // — ต้องอ่านได้ทั้งสองแบบ มิฉะนั้น deserialize จะ throw หลังออเดอร์ execute ไปแล้ว
+            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
         };
     }
 
@@ -269,6 +272,9 @@ public abstract class BaseExchangeClient : IExchangeClient
 
     /// <summary>
     /// ส่ง GET request พร้อม rate limiting และ retry
+    /// - retry เฉพาะ error ชั่วคราว: 5xx / 429 / network / timeout
+    /// - 4xx อื่นๆ = permanent → throw ทันทีพร้อม error body ของ exchange
+    ///   (retry ซ้ำด้วย request เดิมมีแต่เสีย และเสี่ยงโดน ban ตอน 429/418)
     /// </summary>
     protected async Task<T?> GetAsync<T>(
         string endpoint,
@@ -281,19 +287,45 @@ public abstract class BaseExchangeClient : IExchangeClient
             try
             {
                 var response = await _httpClient.GetAsync(endpoint, cancellationToken);
-                response.EnsureSuccessStatusCode();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    // อ่าน body มาใส่ error — exchange ส่งรายละเอียดจริงมาใน body
+                    var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                    var statusCode = (int)response.StatusCode;
+
+                    var isTransient = statusCode >= 500 || statusCode == 429;
+                    if (isTransient && retry < _config.MaxRetries)
+                    {
+                        _logger.LogWarning(ExchangeName, $"HTTP {statusCode} (retry {retry + 1}/{_config.MaxRetries}): {Truncate(errorBody, 200)}");
+                        await Task.Delay(1000 * (retry + 1), cancellationToken);
+                        continue;
+                    }
+
+                    throw new HttpRequestException($"HTTP {statusCode} from {endpoint}: {Truncate(errorBody, 300)}");
+                }
 
                 return await response.Content.ReadFromJsonAsync<T>(_jsonOptions, cancellationToken);
             }
-            catch (HttpRequestException ex) when (retry < _config.MaxRetries)
+            catch (HttpRequestException ex) when (retry < _config.MaxRetries && ex.StatusCode == null)
             {
+                // network-level failure (DNS, connection reset) — transient
                 _logger.LogWarning(ExchangeName, $"Request failed (retry {retry + 1}/{_config.MaxRetries}): {ex.Message}");
+                await Task.Delay(1000 * (retry + 1), cancellationToken);
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested && retry < _config.MaxRetries)
+            {
+                // HttpClient timeout (ไม่ใช่ caller ยกเลิก) — transient
+                _logger.LogWarning(ExchangeName, $"Request timeout (retry {retry + 1}/{_config.MaxRetries}): {endpoint}");
                 await Task.Delay(1000 * (retry + 1), cancellationToken);
             }
         }
 
         throw new Exception($"Failed to GET {endpoint} after {_config.MaxRetries} retries");
     }
+
+    private static string Truncate(string value, int maxLength)
+        => value.Length <= maxLength ? value : value[..maxLength] + "...";
 
     /// <summary>
     /// ส่ง POST request
@@ -374,6 +406,50 @@ public abstract class BaseExchangeClient : IExchangeClient
     protected bool HasCredentials()
     {
         return !string.IsNullOrEmpty(GetApiKey()) && !string.IsNullOrEmpty(GetApiSecret());
+    }
+
+    #endregion
+
+    #region Symbol Helpers
+
+    // Quote assets ordered longest-first so "USDT" matches before "USD"
+    private static readonly string[] KnownQuoteAssets =
+    {
+        "FDUSD", "USDT", "USDC", "TUSD", "BUSD",
+        "USD", "THB", "EUR", "GBP", "TRY", "BRL",
+        "BTC", "ETH", "BNB"
+    };
+
+    /// <summary>
+    /// แยก symbol เป็น (base, quote) — รองรับทุกรูปแบบที่ caller ส่งมา:
+    /// "BTC/USDT", "BTC-USDT", "BTC_USDT" และแบบติดกัน "BTCUSDT"
+    /// (แบบติดกันใช้รายชื่อ quote asset ที่รู้จัก จับจากท้าย)
+    /// คืน quote เป็น "" เมื่อแยกไม่ได้
+    /// </summary>
+    protected static (string BaseAsset, string QuoteAsset) SplitSymbol(string symbol)
+    {
+        if (string.IsNullOrWhiteSpace(symbol)) return ("", "");
+
+        var s = symbol.Trim().ToUpperInvariant();
+
+        foreach (var separator in new[] { '/', '-', '_' })
+        {
+            var idx = s.IndexOf(separator);
+            if (idx > 0 && idx < s.Length - 1)
+            {
+                return (s[..idx], s[(idx + 1)..]);
+            }
+        }
+
+        foreach (var quote in KnownQuoteAssets)
+        {
+            if (s.EndsWith(quote, StringComparison.Ordinal) && s.Length > quote.Length)
+            {
+                return (s[..^quote.Length], quote);
+            }
+        }
+
+        return (s, "");
     }
 
     #endregion

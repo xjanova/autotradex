@@ -49,7 +49,7 @@ public class BybitClient : BaseExchangeClient
         try
         {
             var response = await GetAsync<BybitResponse<BybitTickerResult>>(
-                $"{TickerEndpoint}?category=spot&symbol={symbol}",
+                $"{TickerEndpoint}?category=spot&symbol={NormalizeSymbol(symbol)}",
                 cancellationToken);
 
             if (response?.Result?.List == null || response.Result.List.Count == 0)
@@ -59,16 +59,17 @@ public class BybitClient : BaseExchangeClient
 
             var ticker = response.Result.List[0];
 
+            // Bybit ส่ง "" สำหรับ bid/ask เมื่อไม่มีออเดอร์ในฝั่งนั้น — ใช้ TryParse กัน throw
             return new Ticker
             {
                 Symbol = symbol,
                 Exchange = ExchangeName,
-                BidPrice = decimal.Parse(ticker.Bid1Price, CultureInfo.InvariantCulture),
-                AskPrice = decimal.Parse(ticker.Ask1Price, CultureInfo.InvariantCulture),
-                BidQuantity = decimal.Parse(ticker.Bid1Size, CultureInfo.InvariantCulture),
-                AskQuantity = decimal.Parse(ticker.Ask1Size, CultureInfo.InvariantCulture),
-                LastPrice = decimal.Parse(ticker.LastPrice, CultureInfo.InvariantCulture),
-                Volume24h = decimal.Parse(ticker.Volume24h, CultureInfo.InvariantCulture),
+                BidPrice = ParseDecimalSafe(ticker.Bid1Price),
+                AskPrice = ParseDecimalSafe(ticker.Ask1Price),
+                BidQuantity = ParseDecimalSafe(ticker.Bid1Size),
+                AskQuantity = ParseDecimalSafe(ticker.Ask1Size),
+                LastPrice = ParseDecimalSafe(ticker.LastPrice),
+                Volume24h = ParseDecimalSafe(ticker.Volume24h),
                 Timestamp = DateTime.UtcNow
             };
         }
@@ -94,7 +95,7 @@ public class BybitClient : BaseExchangeClient
             };
 
             var response = await GetAsync<BybitResponse<BybitOrderBookResult>>(
-                $"{OrderBookEndpoint}?category=spot&symbol={symbol}&limit={validDepth}",
+                $"{OrderBookEndpoint}?category=spot&symbol={NormalizeSymbol(symbol)}&limit={validDepth}",
                 cancellationToken);
 
             if (response?.Result == null)
@@ -162,12 +163,12 @@ public class BybitClient : BaseExchangeClient
                     {
                         Symbol = ticker.Symbol,
                         Exchange = ExchangeName,
-                        BidPrice = decimal.Parse(ticker.Bid1Price, CultureInfo.InvariantCulture),
-                        AskPrice = decimal.Parse(ticker.Ask1Price, CultureInfo.InvariantCulture),
-                        BidQuantity = decimal.Parse(ticker.Bid1Size, CultureInfo.InvariantCulture),
-                        AskQuantity = decimal.Parse(ticker.Ask1Size, CultureInfo.InvariantCulture),
-                        LastPrice = decimal.Parse(ticker.LastPrice, CultureInfo.InvariantCulture),
-                        Volume24h = decimal.Parse(ticker.Volume24h, CultureInfo.InvariantCulture),
+                        BidPrice = ParseDecimalSafe(ticker.Bid1Price),
+                        AskPrice = ParseDecimalSafe(ticker.Ask1Price),
+                        BidQuantity = ParseDecimalSafe(ticker.Bid1Size),
+                        AskQuantity = ParseDecimalSafe(ticker.Ask1Size),
+                        LastPrice = ParseDecimalSafe(ticker.LastPrice),
+                        Volume24h = ParseDecimalSafe(ticker.Volume24h),
                         Timestamp = DateTime.UtcNow
                     };
                 }
@@ -425,9 +426,12 @@ public class BybitClient : BaseExchangeClient
             var wallet = response.Result.List[0];
             foreach (var coin in wallet.Coin)
             {
-                var available = decimal.Parse(coin.AvailableToWithdraw, CultureInfo.InvariantCulture);
-                var locked = decimal.Parse(coin.Locked, CultureInfo.InvariantCulture);
-                var total = decimal.Parse(coin.WalletBalance, CultureInfo.InvariantCulture);
+                // availableToWithdraw ถูก deprecate สำหรับ UNIFIED account (ม.ค. 2025)
+                // — Bybit คืน "" ซึ่ง decimal.Parse จะ throw
+                // ยอดใช้ได้จริง = walletBalance - locked
+                var locked = ParseDecimalSafe(coin.Locked);
+                var total = ParseDecimalSafe(coin.WalletBalance);
+                var available = Math.Max(0, total - locked);
 
                 if (total > 0)
                 {
@@ -467,10 +471,13 @@ public class BybitClient : BaseExchangeClient
             var orderRequest = new BybitOrderRequest
             {
                 Category = "spot",
-                Symbol = request.Symbol,
+                Symbol = NormalizeSymbol(request.Symbol),
                 Side = request.Side == OrderSide.Buy ? "Buy" : "Sell",
                 OrderType = request.Type == OrderType.Market ? "Market" : "Limit",
-                Qty = request.Quantity.ToString("G29")
+                Qty = request.Quantity.ToString("G29", CultureInfo.InvariantCulture),
+                // qty ของเราเป็นจำนวนเหรียญ (base) เสมอ — ไม่ระบุ marketUnit
+                // Bybit จะตีความ market BUY เป็นจำนวนเงิน USDT
+                MarketUnit = request.Type == OrderType.Market ? "baseCoin" : null
             };
 
             if (!string.IsNullOrEmpty(request.ClientOrderId))
@@ -643,7 +650,9 @@ public class BybitClient : BaseExchangeClient
         try
         {
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var queryString = "category=spot&openOnly=1";
+            // openOnly=0 (default) = ออเดอร์ที่ยังเปิดอยู่ (New/PartiallyFilled)
+            // ระวัง: openOnly=1 คืนออเดอร์ที่ "ปิดแล้ว" ล่าสุด — ตรงข้ามกับชื่อ!
+            var queryString = "category=spot&openOnly=0";
             if (!string.IsNullOrEmpty(symbol))
             {
                 queryString += $"&symbol={symbol}";
@@ -748,12 +757,33 @@ public class BybitClient : BaseExchangeClient
         };
     }
 
+    /// <summary>
+    /// Bybit spot format: "BTCUSDT" — ตัด separator ทุกแบบออก
+    /// </summary>
+    private static string NormalizeSymbol(string symbol)
+    {
+        return symbol.Replace("/", "").Replace("-", "").Replace("_", "").ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// Bybit ส่ง "" ในหลาย field ตัวเลข (เช่น bid1Price เมื่อไม่มีออเดอร์,
+    /// availableToWithdraw บน UTA2.0) — parse แบบไม่ throw
+    /// </summary>
+    private static decimal ParseDecimalSafe(string? value)
+    {
+        return decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result)
+            ? result : 0m;
+    }
+
     private OrderStatus MapOrderStatus(string status)
     {
         return status.ToUpperInvariant() switch
         {
             "NEW" or "CREATED" => OrderStatus.Open,
             "PARTIALLYFILLED" or "PARTIALLY_FILLED" => OrderStatus.PartiallyFilled,
+            // Terminal state ของ spot IOC/market ที่ fill บางส่วนแล้วส่วนที่เหลือถูกยกเลิก
+            // — map เป็น PartiallyFilled เพื่อให้ caller ใช้ FilledQuantity จริง
+            "PARTIALLYFILLEDCANCELED" => OrderStatus.PartiallyFilled,
             "FILLED" => OrderStatus.Filled,
             "CANCELLED" or "CANCELED" => OrderStatus.Cancelled,
             "REJECTED" => OrderStatus.Rejected,
@@ -879,6 +909,14 @@ internal class BybitOrderRequest
 
     [JsonPropertyName("qty")]
     public string Qty { get; set; } = "";
+
+    /// <summary>
+    /// สำคัญมาก: spot market BUY ของ Bybit ตีความ qty เป็นจำนวนเงิน quote (USDT)
+    /// โดย default — ต้องส่ง "baseCoin" เพื่อให้ qty เป็นจำนวนเหรียญตาม convention ของแอป
+    /// </summary>
+    [JsonPropertyName("marketUnit")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MarketUnit { get; set; }
 
     [JsonPropertyName("price")]
     public string? Price { get; set; }

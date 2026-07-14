@@ -188,16 +188,19 @@ public class ExchangeClientFactory : IExchangeClientFactory
             return CreateSimulationClient(true);
         }
 
-        // ใช้ ExchangeA config สำหรับ Binance
+        // ใช้ canonical env vars เสมอ (AUTOTRADEX_BINANCE_*) — ApiCredentialsService
+        // เก็บ credentials ตามชื่อ exchange ไม่ใช่ตาม slot A/B
+        // ห้ามใช้ _config.ExchangeA.ApiKeyEnvVar: ถ้า slot A เป็น exchange อื่น
+        // Binance จะ sign ด้วย key ของ exchange นั้น (key รั่วข้าม exchange!)
         var config = new ExchangeConfig
         {
             Name = "Binance",
             ApiBaseUrl = "https://api.binance.com",
-            ApiKeyEnvVar = _config.ExchangeA.ApiKeyEnvVar,
-            ApiSecretEnvVar = _config.ExchangeA.ApiSecretEnvVar,
-            TradingFeePercent = _config.ExchangeA.TradingFeePercent,
+            ApiKeyEnvVar = "AUTOTRADEX_BINANCE_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_BINANCE_API_SECRET",
+            TradingFeePercent = 0.1m,
             TimeoutMs = _config.ExchangeA.TimeoutMs,
-            RateLimitPerSecond = _config.ExchangeA.RateLimitPerSecond,
+            RateLimitPerSecond = 10,
             MaxRetries = _config.ExchangeA.MaxRetries
         };
 
@@ -216,16 +219,16 @@ public class ExchangeClientFactory : IExchangeClientFactory
             return CreateSimulationClient(false);
         }
 
-        // ใช้ ExchangeB config สำหรับ KuCoin
+        // ใช้ canonical env vars เสมอ (AUTOTRADEX_KUCOIN_*) — ดูเหตุผลที่ CreateBinanceClient
         var config = new ExchangeConfig
         {
             Name = "KuCoin",
             ApiBaseUrl = "https://api.kucoin.com",
-            ApiKeyEnvVar = _config.ExchangeB.ApiKeyEnvVar,
-            ApiSecretEnvVar = _config.ExchangeB.ApiSecretEnvVar,
-            TradingFeePercent = _config.ExchangeB.TradingFeePercent,
+            ApiKeyEnvVar = "AUTOTRADEX_KUCOIN_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_KUCOIN_API_SECRET",
+            TradingFeePercent = 0.1m,
             TimeoutMs = _config.ExchangeB.TimeoutMs,
-            RateLimitPerSecond = _config.ExchangeB.RateLimitPerSecond,
+            RateLimitPerSecond = 10,
             MaxRetries = _config.ExchangeB.MaxRetries
         };
 
@@ -244,16 +247,16 @@ public class ExchangeClientFactory : IExchangeClientFactory
             return CreateSimulationClient(false);
         }
 
-        // ใช้ ExchangeB config สำหรับ Bybit
+        // ใช้ canonical env vars เสมอ (AUTOTRADEX_BYBIT_*) — ดูเหตุผลที่ CreateBinanceClient
         var config = new ExchangeConfig
         {
             Name = "Bybit",
             ApiBaseUrl = "https://api.bybit.com",
-            ApiKeyEnvVar = _config.ExchangeB.ApiKeyEnvVar,
-            ApiSecretEnvVar = _config.ExchangeB.ApiSecretEnvVar,
-            TradingFeePercent = _config.ExchangeB.TradingFeePercent,
+            ApiKeyEnvVar = "AUTOTRADEX_BYBIT_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_BYBIT_API_SECRET",
+            TradingFeePercent = 0.1m,
             TimeoutMs = _config.ExchangeB.TimeoutMs,
-            RateLimitPerSecond = _config.ExchangeB.RateLimitPerSecond,
+            RateLimitPerSecond = 10,
             MaxRetries = _config.ExchangeB.MaxRetries
         };
 
@@ -435,8 +438,9 @@ public class ExchangeClientFactory : IExchangeClientFactory
             ApiBaseUrl = string.IsNullOrEmpty(config.ApiBaseUrl) || config.ApiBaseUrl.Contains("placeholder")
                 ? "https://api.binance.com"
                 : config.ApiBaseUrl,
-            ApiKeyEnvVar = config.ApiKeyEnvVar,
-            ApiSecretEnvVar = config.ApiSecretEnvVar,
+            // canonical env vars ตามชื่อ exchange — slot config อาจชี้ env var ของ exchange อื่น
+            ApiKeyEnvVar = "AUTOTRADEX_BINANCE_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_BINANCE_API_SECRET",
             TradingFeePercent = config.TradingFeePercent,
             TimeoutMs = config.TimeoutMs,
             RateLimitPerSecond = config.RateLimitPerSecond,
@@ -458,8 +462,9 @@ public class ExchangeClientFactory : IExchangeClientFactory
             ApiBaseUrl = string.IsNullOrEmpty(config.ApiBaseUrl) || config.ApiBaseUrl.Contains("placeholder")
                 ? "https://api.kucoin.com"
                 : config.ApiBaseUrl,
-            ApiKeyEnvVar = config.ApiKeyEnvVar,
-            ApiSecretEnvVar = config.ApiSecretEnvVar,
+            // canonical env vars ตามชื่อ exchange — slot config อาจชี้ env var ของ exchange อื่น
+            ApiKeyEnvVar = "AUTOTRADEX_KUCOIN_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_KUCOIN_API_SECRET",
             TradingFeePercent = config.TradingFeePercent,
             TimeoutMs = config.TimeoutMs,
             RateLimitPerSecond = config.RateLimitPerSecond,
@@ -481,8 +486,9 @@ public class ExchangeClientFactory : IExchangeClientFactory
             ApiBaseUrl = string.IsNullOrEmpty(config.ApiBaseUrl) || config.ApiBaseUrl.Contains("placeholder")
                 ? "https://api.bybit.com"
                 : config.ApiBaseUrl,
-            ApiKeyEnvVar = config.ApiKeyEnvVar,
-            ApiSecretEnvVar = config.ApiSecretEnvVar,
+            // canonical env vars ตามชื่อ exchange — slot config อาจชี้ env var ของ exchange อื่น
+            ApiKeyEnvVar = "AUTOTRADEX_BYBIT_API_KEY",
+            ApiSecretEnvVar = "AUTOTRADEX_BYBIT_API_SECRET",
             TradingFeePercent = config.TradingFeePercent,
             TimeoutMs = config.TimeoutMs,
             RateLimitPerSecond = config.RateLimitPerSecond,

@@ -436,8 +436,8 @@ public class BinanceClient : BaseExchangeClient
                 ["symbol"] = normalizedSymbol,
                 ["side"] = request.Side == OrderSide.Buy ? "BUY" : "SELL",
                 ["type"] = request.Type == OrderType.Market ? "MARKET" : "LIMIT",
-                ["quantity"] = request.Quantity.ToString("F8"),
-                ["timestamp"] = timestamp.ToString()
+                ["quantity"] = request.Quantity.ToString("F8", CultureInfo.InvariantCulture),
+                ["timestamp"] = timestamp.ToString(CultureInfo.InvariantCulture)
             };
 
             if (!string.IsNullOrEmpty(request.ClientOrderId))
@@ -447,7 +447,7 @@ public class BinanceClient : BaseExchangeClient
 
             if (request.Type == OrderType.Limit && request.Price.HasValue)
             {
-                parameters["price"] = request.Price.Value.ToString("F8");
+                parameters["price"] = request.Price.Value.ToString("F8", CultureInfo.InvariantCulture);
                 parameters["timeInForce"] = "GTC"; // Good Till Cancel
             }
 
@@ -475,11 +475,9 @@ public class BinanceClient : BaseExchangeClient
                 RequestedQuantity = request.Quantity,
                 FilledQuantity = decimal.Parse(response.ExecutedQty, CultureInfo.InvariantCulture),
                 RequestedPrice = request.Price,
-                AverageFilledPrice = !string.IsNullOrEmpty(response.AvgPrice) && decimal.Parse(response.AvgPrice, CultureInfo.InvariantCulture) > 0
-                    ? decimal.Parse(response.AvgPrice, CultureInfo.InvariantCulture)
-                    : request.Price ?? 0,
+                AverageFilledPrice = ComputeAvgFillPrice(response) is var avg && avg > 0 ? avg : request.Price ?? 0,
                 Fee = CalculateFee(response),
-                FeeCurrency = "USDT",
+                FeeCurrency = GetFeeCurrency(response, "USDT"),
                 CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(response.TransactTime).UtcDateTime,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -566,7 +564,7 @@ public class BinanceClient : BaseExchangeClient
                 RequestedQuantity = decimal.Parse(response.OrigQty, CultureInfo.InvariantCulture),
                 FilledQuantity = decimal.Parse(response.ExecutedQty, CultureInfo.InvariantCulture),
                 RequestedPrice = !string.IsNullOrEmpty(response.Price) ? decimal.Parse(response.Price, CultureInfo.InvariantCulture) : null,
-                AverageFilledPrice = !string.IsNullOrEmpty(response.AvgPrice) ? decimal.Parse(response.AvgPrice, CultureInfo.InvariantCulture) : 0,
+                AverageFilledPrice = ComputeAvgFillPrice(response),
                 CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(response.Time).UtcDateTime,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -692,10 +690,55 @@ public class BinanceClient : BaseExchangeClient
         }
         // Estimate fee: 0.1% for maker/taker
         var qty = decimal.Parse(response.ExecutedQty, CultureInfo.InvariantCulture);
-        var price = !string.IsNullOrEmpty(response.AvgPrice) && decimal.Parse(response.AvgPrice, CultureInfo.InvariantCulture) > 0
-            ? decimal.Parse(response.AvgPrice, CultureInfo.InvariantCulture)
-            : !string.IsNullOrEmpty(response.Price) ? decimal.Parse(response.Price, CultureInfo.InvariantCulture) : 0;
+        var price = ComputeAvgFillPrice(response);
         return qty * price * 0.001m;
+    }
+
+    /// <summary>
+    /// สกุลเงินของค่า fee จริงจาก fills — Binance คิด fee เป็น base asset สำหรับ BUY,
+    /// quote asset สำหรับ SELL, หรือ BNB เมื่อเปิดส่วนลด (ห้าม hardcode "USDT")
+    /// </summary>
+    private static string GetFeeCurrency(BinanceOrderResponse response, string fallback)
+    {
+        var assets = response.Fills?
+            .Select(f => f.CommissionAsset)
+            .Where(a => !string.IsNullOrEmpty(a))
+            .Distinct()
+            .ToList();
+        if (assets == null || assets.Count == 0) return fallback;
+        return assets.Count == 1 ? assets[0] : string.Join("+", assets);
+    }
+
+    /// <summary>
+    /// ราคา fill เฉลี่ยจริง — Binance Spot ไม่มี field avgPrice ใน order response!
+    /// คำนวณจาก cummulativeQuoteQty / executedQty หรือถัวน้ำหนักจาก fills[]
+    /// </summary>
+    private static decimal ComputeAvgFillPrice(BinanceOrderResponse response)
+    {
+        var executedQty = decimal.TryParse(response.ExecutedQty, NumberStyles.Any, CultureInfo.InvariantCulture, out var eq) ? eq : 0;
+        var quoteQty = decimal.TryParse(response.CummulativeQuoteQty, NumberStyles.Any, CultureInfo.InvariantCulture, out var qq) ? qq : 0;
+
+        if (executedQty > 0 && quoteQty > 0)
+        {
+            return quoteQty / executedQty;
+        }
+
+        // Fallback: weighted average of fills
+        if (response.Fills != null && response.Fills.Count > 0)
+        {
+            decimal totalQty = 0, totalValue = 0;
+            foreach (var fill in response.Fills)
+            {
+                var p = decimal.TryParse(fill.Price, NumberStyles.Any, CultureInfo.InvariantCulture, out var fp) ? fp : 0;
+                var q = decimal.TryParse(fill.Qty, NumberStyles.Any, CultureInfo.InvariantCulture, out var fq) ? fq : 0;
+                totalQty += q;
+                totalValue += p * q;
+            }
+            if (totalQty > 0) return totalValue / totalQty;
+        }
+
+        // Last resort: limit price (market orders report price="0")
+        return decimal.TryParse(response.Price, NumberStyles.Any, CultureInfo.InvariantCulture, out var lp) ? lp : 0;
     }
 
     #endregion
@@ -761,7 +804,8 @@ internal class BinanceOrderResponse
     public string Price { get; set; } = "0";
     public string OrigQty { get; set; } = "0";
     public string ExecutedQty { get; set; } = "0";
-    public string AvgPrice { get; set; } = "0";
+    // มูลค่ารวมฝั่ง quote ที่ fill แล้ว — ใช้คำนวณราคาเฉลี่ย (spot API ไม่มี avgPrice!)
+    public string CummulativeQuoteQty { get; set; } = "0";
     public long Time { get; set; }
     public long TransactTime { get; set; }
     public List<BinanceFill>? Fills { get; set; }

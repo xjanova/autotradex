@@ -334,14 +334,18 @@ public class GateIOClient : BaseExchangeClient
 
             if (response == null || response.Count == 0) return candles;
 
-            // Gate.io returns: [timestamp, volume, close, high, low, open, amount]
+            // Gate.io returns: [timestamp, quote_volume, close, high, low, open, base_volume, ...]
+            // index 1 คือมูลค่าฝั่ง quote (USDT) — Volume ต้องใช้ index 6 (จำนวนเหรียญ base)
+            // เพื่อให้หน่วยตรงกับ exchange อื่น (มิฉะนั้น volume-based signals เพี้ยน ~เท่าราคา)
             foreach (var kline in response)
             {
                 if (kline.Count < 6) continue;
                 candles.Add(new PriceCandle
                 {
                     Time = DateTimeOffset.FromUnixTimeSeconds(long.Parse(kline[0], CultureInfo.InvariantCulture)).UtcDateTime,
-                    Volume = decimal.Parse(kline[1], CultureInfo.InvariantCulture),
+                    Volume = kline.Count >= 7
+                        ? decimal.Parse(kline[6], CultureInfo.InvariantCulture)
+                        : decimal.Parse(kline[1], CultureInfo.InvariantCulture),
                     Close = decimal.Parse(kline[2], CultureInfo.InvariantCulture),
                     High = decimal.Parse(kline[3], CultureInfo.InvariantCulture),
                     Low = decimal.Parse(kline[4], CultureInfo.InvariantCulture),
@@ -440,19 +444,44 @@ public class GateIOClient : BaseExchangeClient
             {
                 ["currency_pair"] = normalizedSymbol,
                 ["side"] = request.Side == OrderSide.Buy ? "buy" : "sell",
-                ["type"] = request.Type == OrderType.Market ? "market" : "limit",
-                ["amount"] = request.Quantity.ToString("F8"),
-                ["time_in_force"] = "gtc"
+                ["amount"] = request.Quantity.ToString("F8", CultureInfo.InvariantCulture)
             };
+
+            if (request.Type == OrderType.Market && request.Side == OrderSide.Buy)
+            {
+                // Gate.io market BUY ตีความ amount เป็นจำนวนเงิน quote (USDT) —
+                // แต่แอปทั้งระบบส่ง Quantity เป็นจำนวนเหรียญ (base)
+                // ใช้ marketable IOC limit แทน: ตั้งราคา ask×1.005 + tif=ioc
+                // ได้พฤติกรรมเหมือน market order แต่จำนวนเหรียญตรงตามสั่งเป๊ะ
+                var ticker = await GetTickerAsync(request.Symbol, cancellationToken);
+                if (ticker == null || ticker.AskPrice <= 0)
+                {
+                    throw new Exception($"Cannot get current price for market buy of {request.Symbol}");
+                }
+                orderData["type"] = "limit";
+                orderData["price"] = (ticker.AskPrice * 1.005m).ToString("F8", CultureInfo.InvariantCulture);
+                orderData["time_in_force"] = "ioc";
+            }
+            else if (request.Type == OrderType.Market)
+            {
+                // Market SELL: amount = จำนวนเหรียญ (ถูกต้องตาม spec)
+                // Gate.io ยอมรับเฉพาะ ioc/fok สำหรับ market order — gtc ถูก reject
+                orderData["type"] = "market";
+                orderData["time_in_force"] = "ioc";
+            }
+            else
+            {
+                orderData["type"] = "limit";
+                orderData["time_in_force"] = "gtc";
+                if (request.Price.HasValue)
+                {
+                    orderData["price"] = request.Price.Value.ToString("F8", CultureInfo.InvariantCulture);
+                }
+            }
 
             if (!string.IsNullOrEmpty(request.ClientOrderId))
             {
                 orderData["text"] = $"t-{request.ClientOrderId}";
-            }
-
-            if (request.Type == OrderType.Limit && request.Price.HasValue)
-            {
-                orderData["price"] = request.Price.Value.ToString("F8");
             }
 
             var body = JsonSerializer.Serialize(orderData, _jsonOptions);
@@ -493,7 +522,7 @@ public class GateIOClient : BaseExchangeClient
                 Type = request.Type,
                 Status = MapOrderStatus(result.Status),
                 RequestedQuantity = request.Quantity,
-                FilledQuantity = decimal.Parse(result.FilledTotal ?? "0", CultureInfo.InvariantCulture),
+                FilledQuantity = ComputeFilledBase(result),
                 RequestedPrice = request.Price,
                 AverageFilledPrice = !string.IsNullOrEmpty(result.AvgDealPrice) ? decimal.Parse(result.AvgDealPrice, CultureInfo.InvariantCulture) : 0,
                 Fee = decimal.Parse(result.Fee ?? "0", CultureInfo.InvariantCulture),
@@ -588,7 +617,7 @@ public class GateIOClient : BaseExchangeClient
                 Type = result.Type == "market" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(result.Status),
                 RequestedQuantity = decimal.Parse(result.Amount ?? "0", CultureInfo.InvariantCulture),
-                FilledQuantity = decimal.Parse(result.FilledTotal ?? "0", CultureInfo.InvariantCulture),
+                FilledQuantity = ComputeFilledBase(result),
                 RequestedPrice = !string.IsNullOrEmpty(result.Price) ? decimal.Parse(result.Price, CultureInfo.InvariantCulture) : null,
                 AverageFilledPrice = !string.IsNullOrEmpty(result.AvgDealPrice) ? decimal.Parse(result.AvgDealPrice, CultureInfo.InvariantCulture) : 0,
                 Fee = decimal.Parse(result.Fee ?? "0", CultureInfo.InvariantCulture),
@@ -644,7 +673,7 @@ public class GateIOClient : BaseExchangeClient
                 Type = data.Type == "market" ? OrderType.Market : OrderType.Limit,
                 Status = MapOrderStatus(data.Status),
                 RequestedQuantity = decimal.Parse(data.Amount ?? "0", CultureInfo.InvariantCulture),
-                FilledQuantity = decimal.Parse(data.FilledTotal ?? "0", CultureInfo.InvariantCulture),
+                FilledQuantity = ComputeFilledBase(data),
                 CreatedAt = DateTimeOffset.FromUnixTimeSeconds(long.Parse(data.CreateTime ?? "0", CultureInfo.InvariantCulture)).UtcDateTime
             }).ToList();
         }
@@ -659,10 +688,29 @@ public class GateIOClient : BaseExchangeClient
 
     #region Helper Methods
 
+    /// <summary>
+    /// จำนวนเหรียญ (base) ที่ fill แล้ว = amount - left
+    /// ห้ามใช้ filled_total ตรงๆ — spec ระบุว่าเป็นมูลค่าฝั่ง quote (USDT) ไม่ใช่จำนวนเหรียญ
+    /// </summary>
+    private static decimal ComputeFilledBase(GateIOOrderResponse order)
+    {
+        var amount = decimal.TryParse(order.Amount, NumberStyles.Any, CultureInfo.InvariantCulture, out var a) ? a : 0;
+        var left = decimal.TryParse(order.Left, NumberStyles.Any, CultureInfo.InvariantCulture, out var l) ? l : 0;
+        var filled = amount - left;
+        if (filled > 0) return filled;
+
+        // Fallback เมื่อไม่มี left: แปลงมูลค่า quote กลับเป็นจำนวนเหรียญด้วยราคาเฉลี่ย
+        var filledTotal = decimal.TryParse(order.FilledTotal, NumberStyles.Any, CultureInfo.InvariantCulture, out var ft) ? ft : 0;
+        var avgPrice = decimal.TryParse(order.AvgDealPrice, NumberStyles.Any, CultureInfo.InvariantCulture, out var ap) ? ap : 0;
+        return avgPrice > 0 ? filledTotal / avgPrice : 0;
+    }
+
     private string NormalizeSymbol(string symbol)
     {
-        // Convert "BTC/USDT" to "BTC_USDT" (Gate.io format)
-        return symbol.Replace("/", "_").ToUpperInvariant();
+        // Gate.io currency_pair format: "BTC_USDT"
+        // รองรับ input ทุกแบบ: "BTC/USDT", "BTCUSDT", "BTC_USDT"
+        var (baseAsset, quoteAsset) = SplitSymbol(symbol);
+        return quoteAsset.Length > 0 ? $"{baseAsset}_{quoteAsset}" : symbol.ToUpperInvariant();
     }
 
     private Dictionary<string, string> CreateAuthHeaders(string method, string path, string query, string body, string timestamp)
@@ -685,12 +733,13 @@ public class GateIOClient : BaseExchangeClient
         using var hmac = new HMACSHA512(Encoding.UTF8.GetBytes(apiSecret));
         var signature = BitConverter.ToString(hmac.ComputeHash(Encoding.UTF8.GetBytes(signatureString))).Replace("-", "").ToLowerInvariant();
 
+        // NOTE: ห้ามใส่ "Content-Type" ที่นี่ — call sites ใส่เข้า HttpRequestMessage.Headers
+        // ซึ่ง .NET throw "Misused header name" ทันที (ตั้งผ่าน StringContent แทน)
         return new Dictionary<string, string>
         {
             ["KEY"] = apiKey,
             ["SIGN"] = signature,
-            ["Timestamp"] = timestamp,
-            ["Content-Type"] = "application/json"
+            ["Timestamp"] = timestamp
         };
     }
 
@@ -713,7 +762,7 @@ public class GateIOClient : BaseExchangeClient
     {
         return status switch
         {
-            "open" => OrderStatus.Pending,
+            "open" => OrderStatus.Open,
             "closed" => OrderStatus.Filled,
             "cancelled" or "canceled" => OrderStatus.Cancelled,
             _ => OrderStatus.Error
@@ -804,6 +853,9 @@ internal class GateIOOrderResponse
 
     [JsonPropertyName("price")]
     public string? Price { get; set; }
+
+    [JsonPropertyName("left")]
+    public string? Left { get; set; }
 
     [JsonPropertyName("filled_total")]
     public string? FilledTotal { get; set; }
