@@ -487,6 +487,59 @@ await LoadCredentialsFromDatabaseAsync(); // ← Then credentials
 // Call Validate() before using config in production paths
 ```
 
+#### 14. Market Intelligence System (Signal Fusion)
+
+> Added July 2026 — makes AI signals use REAL external data, not just technical indicators.
+
+```
+GetCurrentSignalAsync pipeline (AITradingService.cs):
+  Stage 1: Multi-timeframe analysis (15m/1h/4h) → MarketRegimeDetector
+  Stage 2: Auto strategy selection by regime (if UseAutoStrategySelection)
+  Stage 3: Base technical signal (existing 6 strategies)
+  Stage 4: MTF confluence fusion (±15 confidence, veto Buy if confluence ≤ -40)
+  Stage 5: External intelligence fusion (±20 confidence, news veto ≤ -40)
+```
+
+**Key files:**
+- `Core/Services/SentimentAnalyzer.cs` — PURE lexicon-based headline scoring (no network)
+- `Core/Services/MarketRegimeDetector.cs` — PURE multi-timeframe trend/regime math (no network)
+- `Core/Models/MarketIntelligenceModels.cs` — FearGreedData, NewsSentimentSummary, CoinHistoricalStats, MarketRegime, MultiTimeframeAnalysis, MarketIntelligence
+- `Infrastructure/Services/MarketIntelligenceService.cs` — HTTP layer: RSS news (CoinDesk/Cointelegraph/Decrypt), Fear & Greed (alternative.me), 30-day stats (CoinGecko)
+
+**Rules (DO NOT break):**
+- Intelligence is ADDITIVE — every fetch returns null on failure, NEVER throws into the trading loop. Trading continues technical-only when APIs are down.
+- Caching TTLs protect free APIs: news 10 min, fear/greed 30 min, coin stats 30 min. Do not shorten.
+- Veto logic only converts Buy → Hold (never auto-sells on news). Confidence-scaled sizing only REDUCES trade size (scale 0.5-1.0, capped by MaxTradeAmountUSDT).
+- New `AIStrategyConfig` flags (all default-safe): `UseMarketIntelligence` (true), `UseMultiTimeframeAnalysis` (true), `UseAutoStrategySelection` (false — page has its own switcher), `NewsVetoThreshold` (-40), `BlockOnOpposingTrend` (true), `UseConfidenceScaledSizing` (true), `ExitOnOpposingSignal` (true)
+- `_candleCache` in AITradingService is guarded by `_candleCacheLock` — accessed from both UI loop and trading loop. Keep the lock.
+- UI: intelligence indicators (ShortName MTF/NEWS/F&G/HIST) are merged into `IndicatorsList` inside `UpdateSignalDisplay` — the merge strips old intel entries first (idempotent).
+- Tests in `tests/AutoTradeX.Tests/MarketIntelligenceTests.cs` (30 tests) cover the pure logic.
+
+#### 15. Exchange API Clients — Order-Path Contracts (July 2026 audit, ~30 fixes)
+
+> Full audit against official API specs + live endpoint tests. These contracts are load-bearing:
+
+- **Quantity convention: `OrderRequest.Quantity` is ALWAYS base-asset amount (จำนวนเหรียญ).** Each client translates:
+  - Bybit market orders send `marketUnit: "baseCoin"` (default treats market-buy qty as USDT!)
+  - OKX market orders send `tgtCcy: "base_ccy"` (same trap)
+  - KuCoin market orders use `size` (NEVER `funds` — funds = quote currency)
+  - Gate.io market BUY is placed as marketable IOC limit (ask×1.005) because Gate.io market-buy `amount` means quote currency; market SELL uses `type=market` + `time_in_force=ioc` (gtc is rejected for market)
+  - Bitkub place-bid `amt` = THB spend → client converts qty×price; place-ask `amt` = coin amount
+- **Symbol formats** (all NormalizeSymbol helpers accept "BTC/USDT", "BTCUSDT", "BTC-USDT" via `BaseExchangeClient.SplitSymbol`): Binance/Bybit `BTCUSDT`, KuCoin/OKX `BTC-USDT`, Gate.io `BTC_USDT`, Bitkub legacy market API `THB_BTC` but v3 trading + tradingview use `btc_thb`/`BTC_THB` (BASE_QUOTE — inverted!)
+- **Bitkub**: balance = `GET /api/v4/wallet/balances` (v3 wallet was REMOVED May 2026); order-info + my-open-orders are **GET with query** (not POST); all signed calls fetch `/api/v3/servertime` first; orderbook = `/api/v3/market/depth` (legacy `/api/market/depth` + `/books` return STALE data); buy-side amounts are THB units in responses → convert via rate
+- **Never trust HTTP 200 as success**: KuCoin (`code`+`cancelledOrderIds`), OKX (`code`+`sCode`), Bitkub (`error`), Bybit (`retCode`) all return errors in a 200 body — cancel paths MUST check
+- **Never put "Content-Type" in a headers dictionary** applied to `HttpRequestMessage.Headers` — .NET throws "Misused header name" (this killed 100% of OKX/Gate.io private calls)
+- **OKX timestamps** must use `CreateOkxTimestamp()` (InvariantCulture — Thai locale produces Buddhist year 2569 → signature rejected)
+- **Binance**: spot has NO `avgPrice` field — use `ComputeAvgFillPrice` (cummulativeQuoteQty/executedQty or fills[]); fee currency from `commissionAsset`
+- **Bybit**: `openOnly=0` = open orders (`1` returns CLOSED orders!); `availableToWithdraw` deprecated → `walletBalance - locked`; parse with `ParseDecimalSafe` (Bybit sends `""`)
+- **Gate.io**: `filled_total` is QUOTE currency — base fill = `amount - left` (`ComputeFilledBase`)
+- **Volume units**: KuCoin klines index 5 (not 6=turnover), Gate.io klines index 6 (not 1=quote volume) — base volume everywhere
+- **Factory**: `CreateClient()` uses canonical `AUTOTRADEX_{EXCHANGE}_API_KEY` env vars (NEVER slot-based `_config.ExchangeA/B.ApiKeyEnvVar` — leaks one exchange's keys to another)
+- `_jsonOptions` has `NumberHandling = AllowReadingFromString` (exchanges send numbers as JSON strings)
+- Order size formatting: always `ToString("F8"/"G29", CultureInfo.InvariantCulture)`
+
+**Known remaining gaps (documented, not yet fixed):** no LOT_SIZE/stepSize rounding from exchangeInfo; no server-time offset sync for Binance signed calls; KuCoin/OKX passphrase captured at construction (stale until client recreated); open-orders pagination (first page only); Bitkub public ticker still on legacy endpoint (works today, deprecated on paper).
+
 ### Known Safe — No Fix Needed
 
 These were audited and confirmed correct:
@@ -516,4 +569,4 @@ Before submitting any change, verify:
 - [ ] New DB tables go inside existing transaction in `CreateTablesAsync`
 - [ ] Demo mode (`_isDemoMode`) checked for all trading features
 - [ ] ScrollViewer/ListView uses premium scrollbar styles
-- [ ] `dotnet build` = 0 errors, `dotnet test` = 47 passed
+- [ ] `dotnet build` = 0 errors, `dotnet test` = 77 passed

@@ -100,6 +100,11 @@ public interface IAITradingService
     /// </summary>
     Task<List<PriceCandle>> GetCandlesAsync(string exchange, string symbol, string interval = "1m", int limit = 100, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// วิเคราะห์เทรนด์หลาย timeframe (15m/1h/4h) และจำแนกสภาวะตลาด
+    /// </summary>
+    Task<MultiTimeframeAnalysis?> AnalyzeMultiTimeframeAsync(string exchange, string symbol, CancellationToken cancellationToken = default);
+
     // Events
     event EventHandler<AISignalEventArgs>? SignalGenerated;
     event EventHandler<AIPositionEventArgs>? PositionOpened;

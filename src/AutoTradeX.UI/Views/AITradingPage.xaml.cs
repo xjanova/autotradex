@@ -1003,8 +1003,23 @@ public partial class AITradingPage : UserControl
         SignalTarget.Text = signal.TargetPrice.HasValue ? $"{cp}{signal.TargetPrice.Value:N2}" : "-";
         SignalStopLoss.Text = signal.StopLossPrice.HasValue ? $"{cp}{signal.StopLossPrice.Value:N2}" : "-";
 
-        // Update reasoning
+        // Update reasoning (full text in tooltip — reasoning now includes MTF/news/intelligence notes)
         AIReasoning.Text = signal.Reasoning;
+        AIReasoning.ToolTip = signal.Reasoning;
+
+        // Merge intelligence indicators (MTF, News, Fear&Greed, Historical stats) from the
+        // enhanced signal into the indicators panel built from market data
+        var intelIndicators = signal.Indicators
+            .Where(i => i.ShortName is "MTF" or "NEWS" or "F&G" or "HIST")
+            .ToList();
+        if (intelIndicators.Count > 0 && IndicatorsList.ItemsSource is IEnumerable<IndicatorValue> currentIndicators)
+        {
+            var merged = currentIndicators
+                .Where(i => i.ShortName is not ("MTF" or "NEWS" or "F&G" or "HIST"))
+                .ToList();
+            merged.AddRange(intelIndicators);
+            IndicatorsList.ItemsSource = merged;
+        }
 
         // Update status badge
         if (_isAIRunning)

@@ -996,7 +996,7 @@
 
                                         <!-- AI Reasoning -->
                                         <TextBlock x:Name="AIReasoning" Text="RSI oversold, MACD bullish crossover..."
-                                                   FontSize="9" Foreground="#60FFFFFF" TextWrapping="Wrap" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" MaxHeight="32"/>
+                                                   FontSize="9" Foreground="#60FFFFFF" TextWrapping="Wrap" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" MaxHeight="96"/>
                                     </StackPanel>
                                 </Border>
 
@@ -1303,7 +1303,7 @@
                                                 </Grid.ColumnDefinitions>
                                                 <StackPanel>
                                                     <TextBlock Text="{Binding ShortName}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
-                                                    <TextBlock Text="{Binding Description}" FontSize="9" Foreground="#60FFFFFF" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding Description}" FontSize="9" Foreground="#60FFFFFF" TextTrimming="CharacterEllipsis" ToolTip="{Binding Description}"/>
                                                 </StackPanel>
                                                 <TextBlock Grid.Column="1" Text="{Binding Value, StringFormat=N2}" FontSize="12"
                                                            Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"/>

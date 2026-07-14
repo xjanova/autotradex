@@ -507,6 +507,49 @@ public class AIStrategyConfig
     /// Bybit=0.1%, Gate.io=0.2%, Bitkub=0.25%
     /// </summary>
     public decimal FeePercent { get; set; } = 0.1m;
+
+    // ===== Market Intelligence / ข้อมูลอัจฉริยะภายนอก =====
+
+    /// <summary>
+    /// ใช้ข้อมูลภายนอก (ข่าว, Fear &amp; Greed, สถิติย้อนหลัง) ปรับสัญญาณ
+    /// เมื่อดึงข้อมูลไม่ได้ ระบบเทรดต่อด้วย technical ล้วนตามปกติ
+    /// </summary>
+    public bool UseMarketIntelligence { get; set; } = true;
+
+    /// <summary>
+    /// วิเคราะห์เทรนด์หลาย timeframe (15m/1h/4h) ประกอบสัญญาณ
+    /// </summary>
+    public bool UseMultiTimeframeAnalysis { get; set; } = true;
+
+    /// <summary>
+    /// ให้ AI เลือกกลยุทธ์เองอัตโนมัติตามสภาวะตลาด (Market Regime)
+    /// แทนที่จะใช้ Mode ที่ผู้ใช้เลือกตายตัว
+    /// </summary>
+    public bool UseAutoStrategySelection { get; set; } = false;
+
+    /// <summary>
+    /// บล็อกการเข้าซื้อเมื่อคะแนนข่าวต่ำกว่าค่านี้ (-100 ถึง 0)
+    /// เช่น -40 = ข่าวเชิงลบรุนแรง (hack, ban, crash) → ไม่เข้าซื้อ
+    /// </summary>
+    public decimal NewsVetoThreshold { get; set; } = -40;
+
+    /// <summary>
+    /// บล็อกการเข้าซื้อเมื่อ multi-timeframe ขัดแย้งรุนแรง
+    /// (เช่น 1h และ 4h เป็นขาลงแรงพร้อมกัน)
+    /// </summary>
+    public bool BlockOnOpposingTrend { get; set; } = true;
+
+    /// <summary>
+    /// ปรับขนาดไม้ตามความมั่นใจของสัญญาณ:
+    /// ขนาดจริง = TradeAmountUSDT × (0.5 + 0.5 × Confidence/100)
+    /// ลดขนาดเมื่อความมั่นใจต่ำ — ไม่มีทางเกินจำนวนที่ตั้งไว้
+    /// </summary>
+    public bool UseConfidenceScaledSizing { get; set; } = true;
+
+    /// <summary>
+    /// ปิด Position อัตโนมัติเมื่อเกิดสัญญาณ Sell แรงสวนทางขณะถืออยู่
+    /// </summary>
+    public bool ExitOnOpposingSignal { get; set; } = true;
 }
 
 /// <summary>

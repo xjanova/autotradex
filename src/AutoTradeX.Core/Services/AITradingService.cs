@@ -18,6 +18,7 @@ public class AITradingService : IAITradingService
 {
     private readonly IExchangeClientFactory _exchangeFactory;
     private readonly ILoggingService _logger;
+    private readonly IMarketIntelligenceService? _intelligenceService;
     private readonly object _lock = new();
 
     private bool _isRunning;
@@ -32,7 +33,9 @@ public class AITradingService : IAITradingService
     private AITradingSessionStats _sessionStats = new();
     private readonly List<AITradeResult> _tradeHistory = new();
     // Candle cache keyed by (exchange|symbol|interval)
+    // Accessed from both the trading loop and the UI update loop — guard with _candleCacheLock
     private readonly Dictionary<string, (List<PriceCandle> candles, DateTime fetchedAt)> _candleCache = new();
+    private readonly object _candleCacheLock = new();
     private AIMarketData? _lastMarketData;
 
     // Risk management state
@@ -54,10 +57,14 @@ public class AITradingService : IAITradingService
     public event EventHandler<AIMarketDataEventArgs>? MarketDataUpdated;
     public event EventHandler<AIEmergencyEventArgs>? EmergencyTriggered;
 
-    public AITradingService(IExchangeClientFactory exchangeFactory, ILoggingService logger)
+    public AITradingService(
+        IExchangeClientFactory exchangeFactory,
+        ILoggingService logger,
+        IMarketIntelligenceService? intelligenceService = null)
     {
         _exchangeFactory = exchangeFactory;
         _logger = logger;
+        _intelligenceService = intelligenceService;
     }
 
     public async Task StartAsync(string exchange, string symbol, AIStrategyConfig config, CancellationToken cancellationToken = default)
@@ -286,7 +293,275 @@ public class AITradingService : IAITradingService
         var marketData = await GetMarketDataAsync(exchange, symbol, cancellationToken);
         if (marketData == null) return null;
 
-        return GenerateSignal(marketData, config);
+        // ===== Stage 1: Multi-timeframe context (15m/1h/4h) =====
+        MultiTimeframeAnalysis? mtf = null;
+        if (config.UseMultiTimeframeAnalysis)
+        {
+            mtf = await AnalyzeMultiTimeframeAsync(exchange, symbol, cancellationToken);
+        }
+
+        // ===== Stage 2: Auto strategy selection by market regime =====
+        var effectiveMode = config.Mode;
+        string? autoSelectNote = null;
+        if (config.UseAutoStrategySelection && mtf != null && mtf.Trends.Count > 0)
+        {
+            var recommended = MarketRegimeDetector.RecommendStrategy(mtf, marketData.Volume24h);
+            if (recommended != config.Mode)
+            {
+                effectiveMode = recommended;
+                var info = AITradingModeInfo.GetModeInfo(recommended);
+                autoSelectNote = $"AI เลือกกลยุทธ์ {info.ThaiName} ({info.EnglishName}) อัตโนมัติ เพราะ{mtf.RegimeDescription}";
+                _logger.LogInfo("AITradingService", $"Auto strategy: {config.Mode} → {recommended} ({mtf.Regime})");
+            }
+        }
+
+        // ===== Stage 3: Base technical signal =====
+        var signal = GenerateSignal(marketData, config, effectiveMode);
+        if (autoSelectNote != null)
+        {
+            signal.Reasoning = $"{autoSelectNote}\n{signal.Reasoning}";
+        }
+
+        // ===== Stage 4: Fuse multi-timeframe confluence into the signal =====
+        if (mtf != null && mtf.Trends.Count > 0)
+        {
+            ApplyMultiTimeframeAnalysis(signal, mtf, config);
+        }
+
+        // ===== Stage 5: Fuse external intelligence (news / fear-greed / stats) =====
+        if (config.UseMarketIntelligence && _intelligenceService != null)
+        {
+            try
+            {
+                var baseAsset = GetBaseAsset(symbol);
+                var intel = await _intelligenceService.GetIntelligenceAsync(baseAsset, cancellationToken);
+                if (intel != null)
+                {
+                    ApplyMarketIntelligence(signal, intel, config);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Intelligence is additive — never let it break the signal pipeline
+                _logger.LogWarning("AITradingService", $"Intelligence fusion skipped: {ex.Message}");
+            }
+        }
+
+        return signal;
+    }
+
+    /// <summary>
+    /// วิเคราะห์เทรนด์ 3 timeframe (15m/1h/4h) — ใช้ candle cache ที่มีอยู่
+    /// </summary>
+    public async Task<MultiTimeframeAnalysis?> AnalyzeMultiTimeframeAsync(string exchange, string symbol, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var intervals = new[] { "15m", "1h", "4h" };
+            var trends = new List<TimeframeTrend>();
+
+            foreach (var interval in intervals)
+            {
+                var candles = await GetCandlesAsync(exchange, symbol, interval, 60, cancellationToken);
+                if (candles.Count >= 25)
+                {
+                    trends.Add(MarketRegimeDetector.AnalyzeTimeframe(interval, candles));
+                }
+            }
+
+            if (trends.Count == 0) return null;
+            return MarketRegimeDetector.Combine(exchange, symbol, trends);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("AITradingService", $"Multi-timeframe analysis failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// ปรับสัญญาณด้วยผลวิเคราะห์ multi-timeframe:
+    /// - เทรนด์ใหญ่สวนแรง → บล็อกการซื้อ (ถ้าเปิด BlockOnOpposingTrend)
+    /// - เทรนด์สอดคล้อง → เพิ่มความมั่นใจ (สูงสุด +15)
+    /// - เทรนด์ขัดแย้งเล็กน้อย → ลดความมั่นใจ (สูงสุด -15)
+    /// </summary>
+    private void ApplyMultiTimeframeAnalysis(AITradingSignal signal, MultiTimeframeAnalysis mtf, AIStrategyConfig config)
+    {
+        signal.Indicators.Add(new IndicatorValue
+        {
+            Name = "Multi-Timeframe Confluence",
+            ShortName = "MTF",
+            Value = mtf.ConfluenceScore,
+            Status = mtf.ConfluenceScore >= 25 ? "Bullish" : mtf.ConfluenceScore <= -25 ? "Bearish" : "Neutral",
+            Description = $"{mtf.RegimeDescription} | " +
+                          string.Join(" | ", mtf.Trends.Select(t => t.Description))
+        });
+
+        if (signal.SignalType != "Buy") return;
+
+        if (config.BlockOnOpposingTrend && mtf.ConfluenceScore <= -40)
+        {
+            signal.SignalType = "Hold";
+            signal.Confidence = 0;
+            signal.Strength = AISignalStrength.None;
+            signal.Reasoning += $"\n⛔ [MTF Veto] {mtf.RegimeDescription} — timeframe ใหญ่สวนทางแรง ไม่เข้าซื้อสวนเทรนด์";
+            return;
+        }
+
+        int adjustment = mtf.ConfluenceScore switch
+        {
+            >= 50 => 15,
+            >= 25 => 10,
+            <= -25 => -15,
+            <= -10 => -8,
+            _ => 0
+        };
+
+        if (adjustment != 0)
+        {
+            signal.Confidence = Math.Clamp(signal.Confidence + adjustment, 0, 100);
+            signal.Strength = GetSignalStrength(signal.Confidence);
+            signal.Reasoning += adjustment > 0
+                ? $"\n✅ [MTF] {mtf.RegimeDescription} — เทรนด์ใหญ่หนุน (+{adjustment} confidence)"
+                : $"\n⚠️ [MTF] {mtf.RegimeDescription} — เทรนด์ใหญ่ไม่หนุน ({adjustment} confidence)";
+        }
+    }
+
+    /// <summary>
+    /// ปรับสัญญาณด้วยข้อมูลอัจฉริยะภายนอก:
+    /// - ข่าวเชิงลบรุนแรง (≤ NewsVetoThreshold) → บล็อกการซื้อ
+    /// - ข่าว / Fear&amp;Greed / สถิติย้อนหลัง → ปรับความมั่นใจรวมสูงสุด ±20
+    /// ทุกปัจจัยถูกเพิ่มเป็น Indicator ให้ผู้ใช้เห็นเหตุผลครบใน UI
+    /// </summary>
+    private void ApplyMarketIntelligence(AITradingSignal signal, MarketIntelligence intel, AIStrategyConfig config)
+    {
+        int adjustment = 0;
+        var notes = new List<string>();
+
+        // ----- News sentiment -----
+        if (intel.News != null)
+        {
+            var newsScore = intel.News.EffectiveScore;
+            var scopeLabel = intel.News.CoinScore.HasValue ? $"ข่าว {intel.BaseAsset} โดยตรง" : "ข่าวตลาดรวม";
+            var topHeadline = intel.News.Articles
+                .Where(a => intel.News.CoinScore.HasValue ? a.IsCoinSpecific : true)
+                .OrderByDescending(a => Math.Abs(a.SentimentScore))
+                .FirstOrDefault(a => a.SentimentScore != 0);
+
+            signal.Indicators.Add(new IndicatorValue
+            {
+                Name = "News Sentiment",
+                ShortName = "NEWS",
+                Value = newsScore,
+                Status = newsScore >= 15 ? "Bullish" : newsScore <= -15 ? "Bearish" : "Neutral",
+                Description = $"{scopeLabel}: {newsScore:+0;-0;0} " +
+                              $"(บวก {intel.News.BullishCount} / ลบ {intel.News.BearishCount} / กลาง {intel.News.NeutralCount})" +
+                              (topHeadline != null ? $" | เด่น: \"{topHeadline.Title}\"" : "")
+            });
+
+            if (signal.SignalType == "Buy" && newsScore <= config.NewsVetoThreshold)
+            {
+                signal.SignalType = "Hold";
+                signal.Confidence = 0;
+                signal.Strength = AISignalStrength.None;
+                signal.Reasoning += $"\n⛔ [News Veto] {scopeLabel}เชิงลบรุนแรง ({newsScore}) — งดเข้าซื้อจนกว่าข่าวจะคลี่คลาย" +
+                                    (topHeadline != null ? $" | \"{topHeadline.Title}\"" : "");
+                return;
+            }
+
+            if (newsScore >= 20) { adjustment += 8; notes.Add($"ข่าวหนุน ({newsScore:+0})"); }
+            else if (newsScore <= -15) { adjustment -= 10; notes.Add($"ข่าวกดดัน ({newsScore})"); }
+        }
+
+        // ----- Fear & Greed -----
+        if (intel.FearGreed != null)
+        {
+            var fg = intel.FearGreed;
+            signal.Indicators.Add(new IndicatorValue
+            {
+                Name = "Fear & Greed Index",
+                ShortName = "F&G",
+                Value = fg.Value,
+                Status = fg.Value < 30 ? "Bearish" : fg.Value > 70 ? "Bullish" : "Neutral",
+                Description = $"ดัชนี {fg.Value}/100 ({fg.Classification})" +
+                              (fg.YesterdayValue.HasValue ? $" | เมื่อวาน {fg.YesterdayValue}" : "") +
+                              (fg.WeekAverage.HasValue ? $" | เฉลี่ย 7 วัน {fg.WeekAverage:F0}" : "")
+            });
+
+            var isContrarian = signal.Symbol.Length > 0 &&
+                (config.Mode == AITradingMode.MeanReversion || config.Mode == AITradingMode.SmartDCA);
+
+            if (fg.Value < 20)
+            {
+                // Extreme fear: ดีสำหรับสายสะสม/สวนตลาด แต่อันตรายสำหรับสายตามเทรนด์
+                if (isContrarian) { adjustment += 8; notes.Add($"Extreme Fear ({fg.Value}) = จังหวะสะสมของถูก"); }
+                else { adjustment -= 10; notes.Add($"Extreme Fear ({fg.Value}) — ตลาด panic เสี่ยงสำหรับการตามเทรนด์"); }
+            }
+            else if (fg.Value > 80)
+            {
+                adjustment -= 8;
+                notes.Add($"Extreme Greed ({fg.Value}) — ระวังตลาดร้อนแรงเกิน อาจใกล้จุดกลับตัว");
+            }
+        }
+
+        // ----- Historical statistics -----
+        if (intel.Stats != null)
+        {
+            var stats = intel.Stats;
+            signal.Indicators.Add(new IndicatorValue
+            {
+                Name = "สถิติย้อนหลัง 30 วัน",
+                ShortName = "HIST",
+                Value = stats.PriceChange30d,
+                Status = stats.PriceChange30d > 5 ? "Bullish" : stats.PriceChange30d < -5 ? "Bearish" : "Neutral",
+                Description = $"{stats.Name} อันดับ #{stats.MarketCapRank} | 7วัน {stats.PriceChange7d:+0.0;-0.0}% | " +
+                              $"30วัน {stats.PriceChange30d:+0.0;-0.0}% | ผันผวน {stats.DailyVolatility30d:F1}%/วัน | " +
+                              $"Max DD {stats.MaxDrawdown30d:F0}% | ห่าง ATH {stats.AthDistancePercent:F0}%"
+            });
+
+            if (stats.DailyVolatility30d > 8) { adjustment -= 8; notes.Add($"เหรียญผันผวนจัด ({stats.DailyVolatility30d:F1}%/วัน)"); }
+            if (stats.MaxDrawdown30d > 40) { adjustment -= 5; notes.Add($"เคยร่วงแรง {stats.MaxDrawdown30d:F0}% ใน 30 วัน"); }
+            if (stats.MarketCapRank is > 0 and <= 20) { adjustment += 5; notes.Add($"เหรียญอันดับ #{stats.MarketCapRank} สภาพคล่องดี"); }
+            if (stats.VolumeToMarketCap > 0 && stats.VolumeToMarketCap < 0.01m) { adjustment -= 5; notes.Add("สภาพคล่องต่ำเทียบขนาดเหรียญ"); }
+        }
+
+        // ----- Apply bounded adjustment -----
+        adjustment = Math.Clamp(adjustment, -20, 20);
+        if (adjustment != 0 && signal.SignalType == "Buy")
+        {
+            signal.Confidence = Math.Clamp(signal.Confidence + adjustment, 0, 100);
+            signal.Strength = GetSignalStrength(signal.Confidence);
+        }
+
+        if (notes.Count > 0)
+        {
+            var icon = adjustment > 0 ? "🧠" : adjustment < 0 ? "⚠️" : "🧠";
+            signal.Reasoning += $"\n{icon} [Intelligence {adjustment:+0;-0;0}] {string.Join(" | ", notes)}";
+        }
+        else if (intel.Summary.Length > 0)
+        {
+            signal.Reasoning += $"\n🧠 [Intelligence] {intel.Summary}";
+        }
+    }
+
+    /// <summary>
+    /// แยก base asset จาก symbol: "BTC/USDT" → "BTC", "BTCUSDT" → "BTC"
+    /// </summary>
+    public static string GetBaseAsset(string symbol)
+    {
+        if (string.IsNullOrWhiteSpace(symbol)) return "";
+
+        var slashIndex = symbol.IndexOf('/');
+        if (slashIndex > 0) return symbol[..slashIndex].ToUpperInvariant();
+
+        // No separator — strip known quote suffixes
+        var upper = symbol.ToUpperInvariant();
+        foreach (var quote in new[] { "USDT", "USDC", "BUSD", "THB", "USD", "BTC", "ETH" })
+        {
+            if (upper.EndsWith(quote, StringComparison.Ordinal) && upper.Length > quote.Length)
+                return upper[..^quote.Length];
+        }
+        return upper;
     }
 
     public AITradingPosition? GetCurrentPosition() => _currentPosition;
@@ -332,6 +607,21 @@ public class AITradingService : IAITradingService
                 {
                     _logger.LogWarning("AITradingService", $"Could not get balance for percentage calculation, using fixed amount: {ex.Message}");
                 }
+            }
+
+            // Confidence-scaled sizing: ลดขนาดไม้เมื่อความมั่นใจต่ำ (ไม่มีทางเกินจำนวนที่ตั้งไว้)
+            // เช่น confidence 70 → 85% ของขนาดเต็ม, confidence 100 → 100%
+            if (_config?.UseConfidenceScaledSizing == true && signal.Confidence > 0)
+            {
+                var scale = 0.5m + 0.5m * Math.Min(100, signal.Confidence) / 100m;
+                tradeAmount *= scale;
+                _logger.LogInfo("AITradingService", $"Confidence-scaled sizing: {signal.Confidence}% confidence → {scale:P0} of base amount = {tradeAmount:F2}");
+            }
+
+            // Enforce hard cap
+            if (_config != null && _config.MaxTradeAmountUSDT > 0 && tradeAmount > _config.MaxTradeAmountUSDT)
+            {
+                tradeAmount = _config.MaxTradeAmountUSDT;
             }
 
             var quantity = tradeAmount / ticker.LastPrice;
@@ -479,11 +769,14 @@ public class AITradingService : IAITradingService
         {
             // Check cache using composite key (exchange|symbol|interval)
             var cacheKey = $"{exchange}|{symbol}|{interval}".ToLowerInvariant();
-            if (_candleCache.TryGetValue(cacheKey, out var cached) &&
-                cached.candles.Count >= limit &&
-                (DateTime.UtcNow - cached.fetchedAt).TotalSeconds < 30) // Cache valid for 30 seconds
+            lock (_candleCacheLock)
             {
-                return cached.candles.TakeLast(limit).ToList();
+                if (_candleCache.TryGetValue(cacheKey, out var cached) &&
+                    cached.candles.Count >= limit &&
+                    (DateTime.UtcNow - cached.fetchedAt).TotalSeconds < 30) // Cache valid for 30 seconds
+                {
+                    return cached.candles.TakeLast(limit).ToList();
+                }
             }
 
             var client = _exchangeFactory.CreateRealClient(exchange);
@@ -507,13 +800,16 @@ public class AITradingService : IAITradingService
             }
 
             // Cache candles with composite key
-            _candleCache[cacheKey] = (candles, DateTime.UtcNow);
-
-            // Cleanup old cache entries (keep max 10)
-            if (_candleCache.Count > 10)
+            lock (_candleCacheLock)
             {
-                var oldestKey = _candleCache.OrderBy(kvp => kvp.Value.fetchedAt).First().Key;
-                _candleCache.Remove(oldestKey);
+                _candleCache[cacheKey] = (candles, DateTime.UtcNow);
+
+                // Cleanup old cache entries (keep max 12: 4 intervals × 3 symbols)
+                if (_candleCache.Count > 12)
+                {
+                    var oldestKey = _candleCache.OrderBy(kvp => kvp.Value.fetchedAt).First().Key;
+                    _candleCache.Remove(oldestKey);
+                }
             }
 
             return candles;
@@ -654,6 +950,18 @@ public class AITradingService : IAITradingService
                         if (_currentPosition != null && _lastMarketData != null)
                         {
                             await UpdatePositionAsync(_lastMarketData, cancellationToken);
+                        }
+
+                        // Exit on strong opposing signal while holding
+                        // (สัญญาณ Sell แรงสวนทางขณะถือ position → ปิดก่อนโดน SL เต็มๆ)
+                        if (_currentPosition != null &&
+                            _currentPosition.Status == AIPositionStatus.InPosition &&
+                            _config.ExitOnOpposingSignal &&
+                            signal.SignalType == "Sell" &&
+                            signal.Confidence >= _config.MinConfidenceToEnter)
+                        {
+                            _logger.LogInfo("AITradingService", $"Opposing Sell signal ({signal.Confidence}%) while in position — closing early");
+                            await ClosePositionAsync("SignalReversal", cancellationToken);
                         }
 
                         // Check for entry
@@ -854,10 +1162,11 @@ public class AITradingService : IAITradingService
         }
     }
 
-    private AITradingSignal GenerateSignal(AIMarketData marketData, AIStrategyConfig config)
+    private AITradingSignal GenerateSignal(AIMarketData marketData, AIStrategyConfig config, AITradingMode? modeOverride = null)
     {
         // Route to strategy-specific signal generation
-        return config.Mode switch
+        // (modeOverride ใช้เมื่อ AI เลือกกลยุทธ์อัตโนมัติตาม market regime)
+        return (modeOverride ?? config.Mode) switch
         {
             AITradingMode.Scalping => GenerateScalpingSignal(marketData, config),
             AITradingMode.Momentum => GenerateMomentumSignal(marketData, config),

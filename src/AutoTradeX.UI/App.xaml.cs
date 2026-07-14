@@ -574,12 +574,20 @@ public partial class App : Application
         // Project Service for trading projects (max 10 pairs)
         services.AddSingleton<IProjectService, ProjectService>();
 
+        // Market Intelligence Service - news sentiment, fear & greed, historical stats
+        services.AddSingleton<IMarketIntelligenceService>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILoggingService>();
+            return new MarketIntelligenceService(logger);
+        });
+
         // AI Trading Service for single-exchange AI trading
         services.AddSingleton<IAITradingService>(sp =>
         {
             var exchangeFactory = sp.GetRequiredService<IExchangeClientFactory>();
             var logger = sp.GetRequiredService<ILoggingService>();
-            return new AITradingService(exchangeFactory, logger);
+            var intelligence = sp.GetRequiredService<IMarketIntelligenceService>();
+            return new AITradingService(exchangeFactory, logger, intelligence);
         });
 
         // Connection Status Service for monitoring API connections
